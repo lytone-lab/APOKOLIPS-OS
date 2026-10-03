@@ -22,6 +22,8 @@
 #include <QResizeEvent>
 #include <QWindow>
 #include <QMenu>
+#include <QSlider>
+#include <QStackedWidget>
 #include <unistd.h>
 #include <QShortcut>
 #include <QWidgetAction>
@@ -34,6 +36,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
+#include <QFileSystemWatcher>
 #include <functional>
 #include <cmath>
 
@@ -102,6 +105,98 @@ public:
         if (total == 0) return 0.0;
         return 100.0 * (1.0 - double(avail) / double(total));
     }
+};
+
+// =========================================================
+// VisualConfig — every chrome tuning knob. Settings app targets this.
+// =========================================================
+struct VisualConfig {
+    double blurStrength       = 0.25;   // 0=none, 1=heavy
+    int    topBarAlpha        = 190;
+    int    dockAlpha          = 205;
+    int    launcherAlpha      = 230;
+    int    controlCenterAlpha = 230;
+    int    widgetCardAlpha    = 210;
+    int    blurRefreshMs      = 240;
+    double dockMagnifyMax     = 0.42;
+    double dockSigma          = 55.0;
+};
+
+class VisualConfigManager {
+public:
+    static VisualConfigManager &instance() {
+        static VisualConfigManager v;
+        v.load();
+        return v;
+    }
+    using Callback = std::function<void(const VisualConfig &)>;
+
+    VisualConfig &cfg() { return m_cfg; }
+    const VisualConfig &cfg() const { return m_cfg; }
+
+    void subscribe(Callback cb) {
+        m_callbacks.append(cb);
+        cb(m_cfg);
+    }
+
+    template<typename F>
+    void setAndSave(F mutator) {
+        mutator(m_cfg);
+        save();
+        for (auto &cb : m_callbacks) cb(m_cfg);
+    }
+
+    void load() {
+        QFile f(path());
+        if (!f.open(QIODevice::ReadOnly)) return;
+        QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+        f.close();
+        if (!doc.isObject()) return;
+        QJsonObject o = doc.object();
+        auto getD = [&](const char *k, double d) { return o.contains(k) ? o[k].toDouble() : d; };
+        auto getI = [&](const char *k, int d)    { return o.contains(k) ? o[k].toInt()    : d; };
+        m_cfg.blurStrength       = getD("blurStrength",       m_cfg.blurStrength);
+        m_cfg.topBarAlpha        = getI("topBarAlpha",        m_cfg.topBarAlpha);
+        m_cfg.dockAlpha          = getI("dockAlpha",          m_cfg.dockAlpha);
+        m_cfg.launcherAlpha      = getI("launcherAlpha",      m_cfg.launcherAlpha);
+        m_cfg.controlCenterAlpha = getI("controlCenterAlpha", m_cfg.controlCenterAlpha);
+        m_cfg.widgetCardAlpha    = getI("widgetCardAlpha",    m_cfg.widgetCardAlpha);
+        m_cfg.blurRefreshMs      = getI("blurRefreshMs",      m_cfg.blurRefreshMs);
+        m_cfg.dockMagnifyMax     = getD("dockMagnifyMax",     m_cfg.dockMagnifyMax);
+        m_cfg.dockSigma          = getD("dockSigma",          m_cfg.dockSigma);
+    }
+
+    void save() {
+        QDir().mkpath(QFileInfo(path()).absolutePath());
+        QJsonObject o;
+        o["blurStrength"]       = m_cfg.blurStrength;
+        o["topBarAlpha"]        = m_cfg.topBarAlpha;
+        o["dockAlpha"]          = m_cfg.dockAlpha;
+        o["launcherAlpha"]      = m_cfg.launcherAlpha;
+        o["controlCenterAlpha"] = m_cfg.controlCenterAlpha;
+        o["widgetCardAlpha"]    = m_cfg.widgetCardAlpha;
+        o["blurRefreshMs"]      = m_cfg.blurRefreshMs;
+        o["dockMagnifyMax"]     = m_cfg.dockMagnifyMax;
+        o["dockSigma"]          = m_cfg.dockSigma;
+        QFile f(path());
+        if (f.open(QIODevice::WriteOnly))
+            f.write(QJsonDocument(o).toJson());
+        f.close();
+    }
+
+    qint64 lastModified() const {
+        return QFileInfo(path()).lastModified().toMSecsSinceEpoch();
+    }
+
+private:
+    static QString path() {
+        QString dir = QStandardPaths::writableLocation(
+                          QStandardPaths::ConfigLocation);
+        if (dir.isEmpty()) dir = QDir::homePath() + "/.config";
+        return dir + "/apokolips/visual.json";
+    }
+    VisualConfig m_cfg;
+    QList<Callback> m_callbacks;
 };
 
 // =========================================================
@@ -494,6 +589,7 @@ public:
     {
         setWindowTitle(appName);
         setWindowFlags(Qt::FramelessWindowHint);
+        setAttribute(Qt::WA_TranslucentBackground, true);
         resize(480, 320);
         if (QScreen *s = QApplication::primaryScreen()) {
             QRect a = s->availableGeometry();
@@ -940,14 +1036,14 @@ private:
 
         struct App { const char *icon; const char *name; };
         const App apps[] = {
-            { "\xE2\x8C\x98", "Finder"   },
-            { "\xE2\x8C\xA5", "Settings" },
-            { "\xE2\x9C\xA6", "Photos"   },
-            { "\xE2\x96\xB6", "Music"    },
-            { "\xE2\x99\xAB", "Notes"    },
-            { "\xE2\x9C\x89", "Mail"     },
-            { "\xE2\x9A\x99", "Terminal" },
-            { "\xE2\x9A\xA1", "Power"    }
+            { "\xE2\x8C\x98",       "Finder"    },
+            { "\xF0\x9F\x9A\x80",  "Launchpad" },
+            { "\xE2\x9C\xA6",       "Photos"    },
+            { "\xE2\x96\xB6",       "Music"     },
+            { "\xF0\x9F\x93\x9D",  "Notes"     },
+            { "\xE2\x9C\x89",       "Mail"      },
+            { "\xE2\x9A\x99",       "Settings"  },
+            { "\xE2\x9A\xA1",       "Power"     }
         };
 
         int col = 0, row = 0, idx = 0;
@@ -991,10 +1087,14 @@ private:
         int offset = index;
         QObject::connect(tile, &QPushButton::clicked,
                          [this, appName, offset]() {
+            QStringList args;
+            if (appName == "Settings")
+                args = { "--settings" };
+            else
+                args = { "--demo", appName, QString::number(offset) };
             QProcess::startDetached(
                 QCoreApplication::applicationFilePath(),
-                { "--demo", appName, QString::number(offset) }
-            );
+                args);
             hideLauncher();
         });
 
@@ -1022,7 +1122,7 @@ public:
              QWidget *parent = nullptr)
         : QWidget(parent), m_icon(icon), m_name(name), m_index(index)
     {
-        setFixedSize(64, 64);
+        setFixedSize(68, 68);
         setMouseTracking(true);
         setCursor(Qt::PointingHandCursor);
         setToolTip(name);
@@ -1055,7 +1155,7 @@ protected:
         const qreal baseSize = 42.0;
         int visual = int(baseSize * m_current);
         int x = (width()  - visual) / 2;
-        int y = (height() - visual) / 2 - 3;
+        int y = (height() - visual) / 2 - 4;
         int radius = int(visual * 0.26);
 
         int boost = int(qBound(0.0, (m_current - 1.0) / 0.42, 1.0) * 90);
@@ -1091,16 +1191,21 @@ protected:
         if (m_running) {
             p.setPen(Qt::NoPen);
             p.setBrush(m_theme.accent);
-            p.drawEllipse(QPoint(width() / 2, height() - 7), 3, 3);
+            p.drawEllipse(QPoint(width() / 2, height() - 6), 3, 3);
         }
     }
 
     void mousePressEvent(QMouseEvent *e) override {
         if (e->button() == Qt::LeftButton) {
+            QStringList args;
+            if (m_name == "Settings")
+                args = { "--settings" };
+            else
+                args = { "--demo", m_name, QString::number(m_index) };
+
             QProcess::startDetached(
                 QCoreApplication::applicationFilePath(),
-                { "--demo", m_name, QString::number(m_index) },
-                QString(), &m_pid);
+                args, QString(), &m_pid);
             m_running = true;
             update();
         } else if (e->button() == Qt::RightButton) {
@@ -1129,10 +1234,14 @@ protected:
                 QAction *launchAct = m.addAction(
                     QString("Open %1").arg(m_name));
                 QObject::connect(launchAct, &QAction::triggered, [this]() {
+                    QStringList args;
+                    if (m_name == "Settings")
+                        args = { "--settings" };
+                    else
+                        args = { "--demo", m_name, QString::number(m_index) };
                     QProcess::startDetached(
                         QCoreApplication::applicationFilePath(),
-                        { "--demo", m_name, QString::number(m_index) },
-                        QString(), &m_pid);
+                        args, QString(), &m_pid);
                     m_running = true;
                     update();
                 });
@@ -1157,7 +1266,7 @@ public:
     Dock(QWidget *parent = nullptr) : QWidget(parent) {
         setObjectName("dockRoot");
         setAttribute(Qt::WA_NoSystemBackground, true);
-        setFixedHeight(84);
+        setFixedHeight(96);
         setMouseTracking(true);
 
         ThemeManager::instance().subscribe([this](const Theme &t) {
@@ -1166,7 +1275,7 @@ public:
         });
 
         m_layout = new QHBoxLayout(this);
-        m_layout->setContentsMargins(16, 12, 16, 12);
+        m_layout->setContentsMargins(18, 18, 18, 14);
         m_layout->setSpacing(4);
 
         m_timer = new QTimer(this);
@@ -1237,8 +1346,9 @@ protected:
 
 private:
     void tick() {
-        const qreal sigma    = 55.0;
-        const qreal maxBoost = 0.42;
+        const auto &vc = VisualConfigManager::instance().cfg();
+        const qreal sigma    = vc.dockSigma;
+        const qreal maxBoost = vc.dockMagnifyMax;
         qreal cursor = m_hasCursor ? m_cursorX : -10000.0;
 
         bool anyMoving = false;
@@ -1343,6 +1453,958 @@ static QString menuStyle(const Theme &t)
 }
 
 // =========================================================
+// Control Center — macOS-style dropdown panel
+// =========================================================
+class ControlCenter : public QWidget {
+public:
+    explicit ControlCenter(QWidget *parent = nullptr) : QWidget(parent) {
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setFixedSize(PANEL_W, PANEL_H);
+        buildUi();
+
+        m_animTimer = new QTimer(this);
+        m_animTimer->setInterval(16);
+        QObject::connect(m_animTimer, &QTimer::timeout,
+                         this, &ControlCenter::tick);
+        hide();
+
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_theme = t;
+            update();
+        });
+    }
+
+    void toggle() { isVisible() && m_slide > 0.5 ? hideCC() : showCC(); }
+    void showCC() { raise(); show(); m_target = 1.0; m_animTimer->start(); }
+    void hideCC() { m_target = 0.0; m_animTimer->start(); }
+
+    void reposition(int parentW) {
+        move(parentW - PANEL_W - 10, 36);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QRect r = rect().adjusted(0, 0, -1, -1);
+
+        QPainterPath path;
+        path.addRoundedRect(r, 16, 16);
+
+        const auto &vc = VisualConfigManager::instance().cfg();
+        const QPixmap &bg = ThemeManager::instance().blurredBg();
+        if (!bg.isNull() && vc.blurStrength > 0.001) {
+            p.save();
+            p.setClipPath(path);
+            QPoint pos = mapTo(window(), QPoint(0, 0));
+            p.setOpacity(vc.blurStrength * m_slide);
+            p.drawPixmap(r, bg, QRect(pos, size()));
+            p.restore();
+        }
+
+        QColor panel = m_theme.panelBg;
+        panel.setAlpha(int(vc.controlCenterAlpha * m_slide));
+        p.setBrush(panel);
+        QColor border = m_theme.chromeBorder;
+        border.setAlpha(int(140 * m_slide));
+        p.setPen(QPen(border, 1));
+        p.drawPath(path);
+    }
+
+    void keyPressEvent(QKeyEvent *e) override {
+        if (e->key() == Qt::Key_Escape) { hideCC(); e->accept(); }
+        else QWidget::keyPressEvent(e);
+    }
+
+private:
+    static constexpr int PANEL_W = 340;
+    static constexpr int PANEL_H = 480;
+
+    void tick() {
+        if (m_slide < m_target) {
+            m_slide += 0.18;
+            if (m_slide >= m_target) m_slide = m_target;
+        } else if (m_slide > m_target) {
+            m_slide -= 0.18;
+            if (m_slide <= m_target) m_slide = m_target;
+        } else {
+            m_animTimer->stop();
+            if (m_target == 0.0) hide();
+        }
+        update();
+    }
+
+    QWidget *makeCard(const QString &title, QWidget *content) {
+        QWidget *card = new QWidget;
+        card->setAttribute(Qt::WA_StyledBackground, true);
+        QVBoxLayout *v = new QVBoxLayout(card);
+        v->setContentsMargins(12, 10, 12, 10);
+        v->setSpacing(8);
+
+        QLabel *t = new QLabel(title);
+        t->setStyleSheet(QString(
+            "color: %1; font-size: 10px; font-weight: 600;"
+            " letter-spacing: 2px; background: transparent;")
+            .arg(m_theme.textDim.name()));
+        v->addWidget(t);
+        v->addWidget(content);
+        return card;
+    }
+
+    QWidget *makeWiFiRow() {
+        QWidget *row = new QWidget;
+        QHBoxLayout *h = new QHBoxLayout(row);
+        h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(10);
+
+        QLabel *icon = new QLabel(QString::fromUtf8("\xE2\x97\x8F"));
+        icon->setStyleSheet(QString(
+            "color: %1; font-size: 16px; background: transparent;")
+            .arg(m_theme.accent.name()));
+        h->addWidget(icon);
+
+        QVBoxLayout *col = new QVBoxLayout;
+        col->setSpacing(1);
+        QLabel *l1 = new QLabel("Wi-Fi");
+        l1->setStyleSheet(QString(
+            "color: %1; font-size: 13px; font-weight: 500;"
+            " background: transparent;").arg(m_theme.textPrimary.name()));
+        QLabel *l2 = new QLabel("Connected");
+        l2->setStyleSheet(QString(
+            "color: %1; font-size: 11px; background: transparent;")
+            .arg(m_theme.textSecondary.name()));
+        col->addWidget(l1); col->addWidget(l2);
+        h->addLayout(col);
+        h->addStretch();
+
+        QLabel *toggle = new QLabel(QString::fromUtf8("\xE2\x97\x8F"));
+        toggle->setStyleSheet(QString(
+            "color: %1; font-size: 14px; background: transparent;")
+            .arg(m_theme.accent.name()));
+        h->addWidget(toggle);
+        return row;
+    }
+
+    QWidget *makeBTRow() {
+        QWidget *row = new QWidget;
+        QHBoxLayout *h = new QHBoxLayout(row);
+        h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(10);
+
+        QLabel *icon = new QLabel(QString::fromUtf8("\xE2\x9C\xA6"));
+        icon->setStyleSheet(QString(
+            "color: %1; font-size: 16px; background: transparent;")
+            .arg(m_theme.accent.name()));
+        h->addWidget(icon);
+
+        QVBoxLayout *col = new QVBoxLayout;
+        col->setSpacing(1);
+        QLabel *l1 = new QLabel("Bluetooth");
+        l1->setStyleSheet(QString(
+            "color: %1; font-size: 13px; font-weight: 500;"
+            " background: transparent;").arg(m_theme.textPrimary.name()));
+        QLabel *l2 = new QLabel("On");
+        l2->setStyleSheet(QString(
+            "color: %1; font-size: 11px; background: transparent;")
+            .arg(m_theme.textSecondary.name()));
+        col->addWidget(l1); col->addWidget(l2);
+        h->addLayout(col);
+        h->addStretch();
+
+        QLabel *toggle = new QLabel(QString::fromUtf8("\xE2\x97\x8F"));
+        toggle->setStyleSheet(QString(
+            "color: %1; font-size: 14px; background: transparent;")
+            .arg(m_theme.accent.name()));
+        h->addWidget(toggle);
+        return row;
+    }
+
+    QWidget *makeMediaRow() {
+        QWidget *row = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(row);
+        v->setContentsMargins(0, 0, 0, 0);
+        v->setSpacing(6);
+
+        QLabel *l1 = new QLabel("Not Playing");
+        l1->setStyleSheet(QString(
+            "color: %1; font-size: 13px; font-weight: 500;"
+            " background: transparent;").arg(m_theme.textPrimary.name()));
+        QLabel *l2 = new QLabel("Windows media");
+        l2->setStyleSheet(QString(
+            "color: %1; font-size: 11px; background: transparent;")
+            .arg(m_theme.textSecondary.name()));
+        v->addWidget(l1); v->addWidget(l2);
+
+        QHBoxLayout *h = new QHBoxLayout;
+        h->setSpacing(8);
+        h->addStretch();
+
+        auto mkBtn = [this](const QString &glyph) {
+            QPushButton *b = new QPushButton(glyph);
+            b->setFixedSize(30, 30);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setStyleSheet(QString(
+                "QPushButton { background: %1; color: %2;"
+                "  border: none; border-radius: 15px; font-size: 14px; }"
+                "QPushButton:hover { background: %3; }")
+                .arg(rgba(m_theme.chromeBg.lighter(140)),
+                     m_theme.textPrimary.name(),
+                     rgba(m_theme.accentSoft)));
+            return b;
+        };
+
+        h->addWidget(mkBtn(QString::fromUtf8("\xE2\x8F\xAE")));
+        h->addWidget(mkBtn(QString::fromUtf8("\xE2\x96\xB6")));
+        h->addWidget(mkBtn(QString::fromUtf8("\xE2\x8F\xAD")));
+        h->addStretch();
+        v->addLayout(h);
+        return row;
+    }
+
+    QWidget *makeTogglesRow() {
+        QWidget *row = new QWidget;
+        QHBoxLayout *h = new QHBoxLayout(row);
+        h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(8);
+
+        auto mk = [this](const QString &icon, const QString &label) {
+            QPushButton *b = new QPushButton;
+            b->setFixedSize(64, 58);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setStyleSheet(QString(
+                "QPushButton { background: %1; border: none;"
+                "  border-radius: 14px; color: %2;"
+                "  font-size: 10px; padding-top: 4px; }"
+                "QPushButton:hover { background: %3; }")
+                .arg(rgba(m_theme.chromeBg.lighter(130)),
+                     m_theme.textPrimary.name(),
+                     rgba(m_theme.accentSoft)));
+
+            QVBoxLayout *v = new QVBoxLayout(b);
+            v->setContentsMargins(0, 6, 0, 4);
+            v->setSpacing(2);
+
+            QLabel *ic = new QLabel(icon);
+            ic->setAlignment(Qt::AlignCenter);
+            ic->setStyleSheet(QString(
+                "font-size: 16px; color: %1; background: transparent;")
+                .arg(m_theme.accent.name()));
+            ic->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+            v->addWidget(ic);
+
+            QLabel *lb = new QLabel(label);
+            lb->setAlignment(Qt::AlignCenter);
+            lb->setStyleSheet(QString(
+                "font-size: 10px; color: %1; background: transparent;")
+                .arg(m_theme.textPrimary.name()));
+            lb->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+            v->addWidget(lb);
+            return b;
+        };
+
+        h->addWidget(mk(QString::fromUtf8("\xE2\x9A\xA1"), "Battery"));
+        h->addWidget(mk(QString::fromUtf8("\xE2\x98\xBE"), "Focus"));
+        h->addWidget(mk(QString::fromUtf8("\xF0\x9F\x94\x94"), "Alerts"));
+        h->addWidget(mk(QString::fromUtf8("\xF0\x9F\x96\xA5"), "Display"));
+        return row;
+    }
+
+    QWidget *makeSliderRow(const QString &label, int value) {
+        QWidget *row = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(row);
+        v->setContentsMargins(0, 0, 0, 0);
+        v->setSpacing(6);
+
+        QLabel *l = new QLabel(label);
+        l->setStyleSheet(QString(
+            "color: %1; font-size: 12px; font-weight: 500;"
+            " background: transparent;").arg(m_theme.textPrimary.name()));
+        v->addWidget(l);
+
+        QSlider *s = new QSlider(Qt::Horizontal);
+        s->setRange(0, 100);
+        s->setValue(value);
+        s->setStyleSheet(QString(
+            "QSlider::groove:horizontal {"
+            "  height: 6px; background: %1; border-radius: 3px; }"
+            "QSlider::handle:horizontal {"
+            "  background: %2; width: 14px; height: 14px;"
+            "  margin: -5px 0; border-radius: 7px; }"
+            "QSlider::sub-page:horizontal {"
+            "  background: %2; border-radius: 3px; }")
+            .arg(rgba(m_theme.chromeBg.lighter(140)),
+                 m_theme.accent.name()));
+        v->addWidget(s);
+        return row;
+    }
+
+    void buildUi() {
+        QVBoxLayout *outer = new QVBoxLayout(this);
+        outer->setContentsMargins(12, 12, 12, 12);
+        outer->setSpacing(10);
+
+        outer->addWidget(makeCard("WI-FI", makeWiFiRow()));
+        outer->addWidget(makeCard("BLUETOOTH", makeBTRow()));
+        outer->addWidget(makeCard("NOW PLAYING", makeMediaRow()));
+        outer->addWidget(makeTogglesRow());
+        outer->addWidget(makeCard("SOUND", makeSliderRow("Output", 65)));
+        outer->addWidget(makeCard("DISPLAY", makeSliderRow("Brightness", 80)));
+        outer->addStretch();
+    }
+
+    QTimer *m_animTimer = nullptr;
+    qreal m_slide = 0.0;
+    qreal m_target = 0.0;
+    Theme m_theme;
+};
+
+// =========================================================
+// Settings window
+// =========================================================
+class SettingsWindow : public QWidget {
+public:
+    explicit SettingsWindow(QWidget *parent = nullptr) : QWidget(parent) {
+        setWindowFlags(Qt::FramelessWindowHint);
+        setWindowTitle("Apokolips Settings");
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        resize(720, 480);
+
+        if (QScreen *s = QApplication::primaryScreen())
+            move(s->availableGeometry().center() - QPoint(360, 240));
+
+        buildUi();
+
+        // Subscribe AFTER buildUi so restyleAll can see the widgets
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_theme = t;
+            restyleAll();
+        });
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton) {
+            if (QWindow *wh = window()->windowHandle()) {
+                if (wh->startSystemMove()) { e->accept(); return; }
+            }
+        }
+        QWidget::mousePressEvent(e);
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QPainterPath path;
+        path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
+
+        // Full window background (header strip + main body)
+        QColor bodyCol = m_theme.panelBg;
+        bodyCol.setAlpha(235);
+        QColor hdrCol = m_theme.chromeBg.lighter(115);
+        hdrCol.setAlpha(235);
+
+        p.fillPath(path, bodyCol);
+
+        // Header strip on top with rounded top corners
+        QPainterPath hdrPath;
+        hdrPath.addRoundedRect(QRect(0, 0, width(), 42), 14, 14);
+        QPainterPath squareBottom;
+        squareBottom.addRect(QRect(0, 14, width(), 42 - 14));
+        QPainterPath hdrFinal = hdrPath.united(squareBottom);
+        p.fillPath(hdrFinal, hdrCol);
+
+        // Header bottom border
+        p.setPen(QPen(m_theme.chromeBorder, 1));
+        p.drawLine(0, 42, width(), 42);
+
+        // Sidebar separator line (right edge of sidebar)
+        p.drawLine(m_sidebar->width(), 42,
+                   m_sidebar->width(), height() - 1);
+    }
+
+private:
+    void buildUi() {
+        QVBoxLayout *root = new QVBoxLayout(this);
+        root->setContentsMargins(0, 0, 0, 0);
+        root->setSpacing(0);
+
+        // Header strip (draggable)
+        m_header = new QWidget;
+        m_header->setFixedHeight(42);
+        m_header->setAttribute(Qt::WA_NoSystemBackground, true);
+        m_header->setAutoFillBackground(false);
+        QHBoxLayout *hh = new QHBoxLayout(m_header);
+        hh->setContentsMargins(16, 0, 16, 0);
+        hh->setSpacing(10);
+
+        m_title = new QLabel("Settings");
+        hh->addWidget(m_title);
+        hh->addStretch();
+
+        // macOS traffic lights: close / minimize / zoom
+        auto makeLight = [](const QString &idle, const QString &hover) {
+            QPushButton *b = new QPushButton;
+            b->setFixedSize(13, 13);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setStyleSheet(QString(
+                "QPushButton { background: %1;"
+                "  border: 1px solid rgba(0,0,0,60); border-radius: 6px; }"
+                "QPushButton:hover { background: %2; }")
+                .arg(idle, hover));
+            return b;
+        };
+        m_closeBtn = makeLight("#7a2b25", "#ff5f57");
+        QPushButton *minBtn = makeLight("#7a5b18", "#febc2e");
+        QPushButton *maxBtn = makeLight("#155c1e", "#28c840");
+
+        QObject::connect(m_closeBtn, &QPushButton::clicked,
+                         [this]() { this->close(); this->deleteLater(); });
+        QObject::connect(minBtn, &QPushButton::clicked,
+                         [this]() { this->hide(); });
+        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
+            // Cage supports client-side resize; use that for zoom.
+            static bool zoomed = false;
+            QSize sz = zoomed ? QSize(720, 480) : QSize(1100, 750);
+            zoomed = !zoomed;
+            this->resize(sz);
+            if (QScreen *s = QApplication::primaryScreen())
+                this->move(s->availableGeometry().center()
+                           - QPoint(sz.width()/2, sz.height()/2));
+        });
+
+        // Traffic lights go on the LEFT (macOS style)
+        hh->insertWidget(0, m_closeBtn);
+        hh->insertWidget(1, minBtn);
+        hh->insertWidget(2, maxBtn);
+        hh->insertSpacing(3, 8);
+
+        // Right side: keep it clean, no close button
+        m_minBtn = minBtn;
+        m_maxBtn = maxBtn;
+
+        root->addWidget(m_header);
+
+        // Body: sidebar + content
+        QHBoxLayout *body = new QHBoxLayout;
+        body->setContentsMargins(0, 0, 0, 0);
+        body->setSpacing(0);
+
+        m_sidebar = new QWidget;
+        m_sidebar->setFixedWidth(180);
+        m_sidebar->setAttribute(Qt::WA_NoSystemBackground, true);
+        m_sidebar->setAutoFillBackground(false);
+        QVBoxLayout *sb = new QVBoxLayout(m_sidebar);
+        sb->setContentsMargins(12, 16, 12, 16);
+        sb->setSpacing(6);
+
+        m_stack = new QStackedWidget;
+
+        addSection(sb, "Appearance", makeAppearancePage());
+        addSection(sb, "Wallpaper",  makeWallpaperPage());
+        addSection(sb, "Dock",       makeDockPage());
+        addSection(sb, "About",      makeAboutPage());
+
+        sb->addStretch();
+        body->addWidget(m_sidebar);
+        body->addWidget(m_stack, 1);
+        root->addLayout(body, 1);
+
+        restyleAll();
+    }
+
+    void addSection(QVBoxLayout *sb, const QString &name, QWidget *page) {
+        QPushButton *btn = new QPushButton(name);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setCheckable(true);
+        btn->setAutoExclusive(true);
+        if (m_stack->count() == 0) btn->setChecked(true);
+        m_sidebarButtons.append(btn);
+        sb->addWidget(btn);
+
+        int idx = m_stack->addWidget(page);
+        QObject::connect(btn, &QPushButton::clicked,
+                         [this, idx]() { m_stack->setCurrentIndex(idx); });
+    }
+
+    QWidget *makeAppearancePage() {
+        QWidget *page = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 24);
+        v->setSpacing(18);
+
+        v->addWidget(sectionHeader("Appearance"));
+
+        auto &vc = VisualConfigManager::instance().cfg();
+
+        addSlider(v, "Blur strength",
+                  int(vc.blurStrength * 100), 0, 100,
+                  [](int pct) {
+            VisualConfigManager::instance().setAndSave(
+                [pct](VisualConfig &c) { c.blurStrength = pct / 100.0; });
+        });
+
+        addSlider(v, "Top bar opacity", vc.topBarAlpha, 0, 255,
+                  [](int pct) {
+            VisualConfigManager::instance().setAndSave(
+                [pct](VisualConfig &c) { c.topBarAlpha = pct; });
+        });
+
+        addSlider(v, "Dock opacity", vc.dockAlpha, 0, 255,
+                  [](int pct) {
+            VisualConfigManager::instance().setAndSave(
+                [pct](VisualConfig &c) { c.dockAlpha = pct; });
+        });
+
+        addSlider(v, "Panel opacity", vc.launcherAlpha, 0, 255,
+                  [](int pct) {
+            VisualConfigManager::instance().setAndSave(
+                [pct](VisualConfig &c) {
+                    c.launcherAlpha = pct;
+                    c.controlCenterAlpha = pct;
+                });
+        });
+
+        addSlider(v, "Widget opacity", vc.widgetCardAlpha, 0, 255,
+                  [](int pct) {
+            VisualConfigManager::instance().setAndSave(
+                [pct](VisualConfig &c) { c.widgetCardAlpha = pct; });
+        });
+
+        v->addStretch();
+        return page;
+    }
+
+    QWidget *makeWallpaperPage() {
+        QWidget *page = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 24);
+        v->setSpacing(18);
+
+        v->addWidget(sectionHeader("Wallpaper"));
+
+        QGridLayout *g = new QGridLayout;
+        g->setSpacing(16);
+
+        struct WP { const char *id; const char *name; };
+        const WP wps[] = {
+            { "ruby",       "Ruby"       },
+            { "starfield",  "Starfield"  },
+            { "aurora",     "Aurora"     },
+            { "goldengate", "Golden Gate" }
+        };
+        int col = 0, row = 0;
+        for (const auto &wp : wps) {
+            QPushButton *btn = new QPushButton(wp.name);
+            btn->setFixedSize(140, 90);
+            btn->setCursor(Qt::PointingHandCursor);
+            btn->setProperty("wpId", wp.id);
+            m_wpButtons.append(btn);
+            QObject::connect(btn, &QPushButton::clicked, [this, id = QString(wp.id)]() {
+                WallpaperConfig::saveId(id);
+                // Notify running shell via a small config touch (shell polls it)
+                // Settings window also adopts the new theme right away
+                Wallpaper *wp = WallpaperConfig::makeById(id);
+                ThemeManager::instance().setTheme(wp->theme());
+                delete wp;
+                updateWallpaperHighlight();
+                restyleAll();
+            });
+            g->addWidget(btn, row, col);
+            if (++col == 3) { col = 0; ++row; }
+        }
+        v->addLayout(g);
+        v->addStretch();
+        return page;
+    }
+
+    QWidget *makeDockPage() {
+        QWidget *page = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 24);
+        v->setSpacing(18);
+
+        v->addWidget(sectionHeader("Dock"));
+
+        auto &vc = VisualConfigManager::instance().cfg();
+
+        addSlider(v, "Magnification strength",
+                  int(vc.dockMagnifyMax * 100), 0, 100,
+                  [](int pct) {
+            VisualConfigManager::instance().setAndSave(
+                [pct](VisualConfig &c) { c.dockMagnifyMax = pct / 100.0; });
+        });
+
+        addSlider(v, "Magnification radius",
+                  int(vc.dockSigma), 20, 120,
+                  [](int pct) {
+            VisualConfigManager::instance().setAndSave(
+                [pct](VisualConfig &c) { c.dockSigma = pct; });
+        });
+
+        v->addStretch();
+        return page;
+    }
+
+    QWidget *makeAboutPage() {
+        QWidget *page = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 24);
+        v->setSpacing(12);
+
+        v->addWidget(sectionHeader("About"));
+
+        m_aboutLines.clear();
+        auto addLine = [&](const QString &s) {
+            QLabel *l = new QLabel(s);
+            m_aboutLines.append(l);
+            v->addWidget(l);
+        };
+        addLine("Apokolips OS");
+        addLine("Version 0.1 — build " __DATE__);
+        addLine("Custom shell — C++17 / Qt6");
+        addLine("github.com/lytone-lab/APOKOLIPS-OS");
+        v->addStretch();
+        return page;
+    }
+
+    QLabel *sectionHeader(const QString &text) {
+        QLabel *l = new QLabel(text);
+        l->setProperty("role", "header");
+        m_sectionHeaders.append(l);
+        return l;
+    }
+
+    void addSlider(QVBoxLayout *v, const QString &label,
+                   int value, int lo, int hi,
+                   std::function<void(int)> onChange)
+    {
+        QLabel *l = new QLabel(label);
+        l->setProperty("role", "sliderLabel");
+        m_sliderLabels.append(l);
+        v->addWidget(l);
+
+        QSlider *s = new QSlider(Qt::Horizontal);
+        s->setRange(lo, hi);
+        s->setValue(value);
+        m_sliders.append(s);
+        v->addWidget(s);
+
+        QObject::connect(s, &QSlider::valueChanged,
+                         [onChange](int val) { onChange(val); });
+    }
+
+    void updateWallpaperHighlight() {
+        QString current = WallpaperConfig::loadId();
+        for (QPushButton *b : m_wpButtons) {
+            bool sel = (b->property("wpId").toString() == current);
+            b->setProperty("selected", sel);
+        }
+    }
+
+    void restyleAll() {
+        const Theme &t = m_theme;
+        updateWallpaperHighlight();
+
+        // No global stylesheet — paintEvent handles window bg now
+
+        // header background painted in paintEvent
+
+        m_title->setStyleSheet(QString(
+            "color: %1; font-size: 14px; font-weight: 600;"
+            " background: transparent;").arg(t.textPrimary.name()));
+
+        // sidebar background is transparent; separator painted in paintEvent
+
+        for (QPushButton *b : m_sidebarButtons) {
+            b->setStyleSheet(QString(
+                "QPushButton { text-align: left; padding: 8px 12px;"
+                "  color: %1; background: transparent; border: none;"
+                "  border-radius: 8px; font-size: 13px; }"
+                "QPushButton:hover { background: %2; color: %3; }"
+                "QPushButton:checked { background: %4; color: %5; }")
+                .arg(t.textSecondary.name(),
+                     rgba(t.accentSoft),
+                     t.textPrimary.name(),
+                     rgba(t.accentSoft),
+                     t.textPrimary.name()));
+        }
+
+        for (QLabel *l : m_sectionHeaders) {
+            l->setStyleSheet(QString(
+                "color: %1; font-size: 20px; font-weight: 300;"
+                " letter-spacing: 1px; background: transparent;")
+                .arg(t.textPrimary.name()));
+        }
+        for (QLabel *l : m_sliderLabels) {
+            l->setStyleSheet(QString(
+                "color: %1; font-size: 12px; letter-spacing: 1px;"
+                " margin-top: 6px; background: transparent;")
+                .arg(t.textSecondary.name()));
+        }
+        for (QSlider *s : m_sliders) {
+            s->setStyleSheet(QString(
+                "QSlider::groove:horizontal {"
+                "  height: 6px; background: %1; border-radius: 3px; }"
+                "QSlider::handle:horizontal {"
+                "  background: %2; width: 14px; height: 14px;"
+                "  margin: -5px 0; border-radius: 7px; }"
+                "QSlider::sub-page:horizontal {"
+                "  background: %2; border-radius: 3px; }")
+                .arg(rgba(t.chromeBg.lighter(140)), t.accent.name()));
+        }
+        for (QPushButton *b : m_wpButtons) {
+            bool sel = b->property("selected").toBool();
+            QColor border = sel ? t.accent : t.chromeBorder;
+            int bw = sel ? 2 : 1;
+            b->setStyleSheet(QString(
+                "QPushButton { background: %1; color: %2;"
+                "  border: %3px solid %4; border-radius: 10px;"
+                "  font-size: 13px; font-weight: %5; }"
+                "QPushButton:hover { background: %6; border-color: %7; }")
+                .arg(rgba(t.chromeBg.lighter(115)),
+                     t.textPrimary.name())
+                .arg(bw)
+                .arg(rgba(border))
+                .arg(sel ? 600 : 400)
+                .arg(rgba(t.accentSoft))
+                .arg(t.accent.name()));
+        }
+        for (QLabel *l : m_aboutLines) {
+            l->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(t.textSecondary.name()));
+        }
+    }
+
+    Theme m_theme;
+    QWidget *m_header = nullptr;
+    QLabel *m_title = nullptr;
+    QPushButton *m_closeBtn = nullptr;
+    QPushButton *m_minBtn = nullptr;
+    QPushButton *m_maxBtn = nullptr;
+    QWidget *m_sidebar = nullptr;
+    QStackedWidget *m_stack = nullptr;
+    QList<QPushButton *> m_sidebarButtons;
+    QList<QSlider *> m_sliders;
+    QList<QLabel *> m_sliderLabels;
+    QList<QLabel *> m_sectionHeaders;
+    QList<QPushButton *> m_wpButtons;
+    QList<QLabel *> m_aboutLines;
+};
+
+// =========================================================
+// Desktop Widgets — floating glass cards on the left
+// =========================================================
+class DesktopWidgets : public QWidget {
+public:
+    explicit DesktopWidgets(QWidget *parent = nullptr) : QWidget(parent) {
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        buildUi();
+
+        m_tickTimer = new QTimer(this);
+        m_tickTimer->setInterval(1000);
+        QObject::connect(m_tickTimer, &QTimer::timeout,
+                         this, &DesktopWidgets::refresh);
+        m_tickTimer->start();
+        refresh();
+
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_theme = t;
+            update();
+        });
+    }
+
+    void repositionTo(const QSize &parentSize) {
+        const int CARD_W = 200;
+        setFixedWidth(CARD_W);
+        move(20, 50);
+        setFixedHeight(qMin(parentSize.height() - 130, 560));
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        int y = 0;
+
+        // --- Clock card ---
+        drawCard(p, QRect(0, y, width(), 96));
+        {
+            QFont f = font(); f.setPixelSize(34); f.setWeight(QFont::Light);
+            p.setFont(f);
+            p.setPen(m_theme.textPrimary);
+            p.drawText(QRect(14, y + 12, width()-28, 44),
+                       Qt::AlignLeft | Qt::AlignVCenter,
+                       QDateTime::currentDateTime().toString("HH:mm"));
+            f.setPixelSize(12); f.setWeight(QFont::Normal);
+            p.setFont(f);
+            p.setPen(m_theme.textSecondary);
+            p.drawText(QRect(14, y + 58, width()-28, 18),
+                       Qt::AlignLeft | Qt::AlignVCenter,
+                       QDateTime::currentDateTime().toString("dddd, d MMMM"));
+            p.setPen(m_theme.textDim);
+            p.drawText(QRect(14, y + 74, width()-28, 14),
+                       Qt::AlignLeft | Qt::AlignVCenter,
+                       QDateTime::currentDateTime().toString("yyyy"));
+        }
+        y += 96 + 12;
+
+        // --- System rings ---
+        drawCard(p, QRect(0, y, width(), 128));
+        {
+            int r = 34;
+            int cx1 = 14 + r, cy = y + 56;
+            int cx2 = 14 + r + 2*r + 30 + r;
+
+            drawRing(p, QPoint(cx1, cy), r, m_cpuVal, m_theme.accent);
+            drawRing(p, QPoint(cx2, cy), r, m_ramVal, m_theme.accent.lighter(120));
+
+            QFont f = font(); f.setPixelSize(11); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(m_theme.textPrimary);
+            p.drawText(QRect(cx1 - r, cy - 8, 2*r, 16), Qt::AlignCenter,
+                       QString::number(int(m_cpuVal)));
+            p.drawText(QRect(cx2 - r, cy - 8, 2*r, 16), Qt::AlignCenter,
+                       QString::number(int(m_ramVal)));
+
+            f.setPixelSize(10); f.setWeight(QFont::Normal);
+            p.setFont(f);
+            p.setPen(m_theme.textDim);
+            p.drawText(QRect(cx1 - r, cy + r - 8, 2*r, 14), Qt::AlignCenter, "CPU");
+            p.drawText(QRect(cx2 - r, cy + r - 8, 2*r, 14), Qt::AlignCenter, "RAM");
+        }
+        y += 128 + 12;
+
+        // --- Weather card ---
+        drawCard(p, QRect(0, y, width(), 92));
+        {
+            QFont f = font(); f.setPixelSize(11); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(m_theme.textDim);
+            p.drawText(QRect(14, y + 10, width()-28, 14),
+                       Qt::AlignLeft, "WEATHER  ·  KAMPALA");
+
+            f.setPixelSize(30); f.setWeight(QFont::Light);
+            p.setFont(f);
+            p.setPen(m_theme.textPrimary);
+            p.drawText(QRect(14, y + 28, 90, 48),
+                       Qt::AlignLeft | Qt::AlignVCenter, "21°");
+
+            f.setPixelSize(11); f.setWeight(QFont::Normal);
+            p.setFont(f);
+            p.setPen(m_theme.textSecondary);
+            p.drawText(QRect(100, y + 30, width()-114, 16),
+                       Qt::AlignLeft, "Partly cloudy");
+            p.setPen(m_theme.textDim);
+            p.drawText(QRect(100, y + 48, width()-114, 16),
+                       Qt::AlignLeft, "H: 27°  L: 17°");
+            p.drawText(QRect(100, y + 64, width()-114, 16),
+                       Qt::AlignLeft, "Wind 7 km/h  ·  HUM 68%");
+        }
+        y += 92 + 12;
+
+        // --- Mini calendar ---
+        drawCard(p, QRect(0, y, width(), 130));
+        {
+            QDate today = QDate::currentDate();
+            QString monthName = today.toString("MMMM yyyy").toUpper();
+
+            QFont f = font(); f.setPixelSize(11); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(m_theme.textDim);
+            p.drawText(QRect(14, y + 10, width()-28, 14),
+                       Qt::AlignLeft, monthName);
+
+            int gridTop = y + 32;
+            int cellW = (width() - 28) / 7;
+            int cellH = 16;
+            const char *names[] = {"M","T","W","T","F","S","S"};
+            f.setPixelSize(9); f.setWeight(QFont::Normal);
+            p.setFont(f);
+            p.setPen(m_theme.textDim);
+            for (int i = 0; i < 7; ++i)
+                p.drawText(QRect(14 + i*cellW, gridTop, cellW, 12),
+                           Qt::AlignCenter, names[i]);
+
+            QDate first(today.year(), today.month(), 1);
+            int startCol = (first.dayOfWeek() + 6) % 7;
+            int daysInMonth = today.daysInMonth();
+            for (int d = 1; d <= daysInMonth; ++d) {
+                int idx = startCol + d - 1;
+                int row = idx / 7, col = idx % 7;
+                QRect cell(14 + col*cellW, gridTop + 16 + row*cellH,
+                           cellW, cellH);
+                bool isToday = (d == today.day());
+                if (isToday) {
+                    p.setBrush(m_theme.accent);
+                    p.setPen(Qt::NoPen);
+                    p.drawRoundedRect(cell.adjusted(2, 1, -2, -1), 5, 5);
+                    p.setPen(m_theme.textPrimary);
+                } else {
+                    p.setPen(m_theme.textSecondary);
+                }
+                p.drawText(cell, Qt::AlignCenter, QString::number(d));
+            }
+        }
+    }
+
+private:
+    void drawCard(QPainter &p, const QRect &r) {
+        QPainterPath path;
+        path.addRoundedRect(r, 14, 14);
+
+        const auto &vc = VisualConfigManager::instance().cfg();
+        const QPixmap &bg = ThemeManager::instance().blurredBg();
+        if (!bg.isNull() && window() && vc.blurStrength > 0.001) {
+            p.save();
+            p.setClipPath(path);
+            QPoint pos = mapTo(window(), QPoint(0, 0));
+            p.setOpacity(vc.blurStrength);
+            p.drawPixmap(r, bg, QRect(pos + r.topLeft(), r.size()));
+            p.restore();
+        }
+
+        QColor fill = m_theme.panelBg;
+        fill.setAlpha(vc.widgetCardAlpha);
+        p.setBrush(fill);
+        QColor edge = m_theme.chromeBorder;
+        edge.setAlpha(120);
+        p.setPen(QPen(edge, 1));
+        p.drawPath(path);
+    }
+
+    void drawRing(QPainter &p, const QPoint &c, int r,
+                  double percent, const QColor &col)
+    {
+        QRect outer(c.x()-r, c.y()-r, 2*r, 2*r);
+        p.setBrush(Qt::NoBrush);
+
+        QColor track = m_theme.chromeBorder;
+        track.setAlpha(60);
+        p.setPen(QPen(track, 5, Qt::SolidLine, Qt::RoundCap));
+        p.drawArc(outer, 0, 360*16);
+
+        p.setPen(QPen(col, 5, Qt::SolidLine, Qt::RoundCap));
+        int span = int(360.0 * 16.0 * (percent / 100.0));
+        p.drawArc(outer, 90*16, -span);
+    }
+
+    void refresh() {
+        m_cpuVal = SysStats::cpuPercent();
+        m_ramVal = SysStats::ramPercent();
+        update();
+    }
+
+    void buildUi() {}
+
+    QTimer *m_tickTimer = nullptr;
+    Theme m_theme;
+    double m_cpuVal = 0.0;
+    double m_ramVal = 0.0;
+};
+
+// =========================================================
 // Desktop background
 // =========================================================
 class DesktopBackground : public QWidget {
@@ -1398,6 +2460,25 @@ public:
 
     void setNotifications(NotificationCenter *n) { m_notifications = n; }
 
+    void setControlCenter(ControlCenter *c) {
+        m_controlCenter = c;
+        c->setParent(this);
+        c->reposition(width());
+        c->raise();
+    }
+
+    void setDesktopWidgets(DesktopWidgets *w) {
+        m_widgets = w;
+        w->setParent(this);
+        w->repositionTo(size());
+        // Stacking order (bottom → top):
+        //   wallpaper < widgets < dock/topbar < notifications < CC < launcher
+        w->raise();
+        if (m_notifications) m_notifications->raise();
+        if (m_controlCenter) m_controlCenter->raise();
+        if (m_launcher)      m_launcher->raise();
+    }
+
     void setWallpaper(Wallpaper *w) {
         if (m_wallpaper) delete m_wallpaper;
         m_wallpaper = w;
@@ -1417,6 +2498,8 @@ protected:
         if (m_launcher && m_launcher->isVisible()) m_launcher->hideLauncher();
         if (m_notifications && m_notifications->isVisible())
             m_notifications->hideCenter();
+        if (m_controlCenter && m_controlCenter->isVisible())
+            m_controlCenter->hideCC();
 
         if (e->button() == Qt::RightButton) {
             const Theme &t = ThemeManager::instance().current();
@@ -1518,6 +2601,8 @@ private:
     Wallpaper          *m_wallpaper = nullptr;
     AppLauncher        *m_launcher = nullptr;
     NotificationCenter *m_notifications = nullptr;
+    ControlCenter      *m_controlCenter = nullptr;
+    DesktopWidgets     *m_widgets = nullptr;
     QTimer             *m_tickTimer = nullptr;
     QTimer             *m_blurTimer = nullptr;
 };
@@ -1691,6 +2776,16 @@ static int runShell(int argc, char *argv[])
     fileMenu->addAction("New Window");
     fileMenu->addAction("Open...");
     fileMenu->addSeparator();
+
+    QAction *settingsAct = fileMenu->addAction("Settings…");
+    settingsAct->setShortcut(QKeySequence("Ctrl+,"));
+    QObject::connect(settingsAct, &QAction::triggered, []() {
+        QProcess::startDetached(
+            QCoreApplication::applicationFilePath(),
+            { "--settings" });
+    });
+
+    fileMenu->addSeparator();
     fileMenu->addAction("Close Window");
     fileMenu->addAction("Quit Apokolips");
     topLayout->addWidget(makeMenuButton("File", fileMenu));
@@ -1809,6 +2904,16 @@ static int runShell(int argc, char *argv[])
     };
     CCToggle *btnCC = new CCToggle;
     topLayout->addWidget(btnCC);
+
+    ControlCenter *controlCenter = new ControlCenter(root);
+    root->setControlCenter(controlCenter);
+    QObject::connect(btnCC, &QPushButton::clicked, [controlCenter, root]() {
+        controlCenter->reposition(root->width());
+        controlCenter->toggle();
+    });
+
+    DesktopWidgets *widgets = new DesktopWidgets(root);
+    root->setDesktopWidgets(widgets);
 
     // Avatar badge — small accent-tinted circle with user glyph
     class AvatarBadge : public QLabel {
@@ -1984,14 +3089,14 @@ static int runShell(int argc, char *argv[])
     Dock *dock = new Dock;
     struct DockApp { const char *icon; const char *name; };
     const DockApp apps[] = {
-        { "\xE2\x8C\x98", "Finder"   },
-        { "\xE2\x8C\xA5", "Settings" },
-        { "\xE2\x9C\xA6", "Photos"   },
-        { "\xE2\x96\xB6", "Music"    },
-        { "\xE2\x99\xAB", "Notes"    },
-        { "\xE2\x9C\x89", "Mail"     },
-        { "\xE2\x9A\x99", "Terminal" },
-        { "\xE2\x9A\xA1", "Power"    }
+        { "\xE2\x8C\x98",       "Finder"    },
+        { "\xF0\x9F\x9A\x80",  "Launchpad" },
+        { "\xE2\x9C\xA6",       "Photos"    },
+        { "\xE2\x96\xB6",       "Music"     },
+        { "\xF0\x9F\x93\x9D",  "Notes"     },
+        { "\xE2\x9C\x89",       "Mail"      },
+        { "\xE2\x9A\x99",       "Settings"  },
+        { "\xE2\x9A\xA1",       "Power"     }
     };
     int i = 0;
     for (const auto &a : apps)
@@ -2024,6 +3129,59 @@ static int runShell(int argc, char *argv[])
     QShortcut *reloadKey = new QShortcut(QKeySequence("Ctrl+Shift+R"), &window);
     QObject::connect(reloadKey, &QShortcut::activated, reloadSelf);
 
+    // Watch the config file — if Settings changes it, reload ourselves
+    QFileSystemWatcher *configWatch = new QFileSystemWatcher(&window);
+    QString configPath = []() {
+        QString dir = QStandardPaths::writableLocation(
+                          QStandardPaths::ConfigLocation);
+        if (dir.isEmpty()) dir = QDir::homePath() + "/.config";
+        return dir + "/apokolips/visual.json";
+    }();
+
+    // ---- Watch visual.json (opacity / blur sliders) ----
+    QTimer *configPoll = new QTimer(&window);
+    configPoll->setInterval(500);
+    qint64 *lastMod = new qint64(
+        QFileInfo(configPath).lastModified().toMSecsSinceEpoch());
+
+    QObject::connect(configPoll, &QTimer::timeout,
+                     [configPath, lastMod, root]() {
+        qint64 m = QFileInfo(configPath).lastModified().toMSecsSinceEpoch();
+        if (m != *lastMod) {
+            *lastMod = m;
+            VisualConfigManager::instance().load();
+            if (root) {
+                root->update();
+                for (QWidget *w : root->findChildren<QWidget *>()) w->update();
+            }
+        }
+    });
+    configPoll->start();
+
+    // ---- Watch wallpaper.json (wallpaper switch from Settings) ----
+    QString wpPath = WallpaperConfig::configPath();
+    QTimer *wpPoll = new QTimer(&window);
+    wpPoll->setInterval(500);
+    QString *lastWpId = new QString(WallpaperConfig::loadId());
+
+    QObject::connect(wpPoll, &QTimer::timeout,
+                     [wpPath, lastWpId, root]() {
+        // Read the id string from the file
+        QFile f(wpPath);
+        if (!f.open(QIODevice::ReadOnly)) return;
+        QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+        f.close();
+        QString id = doc.isObject() ? doc.object().value("wallpaper").toString("ruby") : "ruby";
+        if (id == *lastWpId) return;
+        *lastWpId = id;
+
+        // Swap the wallpaper + theme in the running shell
+        Wallpaper *nw = WallpaperConfig::makeById(id);
+        root->setWallpaper(nw);
+        ThemeManager::instance().setTheme(nw->theme());
+    });
+    wpPoll->start();
+
     // Also expose as File -> Reload Shell
     QAction *reloadAct = new QAction("Reload Shell");
     reloadAct->setShortcut(QKeySequence("Ctrl+Shift+R"));
@@ -2036,6 +3194,19 @@ static int runShell(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    if (argc >= 2 && QString(argv[1]) == "--settings") {
+        QApplication app(argc, argv);
+        app.setApplicationName("Apokolips Settings");
+        // Prime the theme from the active wallpaper so the settings
+        // window inherits the same colours as the shell.
+        Wallpaper *wp = WallpaperConfig::makeById(WallpaperConfig::loadId());
+        ThemeManager::instance().setTheme(wp->theme());
+        delete wp;
+        SettingsWindow w;
+        w.show();
+        return app.exec();
+    }
+
     if (argc >= 3 && QString(argv[1]) == "--demo") {
         QApplication app(argc, argv);
         int offset = (argc >= 4) ? QString(argv[3]).toInt() : 0;
