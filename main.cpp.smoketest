@@ -1,0 +1,37 @@
+#include <QApplication>
+#include <QLabel>
+#include <QTimer>
+#include <QScreen>
+
+int main(int argc, char *argv[])
+{
+    QApplication app(argc, argv);
+
+    QLabel window("Apokolips OS - first light");
+    window.setStyleSheet("background: #1c1c2e; color: #d0c8ff;"
+                         "font-size: 32px; padding: 60px;");
+    window.setAlignment(Qt::AlignCenter);
+    window.setAttribute(Qt::WA_OpaquePaintEvent, true);
+    window.setAttribute(Qt::WA_NoSystemBackground, false);
+    window.resize(700, 400);
+
+    // Force visible position on the primary screen
+    if (QScreen *screen = app.primaryScreen()) {
+        QRect geo = screen->availableGeometry();
+        int x = geo.x() + (geo.width()  - window.width())  / 2;
+        int y = geo.y() + (geo.height() - window.height()) / 2;
+        window.move(x, y);
+    }
+
+    window.show();
+    window.raise();
+    window.activateWindow();
+
+    // Force a repaint after the event loop starts (WSLg workaround)
+    QTimer::singleShot(300, &window, [&window]() {
+        window.update();
+        window.repaint();
+    });
+
+    return app.exec();
+}
