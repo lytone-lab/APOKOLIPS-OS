@@ -22,6 +22,8 @@
 #include <QResizeEvent>
 #include <QWindow>
 #include <QMenu>
+#include <unistd.h>
+#include <QShortcut>
 #include <QWidgetAction>
 #include <QDate>
 #include <QCalendarWidget>
@@ -86,15 +88,17 @@ public:
     static double ramPercent() {
         QFile f("/proc/meminfo");
         if (!f.open(QIODevice::ReadOnly)) return 0.0;
-        quint64 total = 0, avail = 0;
-        while (!f.atEnd()) {
-            QByteArray line = f.readLine();
-            if (line.startsWith("MemTotal:"))
-                total = line.mid(9).trimmed().split(' ')[0].toULongLong();
-            else if (line.startsWith("MemAvailable:"))
-                avail = line.mid(13).trimmed().split(' ')[0].toULongLong();
-        }
+        QByteArray all = f.readAll();   // works on /proc where atEnd() lies
         f.close();
+        quint64 total = 0, avail = 0;
+        for (const QByteArray &raw : all.split('\n')) {
+            QByteArray line = raw.simplified();
+            if (line.isEmpty()) continue;
+            QList<QByteArray> toks = line.split(' ');
+            if (toks.size() < 2) continue;
+            if (toks[0] == "MemTotal:")          total = toks[1].toULongLong();
+            else if (toks[0] == "MemAvailable:") avail = toks[1].toULongLong();
+        }
         if (total == 0) return 0.0;
         return 100.0 * (1.0 - double(avail) / double(total));
     }
@@ -144,6 +148,7 @@ public:
     virtual Theme theme() const = 0;
     virtual void paint(QPainter &p, const QRect &r) = 0;
     virtual void tick() {}
+    virtual bool animated() const { return false; }
 };
 
 // =========================================================
@@ -212,6 +217,7 @@ public:
 
     QString id() const override { return "starfield"; }
     QString displayName() const override { return "Starfield"; }
+    bool animated() const override { return true; }
 
     Theme theme() const override {
         Theme t;
@@ -273,6 +279,7 @@ class AuroraWallpaper : public Wallpaper {
 public:
     QString id() const override { return "aurora"; }
     QString displayName() const override { return "Aurora"; }
+    bool animated() const override { return true; }
 
     Theme theme() const override {
         Theme t;
@@ -1015,7 +1022,7 @@ public:
              QWidget *parent = nullptr)
         : QWidget(parent), m_icon(icon), m_name(name), m_index(index)
     {
-        setFixedSize(78, 78);
+        setFixedSize(64, 64);
         setMouseTracking(true);
         setCursor(Qt::PointingHandCursor);
         setToolTip(name);
@@ -1027,7 +1034,9 @@ public:
     }
 
     void setTarget(qreal t)  { m_target = t; }
-    void setCurrent(qreal c) { m_current = c; update(); }
+    void setCurrent(qreal c) {
+        if (qAbs(c - m_current) > 0.002) { m_current = c; update(); }
+    }
     qreal current() const    { return m_current; }
 
     void setRunning(bool r) {
@@ -1043,7 +1052,7 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        const qreal baseSize = 52.0;
+        const qreal baseSize = 42.0;
         int visual = int(baseSize * m_current);
         int x = (width()  - visual) / 2;
         int y = (height() - visual) / 2 - 3;
@@ -1148,7 +1157,7 @@ public:
     Dock(QWidget *parent = nullptr) : QWidget(parent) {
         setObjectName("dockRoot");
         setAttribute(Qt::WA_NoSystemBackground, true);
-        setFixedHeight(90);
+        setFixedHeight(84);
         setMouseTracking(true);
 
         ThemeManager::instance().subscribe([this](const Theme &t) {
@@ -1157,8 +1166,8 @@ public:
         });
 
         m_layout = new QHBoxLayout(this);
-        m_layout->setContentsMargins(12, 6, 12, 6);
-        m_layout->setSpacing(2);
+        m_layout->setContentsMargins(16, 12, 16, 12);
+        m_layout->setSpacing(4);
 
         m_timer = new QTimer(this);
         m_timer->setInterval(16);
@@ -1232,6 +1241,7 @@ private:
         const qreal maxBoost = 0.42;
         qreal cursor = m_hasCursor ? m_cursorX : -10000.0;
 
+        bool anyMoving = false;
         for (DockIcon *di : m_icons) {
             qreal cx = di->geometry().center().x();
             qreal d  = cx - cursor;
@@ -1240,8 +1250,14 @@ private:
             di->setTarget(target);
             qreal cur  = di->current();
             qreal next = cur + (target - cur) * 0.28;
+            if (qAbs(next - cur) > 0.001) anyMoving = true;
             di->setCurrent(next);
         }
+        // If nothing is animating, slow the timer down to save CPU
+        if (!anyMoving && m_timer->interval() == 16)
+            m_timer->setInterval(80);
+        else if (anyMoving && m_timer->interval() != 16)
+            m_timer->setInterval(16);
     }
 
     QList<DockIcon *> m_icons;
@@ -1259,7 +1275,7 @@ private:
 class TopBar : public QWidget {
 public:
     explicit TopBar(QWidget *parent = nullptr) : QWidget(parent) {
-        setFixedHeight(34);
+        setFixedHeight(30);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAutoFillBackground(false);
         setCursor(Qt::OpenHandCursor);
@@ -1337,7 +1353,10 @@ public:
         m_tickTimer = new QTimer(this);
         m_tickTimer->setInterval(16);
         QObject::connect(m_tickTimer, &QTimer::timeout, this, [this]() {
-            if (m_wallpaper) { m_wallpaper->tick(); update(); }
+            if (m_wallpaper && m_wallpaper->animated()) {
+                m_wallpaper->tick();
+                update();
+            }
         });
         m_tickTimer->start();
 
@@ -1482,7 +1501,7 @@ protected:
         else             p.fillRect(rect(), QColor(20, 4, 12));
 
         const Theme &t = ThemeManager::instance().current();
-        const int TOP_H = 34;
+        const int TOP_H = 30;
         const QPixmap &bg = ThemeManager::instance().blurredBg();
         if (!bg.isNull()) {
             p.drawPixmap(QRect(0, 0, width(), TOP_H), bg,
@@ -1529,12 +1548,12 @@ static int runShell(int argc, char *argv[])
 
     TopBar *topBar = new TopBar;
     QHBoxLayout *topLayout = new QHBoxLayout(topBar);
-    topLayout->setContentsMargins(14, 0, 18, 0);
-    topLayout->setSpacing(10);
+    topLayout->setContentsMargins(12, 0, 14, 0);
+    topLayout->setSpacing(8);
 
     auto makeLight = [](const QString &hoverColor, const QString &idleColor) {
         QPushButton *b = new QPushButton;
-        b->setFixedSize(13, 13);
+        b->setFixedSize(12, 12);
         b->setCursor(Qt::PointingHandCursor);
         b->setStyleSheet(QString(
             "QPushButton { background: %1;"
@@ -1729,18 +1748,102 @@ static int runShell(int argc, char *argv[])
 
     topLayout->addStretch();
 
-    // Status icons
+    // ---- Right-side status cluster (macOS style) ----
+
+    // WiFi
     QLabel *wifiLbl = new QLabel(QString::fromUtf8("\xE2\x97\x8F"));
-    QLabel *battLbl = new QLabel(QString::fromUtf8("\xE2\x96\xAE"));
-    ThemeManager::instance().subscribe([wifiLbl, battLbl](const Theme &t) {
-        QString css = QString(
-            "color: %1; background: transparent; font-size: 13px;")
-            .arg(t.textDim.name());
-        wifiLbl->setStyleSheet(css);
-        battLbl->setStyleSheet(css);
+    wifiLbl->setCursor(Qt::PointingHandCursor);
+    ThemeManager::instance().subscribe([wifiLbl](const Theme &t) {
+        wifiLbl->setStyleSheet(QString(
+            "color: %1; background: transparent; font-size: 12px;"
+            " padding: 0px 5px;").arg(t.textPrimary.name()));
     });
     topLayout->addWidget(wifiLbl);
-    topLayout->addWidget(battLbl);
+
+    // Bluetooth
+    QLabel *btLbl = new QLabel(QString::fromUtf8("\xE2\x9C\xA6"));
+    btLbl->setCursor(Qt::PointingHandCursor);
+    ThemeManager::instance().subscribe([btLbl](const Theme &t) {
+        btLbl->setStyleSheet(QString(
+            "color: %1; background: transparent; font-size: 12px;"
+            " padding: 0px 5px;").arg(t.textPrimary.name()));
+    });
+    topLayout->addWidget(btLbl);
+
+    // Control-center toggle — custom-painted macOS-style pill icon
+    class CCToggle : public QPushButton {
+    public:
+        CCToggle(QWidget *parent = nullptr) : QPushButton(parent) {
+            setFixedSize(30, 20);
+            setFlat(true);
+            setCursor(Qt::PointingHandCursor);
+            ThemeManager::instance().subscribe([this](const Theme &t) {
+                m_theme = t;
+                update();
+            });
+        }
+    protected:
+        void paintEvent(QPaintEvent *) override {
+            QPainter p(this);
+            p.setRenderHint(QPainter::Antialiasing);
+            QRect r = rect().adjusted(3, 3, -3, -3);
+
+            bool hov = underMouse();
+            QColor bg = hov ? m_theme.accentSoft : m_theme.chromeBg.lighter(130);
+            p.setPen(Qt::NoPen);
+            p.setBrush(bg);
+            p.drawRoundedRect(r, 6, 6);
+
+            // Two tiny dots (menu-bar control-center look)
+            QColor dot = m_theme.textPrimary;
+            p.setBrush(dot);
+            int cx = r.center().x();
+            int cy = r.center().y();
+            p.drawEllipse(QPoint(cx - 4, cy), 2, 2);
+            p.drawEllipse(QPoint(cx + 4, cy), 2, 2);
+        }
+        void enterEvent(QEnterEvent *e) override { update(); QPushButton::enterEvent(e); }
+        void leaveEvent(QEvent *e) override { update(); QPushButton::leaveEvent(e); }
+    private:
+        Theme m_theme;
+    };
+    CCToggle *btnCC = new CCToggle;
+    topLayout->addWidget(btnCC);
+
+    // Avatar badge — small accent-tinted circle with user glyph
+    class AvatarBadge : public QLabel {
+    public:
+        AvatarBadge(QWidget *parent = nullptr) : QLabel(parent) {
+            setFixedSize(18, 18);
+            setCursor(Qt::PointingHandCursor);
+            ThemeManager::instance().subscribe([this](const Theme &t) {
+                m_theme = t;
+                update();
+            });
+        }
+    protected:
+        void paintEvent(QPaintEvent *) override {
+            QPainter p(this);
+            p.setRenderHint(QPainter::Antialiasing);
+            QRect r = rect().adjusted(1, 1, -1, -1);
+            QLinearGradient g(r.topLeft(), r.bottomRight());
+            g.setColorAt(0, m_theme.accent.lighter(130));
+            g.setColorAt(1, m_theme.accent.darker(120));
+            p.setPen(QPen(m_theme.textPrimary, 1));
+            p.setBrush(g);
+            p.drawEllipse(r);
+            QFont f = font();
+            f.setPixelSize(10);
+            f.setBold(true);
+            p.setFont(f);
+            p.setPen(m_theme.textPrimary);
+            p.drawText(r, Qt::AlignCenter, "L");
+        }
+    private:
+        Theme m_theme;
+    };
+    AvatarBadge *avatar = new AvatarBadge;
+    topLayout->addWidget(avatar);
 
     // System monitor — CPU / RAM percentages, live
     QLabel *statsLbl = new QLabel;
@@ -1907,6 +2010,26 @@ static int runShell(int argc, char *argv[])
     if (QScreen *screen = app.primaryScreen())
         window.setGeometry(screen->availableGeometry());
     window.showNormal();
+
+    // ---- Self-restart: replace this process with the freshly built binary ----
+    auto reloadSelf = []() {
+        QString exe = QCoreApplication::applicationFilePath();
+        QByteArray path = exe.toUtf8();
+        char *argv[] = { path.data(), nullptr };
+        execv(path.constData(), argv);
+        // execv only returns on failure
+        qFatal("execv failed — shell binary missing?");
+    };
+
+    QShortcut *reloadKey = new QShortcut(QKeySequence("Ctrl+Shift+R"), &window);
+    QObject::connect(reloadKey, &QShortcut::activated, reloadSelf);
+
+    // Also expose as File -> Reload Shell
+    QAction *reloadAct = new QAction("Reload Shell");
+    reloadAct->setShortcut(QKeySequence("Ctrl+Shift+R"));
+    fileMenu->addSeparator();
+    fileMenu->addAction(reloadAct);
+    QObject::connect(reloadAct, &QAction::triggered, reloadSelf);
 
     return app.exec();
 }
