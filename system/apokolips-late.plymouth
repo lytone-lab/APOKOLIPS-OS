@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Apokolips Late
+Description=Apokolips OS — late boot wordmark
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/apokolips-late
+ScriptFile=/usr/share/plymouth/themes/apokolips-late/apokolips-late.script

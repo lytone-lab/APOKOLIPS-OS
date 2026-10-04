@@ -1,0 +1,83 @@
+# =========================================================
+# Apokolips OS — late boot phase ("Stillness")
+# Pure black, quiet wordmark, animated underline.
+# =========================================================
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+screenW = Window.GetWidth();
+screenH = Window.GetHeight();
+cx = screenW / 2;
+
+# --- Wordmark ---
+wm = Image("wordmark.png");
+wm_w = wm.GetWidth();
+wm_h = wm.GetHeight();
+
+word = Sprite(wm);
+word.SetX(cx - wm_w / 2);
+word.SetY(screenH * 0.72 - wm_h / 2);
+word.SetZ(10);
+word.SetOpacity(0.0);
+
+# --- Underline sprite (thin red bar, 2px tall, up to 260px wide) ---
+line_w_max = 260;
+line = Sprite();
+line.SetZ(9);
+line.SetOpacity(0.0);
+
+# Position of the underline: ~40px below the word
+line_y = screenH * 0.72 + wm_h / 2 + 40;
+
+# --- Animation ---
+frame = 0;
+cycle_frames = 180;   # 3 seconds at 60fps
+
+fun refresh_callback() {
+    frame = frame + 1;
+
+    # Fade in wordmark during the first ~0.7s
+    if (frame < 45) {
+        word.SetOpacity(frame / 45.0);
+    } else {
+        word.SetOpacity(1.0);
+    }
+
+    # Line cycle: draw out (0-90), hold (90-140), fade (140-180)
+    c = frame % cycle_frames;
+
+    if (c < 90) {
+        # Draw from center outward
+        progress = c / 90.0;
+        current_w = line_w_max * progress;
+        line.SetOpacity(0.9);
+    } else if (c < 140) {
+        # Hold at full width
+        current_w = line_w_max;
+        line.SetOpacity(0.9);
+    } else {
+        # Fade out
+        current_w = line_w_max;
+        fade = 1.0 - (c - 140) / 40.0;
+        if (fade < 0) { fade = 0; }
+        line.SetOpacity(0.9 * fade);
+    }
+
+    # Draw the line as a QLine-like image
+    # Plymouth doesn't have primitive drawing, so we use a solid color image
+    if (line_img != NULL) {
+        line_img = NULL;
+    }
+    line_img = Image.SolidColor(current_w, 2, 0.78, 0.06, 0.18);
+    line.SetImage(line_img);
+    line.SetX(cx - current_w / 2);
+    line.SetY(line_y);
+}
+
+# Plymouth requires a pre-created sprite image — start with 1px
+line_img = Image.SolidColor(1, 2, 0.78, 0.06, 0.18);
+line.SetImage(line_img);
+line.SetX(cx);
+line.SetY(line_y);
+
+Plymouth.SetRefreshFunction(refresh_callback);

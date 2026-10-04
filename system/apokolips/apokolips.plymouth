@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Apokolips
+Description=Apokolips OS boot splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/apokolips
+ScriptFile=/usr/share/plymouth/themes/apokolips/apokolips.script

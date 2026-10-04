@@ -1,0 +1,95 @@
+# =========================================================
+# Apokolips Plymouth theme — Ember Pulse
+# Black background, breathing omega logo, drifting embers.
+# =========================================================
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+screenW = Window.GetWidth();
+screenH = Window.GetHeight();
+cx = screenW / 2;
+cy = screenH / 2;
+
+# --- Soft red glow behind the logo ---
+glow_img = Image("glow.png");
+glow_w = glow_img.GetWidth();
+glow_h = glow_img.GetHeight();
+glow = Sprite(glow_img);
+glow.SetX(cx - glow_w / 2);
+glow.SetY(cy - glow_h / 2);
+glow.SetZ(5);
+glow.SetOpacity(0.0);
+
+# --- Omega logo ---
+omega_img = Image("omega.png");
+omega_w = omega_img.GetWidth();
+omega_h = omega_img.GetHeight();
+omega = Sprite(omega_img);
+omega.SetX(cx - omega_w / 2);
+omega.SetY(cy - omega_h / 2);
+omega.SetZ(10);
+omega.SetOpacity(0.0);
+
+# --- Embers (6 sprites, each with its own drift) ---
+ember_img = Image("ember.png");
+
+e0 = Sprite(ember_img);  e1 = Sprite(ember_img);
+e2 = Sprite(ember_img);  e3 = Sprite(ember_img);
+e4 = Sprite(ember_img);  e5 = Sprite(ember_img);
+embers = [e0, e1, e2, e3, e4, e5];
+
+ember_base_x = [cx - 160, cx - 90, cx - 30, cx + 30, cx + 90, cx + 160];
+ember_base_y = [cy + 30,  cy + 60, cy + 40, cy + 55, cy + 45, cy + 70];
+ember_speed  = [0.55, 0.75, 0.60, 0.50, 0.80, 0.65];
+ember_phase  = [0.0,  1.4,  2.9,  4.2,  5.5,  3.3];
+ember_alpha  = [0.85, 0.55, 0.75, 0.60, 0.70, 0.50];
+
+for (i = 0; i < 6; i = i + 1) {
+    embers[i].SetZ(8);
+    embers[i].SetOpacity(0.0);
+}
+
+# --- Animation ---
+frame = 0;
+PI = 3.14159265;
+
+fun refresh_callback() {
+    frame = frame + 1;
+    t = frame / 60.0;
+
+    # Fade in during the first ~1 second
+    if (frame < 60) {
+        fadeIn = frame / 60.0;
+        omega.SetOpacity(fadeIn);
+        glow.SetOpacity(fadeIn * 0.2);
+    } else {
+        # Breathing cycle — ~2.5 second period
+        breath = (Math.Sin(t * 2.0 * PI / 2.5) + 1.0) * 0.5;
+        omega.SetOpacity(0.85 + 0.15 * breath);
+        glow.SetOpacity(0.15 + 0.30 * breath);
+    }
+
+    # Embers drift up and fade
+    for (i = 0; i < 6; i = i + 1) {
+        local_t = t * ember_speed[i] + ember_phase[i];
+        cycle = local_t - Math.Floor(local_t);
+
+        xNow = ember_base_x[i] + 14.0 * Math.Sin(local_t * 4.0);
+        yNow = ember_base_y[i] - cycle * 220.0;
+
+        embers[i].SetX(xNow);
+        embers[i].SetY(yNow);
+
+        if (cycle < 0.15) {
+            a = ember_alpha[i] * (cycle / 0.15);
+        } else if (cycle < 0.65) {
+            a = ember_alpha[i] * (1.0 - (cycle - 0.15) / 0.50 * 0.25);
+        } else {
+            a = ember_alpha[i] * (1.0 - (cycle - 0.65) / 0.35) * 0.75;
+        }
+        if (a < 0) { a = 0; }
+        embers[i].SetOpacity(a);
+    }
+}
+
+Plymouth.SetRefreshFunction(refresh_callback);

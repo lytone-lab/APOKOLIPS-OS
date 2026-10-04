@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Apokolips
+Comment=Apokolips OS - custom shell
+Exec=cage /home/lytone/apokolips-shell/run-session.sh
+Type=Application
+DesktopNames=Apokolips
