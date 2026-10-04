@@ -1,0 +1,94 @@
+# =========================================================
+# Apokolips OS — sway configuration
+# =========================================================
+
+set $mod Mod4
+
+# Output: solid black (our shell draws the wallpaper)
+output * bg #000000 solid_color
+
+# No borders, no gaps
+default_border none
+default_floating_border normal 2
+gaps inner 0
+gaps outer 0
+
+# Fonts
+font pango:DejaVu Sans 10
+
+# ---- Shell as the tiled desktop layer ----
+exec /home/lytone/apokolips-shell/run-session.sh
+
+# Shell window: fullscreen, no border, workspace 1
+for_window [title="Apokolips OS"] border none
+
+# ---- Everything else: floating, centered, 900x600 ----
+for_window [title="Files"] floating enable, resize set 1000 650, move position center
+for_window [title="Finder"] floating enable, resize set 1000 650, move position center
+for_window [title="Apokolips Settings"] floating enable, resize set 780 540, move position center
+for_window [title="Settings"] floating enable, resize set 780 540, move position center
+for_window [title="Rename"] floating enable, resize set 420 180, move position center
+for_window [title="Go to"] floating enable, resize set 420 180, move position center
+for_window [app_id="org.gnome.Nautilus"] floating enable, resize set 1000 650, move position center
+for_window [app_id="org.gnome.Terminal"] floating enable, resize set 900 550, move position center
+for_window [app_id="eog"] floating enable, resize set 900 650, move position center
+for_window [app_id="org.gnome.Totem"] floating enable, resize set 900 550, move position center
+for_window [app_id="firefox"] floating enable, resize set 1200 800, move position center
+
+# ---- Keybindings ----
+# Terminal
+bindsym $mod+Return exec gnome-terminal
+# File manager (our shell's Finder)
+bindsym $mod+e exec /home/lytone/apokolips-shell/build/apokolips-shell --files
+# Close focused window
+bindsym $mod+Shift+q kill
+# Alt+Tab window switcher
+bindsym $mod+Tab focus next
+bindsym $mod+Shift+Tab focus prev
+# Toggle floating
+bindsym $mod+Shift+space floating toggle
+# Fullscreen toggle
+bindsym $mod+f fullscreen toggle
+# Reload / exit sway
+bindsym $mod+Shift+r reload
+bindsym $mod+Shift+e exit
+# Workspaces
+bindsym $mod+1 workspace 1
+bindsym $mod+2 workspace 2
+bindsym $mod+3 workspace 3
+bindsym $mod+Shift+1 move container to workspace 1
+bindsym $mod+Shift+2 move container to workspace 2
+# Move window (floating)
+bindsym $mod+Left  move left
+bindsym $mod+Right move right
+bindsym $mod+Up    move up
+bindsym $mod+Down  move down
+
+# ---- Autostart helpers ----
+exec swayidle -w \
+    timeout 600 'swaylock -f -c 000000' \
+    timeout 900 'swaymsg "output * dpms off"' \
+    resume 'swaymsg "output * dpms on"'
+
+# Catch-all: everything except our shell floats
+for_window [title=".*"] floating enable
+for_window [app_id=".*"] floating enable
+for_window [window_role=".*"] floating enable
+
+# Then explicitly re-tile the shell back to fullscreen
+for_window [title="Apokolips OS"] floating disable
+for_window [title="Apokolips OS"] border none
+
+# ---- Hide sway's default bar ----
+bar {
+    mode invisible
+}
+
+# ---- Catch-all: everything floats over the shell ----
+for_window [title=".*"] floating enable
+for_window [app_id=".*"] floating enable
+for_window [window_role=".*"] floating enable
+
+# Shell stays tiled at full width, no border
+for_window [title="Apokolips OS"] floating disable
+for_window [title="Apokolips OS"] border none
