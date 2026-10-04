@@ -2001,13 +2001,22 @@ private:
             m_wpButtons.append(btn);
             QObject::connect(btn, &QPushButton::clicked, [this, id = QString(wp.id)]() {
                 WallpaperConfig::saveId(id);
-                // Notify running shell via a small config touch (shell polls it)
-                // Settings window also adopts the new theme right away
+
+                // Adopt the new theme immediately, in this process
                 Wallpaper *wp = WallpaperConfig::makeById(id);
-                ThemeManager::instance().setTheme(wp->theme());
+                Theme newT = wp->theme();
                 delete wp;
+
+                m_theme = newT;                              // local copy first
+                ThemeManager::instance().setTheme(newT);     // fires subscribers
+
                 updateWallpaperHighlight();
                 restyleAll();
+
+                // Force full repaint — paintEvent draws the border lines
+                update();
+                for (QWidget *child : findChildren<QWidget *>())
+                    child->update();
             });
             g->addWidget(btn, row, col);
             if (++col == 3) { col = 0; ++row; }
@@ -2174,6 +2183,10 @@ private:
                 "color: %1; font-size: 13px; background: transparent;")
                 .arg(t.textSecondary.name()));
         }
+
+        // Force repaint so paintEvent-drawn lines (header, sidebar separator)
+        // pick up the new theme colors.
+        update();
     }
 
     Theme m_theme;
@@ -3140,7 +3153,7 @@ static int runShell(int argc, char *argv[])
 
     // ---- Watch visual.json (opacity / blur sliders) ----
     QTimer *configPoll = new QTimer(&window);
-    configPoll->setInterval(500);
+    configPoll->setInterval(200);
     qint64 *lastMod = new qint64(
         QFileInfo(configPath).lastModified().toMSecsSinceEpoch());
 
@@ -3161,7 +3174,7 @@ static int runShell(int argc, char *argv[])
     // ---- Watch wallpaper.json (wallpaper switch from Settings) ----
     QString wpPath = WallpaperConfig::configPath();
     QTimer *wpPoll = new QTimer(&window);
-    wpPoll->setInterval(500);
+    wpPoll->setInterval(200);
     QString *lastWpId = new QString(WallpaperConfig::loadId());
 
     QObject::connect(wpPoll, &QTimer::timeout,
