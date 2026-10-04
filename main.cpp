@@ -23,6 +23,9 @@
 #include <QWindow>
 #include <QMenu>
 #include <QSlider>
+#include <QSortFilterProxyModel>
+#include <QListView>
+#include <QFileSystemModel>
 #include <QStackedWidget>
 #include <unistd.h>
 #include <QShortcut>
@@ -112,11 +115,12 @@ public:
 // =========================================================
 struct VisualConfig {
     double blurStrength       = 0.25;   // 0=none, 1=heavy
-    int    topBarAlpha        = 190;
-    int    dockAlpha          = 205;
-    int    launcherAlpha      = 230;
-    int    controlCenterAlpha = 230;
-    int    widgetCardAlpha    = 210;
+    int    topBarAlpha        = 110;
+    int    dockAlpha          = 130;
+    int    launcherAlpha      = 165;
+    int    controlCenterAlpha = 165;
+    int    widgetCardAlpha    = 140;
+    int    finderAlpha        = 110;
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
     double dockSigma          = 55.0;
@@ -161,9 +165,27 @@ public:
         m_cfg.launcherAlpha      = getI("launcherAlpha",      m_cfg.launcherAlpha);
         m_cfg.controlCenterAlpha = getI("controlCenterAlpha", m_cfg.controlCenterAlpha);
         m_cfg.widgetCardAlpha    = getI("widgetCardAlpha",    m_cfg.widgetCardAlpha);
+        m_cfg.finderAlpha        = getI("finderAlpha",        m_cfg.finderAlpha);
         m_cfg.blurRefreshMs      = getI("blurRefreshMs",      m_cfg.blurRefreshMs);
         m_cfg.dockMagnifyMax     = getD("dockMagnifyMax",     m_cfg.dockMagnifyMax);
         m_cfg.dockSigma          = getD("dockSigma",          m_cfg.dockSigma);
+        clampToSafeRanges();
+    }
+
+    void clampToSafeRanges() {
+        if (m_cfg.topBarAlpha        < 30)  m_cfg.topBarAlpha        = 30;
+        if (m_cfg.dockAlpha          < 30)  m_cfg.dockAlpha          = 30;
+        if (m_cfg.launcherAlpha      < 60)  m_cfg.launcherAlpha      = 60;
+        if (m_cfg.controlCenterAlpha < 60)  m_cfg.controlCenterAlpha = 60;
+        if (m_cfg.widgetCardAlpha    < 40)  m_cfg.widgetCardAlpha    = 40;
+        if (m_cfg.finderAlpha        < 30)  m_cfg.finderAlpha        = 30;
+        if (m_cfg.dockMagnifyMax     < 0.05) m_cfg.dockMagnifyMax    = 0.05;
+        if (m_cfg.dockSigma          < 15)  m_cfg.dockSigma          = 15;
+    }
+
+    void resetToDefaults() {
+        m_cfg = VisualConfig();
+        save();
     }
 
     void save() {
@@ -175,6 +197,7 @@ public:
         o["launcherAlpha"]      = m_cfg.launcherAlpha;
         o["controlCenterAlpha"] = m_cfg.controlCenterAlpha;
         o["widgetCardAlpha"]    = m_cfg.widgetCardAlpha;
+        o["finderAlpha"]        = m_cfg.finderAlpha;
         o["blurRefreshMs"]      = m_cfg.blurRefreshMs;
         o["dockMagnifyMax"]     = m_cfg.dockMagnifyMax;
         o["dockSigma"]          = m_cfg.dockSigma;
@@ -215,7 +238,24 @@ public:
 
     void setTheme(const Theme &t) {
         m_theme = t;
+        neutralize();
         for (auto &cb : m_callbacks) cb(m_theme);
+    }
+
+    // Force every accent-related color to neutral white/grey.
+    // Wallpapers may set colored themes; we strip them here so nothing
+    // in the UI carries color except traffic lights and app icons.
+    void neutralize() {
+        // Derive neutral accents from text color so they stay visible on
+        // both dark themes (light text) and light themes (dark text).
+        QColor b = m_theme.textPrimary;
+        auto mk = [&b](int a) {
+            return QColor(b.red(), b.green(), b.blue(), a);
+        };
+        m_theme.chromeBorder = mk(22);
+        m_theme.accent       = mk(210);
+        m_theme.accentSoft   = mk(40);
+        m_theme.accentStrong = mk(80);
     }
 
     void subscribe(Callback cb) {
@@ -468,77 +508,230 @@ private:
 // =========================================================
 class GoldenGateWallpaper : public Wallpaper {
 public:
+    GoldenGateWallpaper() {
+        // Load once — scaled to a reasonable cache size.
+        QPixmap raw;
+        QStringList candidates = {
+            QDir::homePath() + "/apokolips-shell/macos-golden-gate-dark.jpg",
+            "/home/lytone/apokolips-shell/macos-golden-gate-dark.jpg",
+            "macos-golden-gate-dark.jpg",
+            "/usr/share/apokolips/wallpapers/macos-golden-gate-dark.jpg"
+        };
+        for (const QString &p : candidates) {
+            if (QFile::exists(p) && raw.load(p)) break;
+        }
+        m_source = raw;
+    }
+
     QString id() const override { return "goldengate"; }
     QString displayName() const override { return "Golden Gate"; }
 
     Theme theme() const override {
+        // Tuned for glass over a photo — very translucent chrome,
+        // cool cyan accents matching the wallpaper arcs.
         Theme t;
-        t.chromeBg      = QColor(14, 20, 32, 205);
-        t.chromeBorder  = QColor(120, 170, 240, 150);
-        t.accent        = QColor(120, 180, 255);
-        t.accentSoft    = QColor(120, 180, 255, 90);
-        t.accentStrong  = QColor(120, 180, 255, 160);
-        t.textPrimary   = QColor(224, 232, 244);
-        t.textSecondary = QColor(168, 184, 208);
-        t.textDim       = QColor(104, 120, 152);
-        t.panelBg       = QColor(12, 18, 30, 240);
+        t.chromeBg      = QColor(28, 28, 34);
+        t.chromeBorder  = QColor(140, 190, 255, 130);
+        t.accent        = QColor(140, 200, 255);
+        t.accentSoft    = QColor(140, 200, 255, 70);
+        t.accentStrong  = QColor(140, 200, 255, 140);
+        t.textPrimary   = QColor(230, 238, 248);
+        t.textSecondary = QColor(180, 198, 222);
+        t.textDim       = QColor(120, 145, 178);
+        t.panelBg       = QColor(38, 38, 44);
         return t;
     }
 
     void paint(QPainter &p, const QRect &r) override {
+        p.setRenderHint(QPainter::SmoothPixmapTransform);
         p.setRenderHint(QPainter::Antialiasing);
 
-        // Deep navy base
-        QLinearGradient base(0, 0, 0, r.height());
-        base.setColorAt(0.0, QColor(20, 30, 52));
-        base.setColorAt(0.4, QColor(14, 22, 40));
-        base.setColorAt(1.0, QColor(6, 10, 20));
-        p.fillRect(r, base);
+        if (m_source.isNull()) {
+            // Fallback: simple navy gradient
+            QLinearGradient g(0, 0, 0, r.height());
+            g.setColorAt(0.0, QColor(20, 30, 52));
+            g.setColorAt(1.0, QColor(6, 10, 20));
+            p.fillRect(r, g);
+            return;
+        }
 
-        // Soft blue light from upper-left
-        QRadialGradient glow(r.width() * 0.3, r.height() * 0.2,
-                             r.width() * 0.75);
-        glow.setColorAt(0.0, QColor(70, 110, 170, 100));
-        glow.setColorAt(0.45, QColor(40, 70, 120, 45));
-        glow.setColorAt(1.0, QColor(15, 25, 50, 0));
+        // Cache scaled pixmap — only re-scale when target size changes
+        if (m_cached.isNull() || m_cachedSize != r.size()) {
+            // Scale: fill (cover) preserving aspect ratio, then crop
+            QPixmap scaled = m_source.scaled(r.size(),
+                Qt::KeepAspectRatioByExpanding,
+                Qt::SmoothTransformation);
+            int sx = (scaled.width()  - r.width())  / 2;
+            int sy = (scaled.height() - r.height()) / 2;
+            m_cached = scaled.copy(sx, sy, r.width(), r.height());
+            m_cachedSize = r.size();
+        }
+
+        p.drawPixmap(r.topLeft(), m_cached);
+
+        // Subtle darkening for text legibility
+        p.fillRect(r, QColor(0, 0, 0, 30));
+
+        // Soft blue glow top-right (matches the wallpaper arcs)
+        QRadialGradient glow(r.width() * 0.85, r.height() * 0.12,
+                             r.width() * 0.55);
+        glow.setColorAt(0.0, QColor(120, 180, 255, 40));
+        glow.setColorAt(1.0, QColor(80, 40, 130, 0));
         p.fillRect(r, glow);
+    }
 
-        // Sweeping arcs — 3 curves with decreasing brightness
-        auto arc = [&](double yFactor, double ampFactor,
-                       const QColor &col, double thickness) {
-            QPainterPath path;
-            double x0 = -r.width() * 0.1;
-            double x3 = r.width() * 1.1;
-            double yBase = r.height() * yFactor;
-            double amp = r.height() * ampFactor;
+private:
+    QPixmap m_source;
+    QPixmap m_cached;
+    QSize   m_cachedSize;
+};
 
-            path.moveTo(x0, yBase);
-            path.cubicTo(
-                r.width() * 0.25, yBase - amp,
-                r.width() * 0.75, yBase + amp * 0.6,
-                x3,                yBase - amp * 0.9
-            );
+// =========================================================
+// Everest — animated dawn mountain scene (light wallpaper)
+// =========================================================
+class EverestWallpaper : public Wallpaper {
+public:
+    EverestWallpaper() { m_phase = 0.0; }
 
-            QPen pen(col, thickness);
-            pen.setCapStyle(Qt::RoundCap);
-            p.setPen(pen);
-            p.setBrush(Qt::NoBrush);
-            p.drawPath(path);
-        };
+    QString id() const override { return "everest"; }
+    QString displayName() const override { return "Everest"; }
+    bool animated() const override { return true; }
 
-        arc(0.72, 0.55, QColor(120, 180, 255, 100), 1.4);
-        arc(0.62, 0.45, QColor(140, 200, 255, 160), 1.6);
-        arc(0.52, 0.38, QColor(160, 210, 255, 200), 1.8);
+    Theme theme() const override {
+        // Light theme — dark text, warm white glass, neutral dark accents
+        Theme t;
+        t.chromeBg      = QColor(252, 250, 246, 135);
+        t.chromeBorder  = QColor(80, 84, 96, 40);
+        t.accent        = QColor(60, 68, 82);
+        t.accentSoft    = QColor(60, 68, 82, 55);
+        t.accentStrong  = QColor(60, 68, 82, 120);
+        t.textPrimary   = QColor(30, 34, 44);
+        t.textSecondary = QColor(72, 80, 96);
+        t.textDim       = QColor(130, 138, 152);
+        t.panelBg       = QColor(250, 248, 246);
+        return t;
+    }
 
-        // Few sparse stars high in the sky
+    void tick() override {
+        m_phase += 0.0035;
+        if (m_phase > 6.2831853) m_phase -= 6.2831853;
+    }
+
+    void paint(QPainter &p, const QRect &r) override {
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setRenderHint(QPainter::SmoothPixmapTransform);
+
+        // ---- Dawn sky ----
+        QLinearGradient sky(0, 0, 0, r.height());
+        sky.setColorAt(0.00, QColor(196, 214, 232));
+        sky.setColorAt(0.30, QColor(232, 218, 202));
+        sky.setColorAt(0.52, QColor(246, 206, 172));
+        sky.setColorAt(0.68, QColor(238, 180, 142));
+        sky.setColorAt(1.00, QColor(198, 148, 118));
+        p.fillRect(r, sky);
+
+        // ---- Sun + halo ----
+        double sunX = r.width()  * (0.70 + std::sin(m_phase) * 0.008);
+        double sunY = r.height() * (0.28 + std::sin(m_phase * 1.3) * 0.006);
+
+        QRadialGradient halo(sunX, sunY, r.width() * 0.32);
+        halo.setColorAt(0.00, QColor(255, 242, 205, 145));
+        halo.setColorAt(0.45, QColor(255, 224, 178, 55));
+        halo.setColorAt(1.00, QColor(255, 210, 160, 0));
+        p.fillRect(r, halo);
+
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(255, 255, 255, 80));
-        for (int i = 0; i < 40; ++i) {
-            int sx = (i * 211) % r.width();
-            int sy = (i * 151) % (r.height() / 3);
-            p.drawEllipse(QPoint(sx, sy), 1, 1);
+        p.setBrush(QColor(255, 246, 224, 235));
+        p.drawEllipse(QPointF(sunX, sunY),
+                      r.width() * 0.036, r.width() * 0.036);
+        p.setBrush(QColor(255, 253, 242, 255));
+        p.drawEllipse(QPointF(sunX, sunY),
+                      r.width() * 0.022, r.width() * 0.022);
+
+        // ---- Mountain layers (far → near) ----
+        struct Layer { double baseY; QColor col; QColor snow; double haze; };
+        const Layer layers[] = {
+            { 0.68, QColor(198, 208, 224), QColor(248, 250, 253), 0.55 },
+            { 0.75, QColor(158, 172, 194), QColor(244, 248, 252), 0.32 },
+            { 0.82, QColor(118, 136, 164), QColor(238, 244, 250), 0.14 },
+            { 0.90, QColor( 72,  92, 128), QColor(230, 236, 246), 0.00 },
+        };
+        for (int i = 0; i < 4; ++i)
+            drawRidge(p, r, layers[i].baseY, layers[i].col,
+                      layers[i].snow, layers[i].haze, i);
+
+        // Gentle warm wash from sun position
+        QRadialGradient wash(sunX, sunY, r.width());
+        wash.setColorAt(0.0, QColor(255, 232, 195, 32));
+        wash.setColorAt(1.0, QColor(255, 210, 160, 0));
+        p.fillRect(r, wash);
+    }
+
+private:
+    void drawRidge(QPainter &p, const QRect &r, double baseY,
+                   const QColor &col, const QColor &snowCol,
+                   double haze, int layerIdx)
+    {
+        const int N = 26;
+        QList<QPointF> pts;
+        pts.reserve(N);
+        for (int i = 0; i < N; ++i) {
+            double t = double(i) / (N - 1);
+            double x = t * r.width();
+
+            double wave =
+                std::sin(t * 9.0  + layerIdx * 1.7) * 0.045
+              + std::sin(t * 3.5  + layerIdx * 2.3) * 0.075;
+            double central =
+                std::exp(-std::pow((t - 0.55) * 4.0, 2.0)) * 0.24;
+            double secondary =
+                std::exp(-std::pow((t - 0.28) * 6.5, 2.0)) * 0.11;
+
+            double h = baseY - wave - central - secondary - layerIdx * 0.025;
+            pts.append(QPointF(x, r.height() * h));
+        }
+
+        QPainterPath path;
+        path.moveTo(pts[0]);
+        for (int i = 1; i < pts.size(); ++i)
+            path.lineTo(pts[i]);
+        path.lineTo(r.width(), r.height());
+        path.lineTo(0, r.height());
+        path.closeSubpath();
+
+        QColor top = col;
+        QColor bot = col.darker(125);
+        QLinearGradient g(0, r.height() * baseY, 0, r.height());
+        g.setColorAt(0.0, top);
+        g.setColorAt(1.0, bot);
+        p.fillPath(path, g);
+
+        // Snow caps at local maxima
+        p.setPen(Qt::NoPen);
+        for (int i = 1; i < pts.size() - 1; ++i) {
+            if (pts[i].y() < pts[i-1].y() && pts[i].y() < pts[i+1].y()) {
+                double capH = 12 + (1.0 - haze) * 22;
+                double capW = 10 + (1.0 - haze) * 10;
+                QPolygonF cap;
+                cap << pts[i]
+                    << QPointF(pts[i].x() - capW, pts[i].y() + capH)
+                    << QPointF(pts[i].x(),        pts[i].y() + capH * 0.55)
+                    << QPointF(pts[i].x() + capW, pts[i].y() + capH);
+                QColor s = snowCol;
+                s.setAlpha(int(200 * (1.0 - haze * 0.55)));
+                p.setBrush(s);
+                p.drawPolygon(cap);
+            }
+        }
+
+        if (haze > 0.0) {
+            QColor hz = QColor(232, 226, 218);
+            hz.setAlpha(int(haze * 95));
+            p.fillPath(path, hz);
         }
     }
+
+    double m_phase = 0.0;
 };
 
 // =========================================================
@@ -575,6 +768,7 @@ public:
         if (id == "starfield")  return new StarfieldWallpaper;
         if (id == "aurora")     return new AuroraWallpaper;
         if (id == "goldengate") return new GoldenGateWallpaper;
+        if (id == "everest")    return new EverestWallpaper;
         return new RubyWallpaper;
     }
 };
@@ -600,22 +794,19 @@ public:
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(0);
 
+        // Header strip (transparent — paintEvent draws background)
         QWidget *header = new QWidget;
         header->setFixedHeight(40);
-        header->setAttribute(Qt::WA_StyledBackground, true);
-        QWidget *body = new QWidget;
-        body->setAttribute(Qt::WA_StyledBackground, true);
+        header->setAttribute(Qt::WA_NoSystemBackground, true);
+        header->setAutoFillBackground(false);
+
         QLabel *dot = new QLabel(QString::fromUtf8("\xE2\x97\x86"));
         QLabel *title = new QLabel(appName);
+
         QPushButton *close = new QPushButton;
         close->setFixedSize(13, 13);
         close->setCursor(Qt::PointingHandCursor);
         QObject::connect(close, &QPushButton::clicked, this, &QWidget::close);
-
-        QLabel *big = new QLabel(appName);
-        big->setAlignment(Qt::AlignCenter);
-        QLabel *sub = new QLabel("running under Apokolips Shell");
-        sub->setAlignment(Qt::AlignCenter);
 
         QHBoxLayout *hLayout = new QHBoxLayout(header);
         hLayout->setContentsMargins(14, 0, 14, 0);
@@ -624,6 +815,15 @@ public:
         hLayout->addWidget(title);
         hLayout->addStretch();
         hLayout->addWidget(close);
+
+        QWidget *body = new QWidget;
+        body->setAttribute(Qt::WA_NoSystemBackground, true);
+        body->setAutoFillBackground(false);
+
+        QLabel *big = new QLabel(appName);
+        big->setAlignment(Qt::AlignCenter);
+        QLabel *sub = new QLabel("running under Apokolips Shell");
+        sub->setAlignment(Qt::AlignCenter);
 
         QVBoxLayout *bodyLayout = new QVBoxLayout(body);
         bodyLayout->setAlignment(Qt::AlignCenter);
@@ -634,19 +834,12 @@ public:
         layout->addWidget(body, 1);
 
         ThemeManager::instance().subscribe(
-            [header, body, dot, title, close, big, sub](const Theme &t) {
-            header->setStyleSheet(QString(
-                "QWidget { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-                "  stop:0 %1, stop:1 %2); }")
-                .arg(rgba(t.chromeBg.lighter(115)),
-                     rgba(t.chromeBg)));
-
-            body->setStyleSheet(QString("QWidget { background: %1; }")
-                .arg(rgba(t.panelBg)));
+            [this, dot, title, close, big, sub](const Theme &t) {
+            m_theme = t;
 
             dot->setStyleSheet(QString(
                 "color: %1; font-size: 14px; background: transparent;")
-                .arg(t.accent.name()));
+                .arg(t.textPrimary.name()));
 
             title->setStyleSheet(QString(
                 "color: %1; font-size: 14px; font-weight: 600;"
@@ -666,8 +859,67 @@ public:
                 "color: %1; font-size: 11px; letter-spacing: 3px;"
                 " margin-top: 8px; background: transparent;")
                 .arg(t.textSecondary.name()));
+
+            update();
         });
     }
+
+protected:
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton) {
+            if (QWindow *wh = window()->windowHandle()) {
+                if (wh->startSystemMove()) { e->accept(); return; }
+            }
+        }
+        QWidget::mousePressEvent(e);
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        // Soft outer shadow — many thin rings
+        p.setPen(Qt::NoPen);
+        for (int i = 14; i >= 1; --i) {
+            QColor sh(0, 0, 0);
+            sh.setAlphaF(0.012);
+            p.setBrush(sh);
+            p.drawRoundedRect(rect().adjusted(-i, -i + 3, i - 1, i + 2),
+                              14 + i, 14 + i);
+        }
+
+        QPainterPath path;
+        path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
+
+        // Body diagonal gradient
+        QColor bodyTop = m_theme.panelBg.lighter(118);
+        QColor bodyBot = m_theme.panelBg.darker(125);
+        QLinearGradient g(rect().topLeft(), rect().bottomRight());
+        g.setColorAt(0.0, bodyTop);
+        g.setColorAt(1.0, bodyBot);
+        p.fillPath(path, g);
+
+        // Header strip on top
+        QPainterPath hdrPath;
+        hdrPath.addRoundedRect(QRect(0, 0, width(), 40), 14, 14);
+        QPainterPath square;
+        square.addRect(QRect(0, 14, width(), 40 - 14));
+        QPainterPath hdrFinal = hdrPath.united(square);
+
+        QColor hdrTop = m_theme.chromeBg.lighter(125);
+        QColor hdrBot = m_theme.chromeBg.lighter(105);
+        QLinearGradient hg(0, 0, 0, 40);
+        hg.setColorAt(0.0, hdrTop);
+        hg.setColorAt(1.0, hdrBot);
+        p.fillPath(hdrFinal, hg);
+
+        // Separator line under header
+        p.setPen(QPen(m_theme.chromeBorder, 1));
+        p.drawLine(0, 40, width(), 40);
+    }
+
+private:
+    Theme m_theme;
 };
 
 // =========================================================
@@ -706,9 +958,24 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        QColor panel = m_theme.panelBg;
-        panel.setAlpha(int(240 * m_slide));
-        p.fillRect(rect(), panel);
+        // Soft left-side shadow — many thin rings
+        p.setPen(Qt::NoPen);
+        for (int i = 12; i >= 1; --i) {
+            QColor sh(0, 0, 0);
+            sh.setAlphaF(0.015 * m_slide);
+            p.setBrush(sh);
+            p.drawRoundedRect(rect().adjusted(-i - 2, -i, 0, i),
+                              14 + i, 14 + i);
+        }
+
+        QColor gTop = m_theme.panelBg.lighter(120);
+        QColor gBot = m_theme.panelBg.darker(130);
+        gTop.setAlpha(int(230 * m_slide));
+        gBot.setAlpha(int(230 * m_slide));
+        QLinearGradient lg(rect().topLeft(), rect().bottomRight());
+        lg.setColorAt(0.0, gTop);
+        lg.setColorAt(1.0, gBot);
+        p.fillRect(rect(), lg);
 
         QColor edge = m_theme.accent;
         edge.setAlpha(int(230 * m_slide));
@@ -846,11 +1113,170 @@ private:
 // =========================================================
 // App launcher
 // =========================================================
+// =========================================================
+// Shell registry — lets child widgets trigger shell actions
+// =========================================================
+namespace ShellRegistry {
+    inline std::function<void()> &launcherToggle() {
+        static std::function<void()> f;
+        return f;
+    }
+    inline std::function<void()> &settingsOpen() {
+        static std::function<void()> f;
+        return f;
+    }
+}
+
+// =========================================================
+// Custom icon set — vector line-art, adapts to theme color
+// =========================================================
+namespace Icons {
+
+static void drawFinder(QPainter &p, const QRectF &r, const QColor &c) {
+    QPen pen(c, r.width() * 0.09, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    p.setPen(pen); p.setBrush(Qt::NoBrush);
+    QPointF ctr = r.center();
+    qreal s = r.width() * 0.36;
+    QPolygonF d;
+    d << QPointF(ctr.x(), ctr.y() - s)
+      << QPointF(ctr.x() + s, ctr.y())
+      << QPointF(ctr.x(), ctr.y() + s)
+      << QPointF(ctr.x() - s, ctr.y());
+    p.drawPolygon(d);
+    qreal yL = ctr.y() + s * 0.38;
+    qreal xH = s * 0.60;
+    p.drawLine(QPointF(ctr.x() - xH, yL), QPointF(ctr.x() + xH, yL));
+}
+
+static void drawLaunchpad(QPainter &p, const QRectF &r, const QColor &c) {
+    QFont f = p.font();
+    f.setPixelSize(int(r.width() * 0.82));
+    f.setWeight(QFont::Light);
+    p.setFont(f);
+    p.setPen(c);
+    p.drawText(r, Qt::AlignCenter, QString::fromUtf8("\xCE\xA9"));
+}
+
+static void drawPhotos(QPainter &p, const QRectF &r, const QColor &c) {
+    QPen pen(c, r.width() * 0.075, Qt::SolidLine, Qt::RoundCap);
+    p.setPen(pen); p.setBrush(Qt::NoBrush);
+    QPointF ctr = r.center();
+    qreal inner = r.width() * 0.05;
+    qreal outer = r.width() * 0.40;
+    for (int i = 0; i < 6; ++i) {
+        double a = i * 60.0 * 3.14159265 / 180.0;
+        double b = a + 0.88;
+        QPointF p1(ctr.x() + std::cos(a) * inner, ctr.y() + std::sin(a) * inner);
+        QPointF p2(ctr.x() + std::cos(b) * outer, ctr.y() + std::sin(b) * outer);
+        p.drawLine(p1, p2);
+    }
+}
+
+static void drawMusic(QPainter &p, const QRectF &r, const QColor &c) {
+    QPen pen(c, r.width() * 0.095, Qt::SolidLine, Qt::RoundCap);
+    p.setPen(pen);
+    qreal base = r.center().y();
+    qreal step = r.width() * 0.145;
+    qreal hs[] = { 0.30, 0.55, 0.72, 0.45 };
+    for (int i = 0; i < 4; ++i) {
+        qreal x = r.center().x() + (i - 1.5) * step;
+        qreal h = r.width() * hs[i] * 0.5;
+        p.drawLine(QPointF(x, base - h), QPointF(x, base + h));
+    }
+}
+
+static void drawNotes(QPainter &p, const QRectF &r, const QColor &c) {
+    qreal w = r.width() * 0.58;
+    qreal h = r.width() * 0.72;
+    QRectF page(r.center().x() - w/2, r.center().y() - h/2, w, h);
+    QPen out(c, r.width() * 0.075, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    p.setPen(out); p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(page, r.width()*0.07, r.width()*0.07);
+    QPen ln(c, r.width() * 0.06, Qt::SolidLine, Qt::RoundCap);
+    p.setPen(ln);
+    qreal xL = page.left() + w * 0.18;
+    qreal xR = page.right() - w * 0.18;
+    qreal y1 = page.top() + h * 0.28;
+    qreal y2 = page.top() + h * 0.50;
+    qreal y3 = page.top() + h * 0.72;
+    p.drawLine(QPointF(xL, y1), QPointF(xR, y1));
+    p.drawLine(QPointF(xL, y2), QPointF(xR, y2));
+    p.drawLine(QPointF(xL, y3), QPointF(xL + (xR - xL) * 0.55, y3));
+}
+
+static void drawMail(QPainter &p, const QRectF &r, const QColor &c) {
+    qreal w = r.width() * 0.74;
+    qreal h = r.width() * 0.52;
+    QRectF body(r.center().x() - w/2, r.center().y() - h/2, w, h);
+    QPen out(c, r.width() * 0.075, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    p.setPen(out); p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(body, r.width()*0.06, r.width()*0.06);
+    QPointF mid(body.center().x(), body.top() + h*0.62);
+    p.drawLine(QPointF(body.left() + w*0.03, body.top() + h*0.12), mid);
+    p.drawLine(QPointF(body.right() - w*0.03, body.top() + h*0.12), mid);
+}
+
+static void drawSettings(QPainter &p, const QRectF &r, const QColor &c) {
+    qreal w = r.width() * 0.66;
+    qreal left = r.center().x() - w/2;
+    qreal right = r.center().x() + w/2;
+    qreal ys[] = { r.center().y() - r.width()*0.24,
+                   r.center().y(),
+                   r.center().y() + r.width()*0.24 };
+    qreal knobPos[] = { 0.30, 0.72, 0.42 };
+    QPen pen(c, r.width() * 0.065, Qt::SolidLine, Qt::RoundCap);
+    for (int i = 0; i < 3; ++i) {
+        p.setPen(pen); p.setBrush(Qt::NoBrush);
+        p.drawLine(QPointF(left, ys[i]), QPointF(right, ys[i]));
+        qreal kx = left + w * knobPos[i];
+        p.setPen(Qt::NoPen); p.setBrush(c);
+        p.drawEllipse(QPointF(kx, ys[i]), r.width()*0.08, r.width()*0.08);
+    }
+}
+
+static void drawPower(QPainter &p, const QRectF &r, const QColor &c) {
+    QPen pen(c, r.width() * 0.10, Qt::SolidLine, Qt::RoundCap);
+    p.setPen(pen); p.setBrush(Qt::NoBrush);
+    qreal s = r.width() * 0.34;
+    QPointF ctr = r.center();
+    QRectF arcR(ctr.x() - s, ctr.y() - s + r.width()*0.04, 2*s, 2*s);
+    p.drawArc(arcR, 45 * 16, 270 * 16);
+    p.drawLine(QPointF(ctr.x(), ctr.y() - s - r.width()*0.04),
+               QPointF(ctr.x(), ctr.y() - r.width()*0.02));
+}
+
+static void drawFor(const QString &name, QPainter &p,
+                    const QRectF &r, const QColor &c) {
+    if (name == "Finder")         drawFinder(p, r, c);
+    else if (name == "Launchpad") drawLaunchpad(p, r, c);
+    else if (name == "Photos")    drawPhotos(p, r, c);
+    else if (name == "Music")     drawMusic(p, r, c);
+    else if (name == "Notes")     drawNotes(p, r, c);
+    else if (name == "Mail")      drawMail(p, r, c);
+    else if (name == "Settings")  drawSettings(p, r, c);
+    else if (name == "Power")     drawPower(p, r, c);
+}
+
+static QPixmap render(const QString &name, int size, const QColor &color) {
+    QPixmap px(size, size);
+    px.fill(Qt::transparent);
+    QPainter p(&px);
+    p.setRenderHint(QPainter::Antialiasing);
+    drawFor(name, p, QRectF(0, 0, size, size), color);
+    p.end();
+    return px;
+}
+
+} // namespace Icons
+
 class AppLauncher : public QWidget {
 public:
     explicit AppLauncher(QWidget *parent = nullptr) : QWidget(parent) {
         setFocusPolicy(Qt::StrongFocus);
-        setAttribute(Qt::WA_OpaquePaintEvent, true);
+        // Translucent — only the panel area is painted; the rest lets
+        // the wallpaper underneath show through.
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAttribute(Qt::WA_TranslucentBackground, true);
         buildUi();
 
         m_animTimer = new QTimer(this);
@@ -875,48 +1301,37 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        QColor backdrop(6, 4, 10);
-        backdrop.setAlphaF(0.90 * m_opacity);
-        p.fillRect(rect(), backdrop);
-
-        QColor g1 = m_theme.accent; g1.setAlphaF(0.30 * m_opacity);
-        QColor g2 = m_theme.accent; g2.setAlphaF(0.0);
-        QRadialGradient glow(width() * 0.5, height() * 0.35, width() * 0.5);
-        glow.setColorAt(0.0, g1);
-        glow.setColorAt(1.0, g2);
-        p.fillRect(rect(), glow);
-
         QRect panelRect((width() - PANEL_W) / 2, 120, PANEL_W, PANEL_H);
-        for (int i = 6; i >= 1; --i) {
+
+        // ---- Soft edge: many thin rings = smooth fade ----
+        p.setPen(Qt::NoPen);
+        for (int i = 14; i >= 1; --i) {
             QColor sh(0, 0, 0);
-            sh.setAlphaF(0.06 * m_opacity);
-            p.setPen(Qt::NoPen);
+            sh.setAlphaF(0.012 * m_opacity);
             p.setBrush(sh);
-            p.drawRoundedRect(
-                panelRect.adjusted(-i*2, -i*2 + 6, i*2, i*2 + 6),
-                22 + i, 22 + i);
+            p.drawRoundedRect(panelRect.adjusted(-i, -i + 3, i, i + 3),
+                              22 + i, 22 + i);
         }
 
+        // ---- Heavy blur through the panel (glassy) ----
         const QPixmap &bg = ThemeManager::instance().blurredBg();
         if (!bg.isNull()) {
             QPainterPath panelPath;
             panelPath.addRoundedRect(panelRect, 22, 22);
             p.save();
             p.setClipPath(panelPath);
-            QColor dim(0, 0, 0);
-            dim.setAlphaF(0.35 * m_opacity);
-            p.fillRect(panelRect, dim);
-            p.setOpacity(0.55 * m_opacity);
+            p.setOpacity(0.85 * m_opacity);
             p.drawPixmap(panelRect, bg, panelRect);
-            p.setOpacity(1.0);
             p.restore();
         }
+
+        // ---- Very light tint so tiles stay legible ----
         QColor panel = m_theme.panelBg;
-        panel.setAlpha(int(170 * m_opacity));
+        panel.setAlpha(int(80 * m_opacity));
         p.setBrush(panel);
-        QColor border = m_theme.accent;
-        border.setAlphaF(0.40 * m_opacity);
-        p.setPen(QPen(border, 1));
+        QColor edge = m_theme.chromeBorder;
+        edge.setAlpha(int(edge.alpha() * m_opacity));
+        p.setPen(QPen(edge, 1));
         p.drawRoundedRect(panelRect, 22, 22);
     }
 
@@ -971,40 +1386,39 @@ private:
     }
 
     void restyleTiles() {
+        QColor tileBg      = m_theme.textPrimary; tileBg.setAlpha(25);
+        QColor tileHover   = m_theme.textPrimary; tileHover.setAlpha(55);
+        QColor tilePressed = m_theme.textPrimary; tilePressed.setAlpha(90);
+        QString textColor  = m_theme.textPrimary.name();
+
+        QString css = QString(
+            "QPushButton {"
+            "  background: %1;"
+            "  border: none;"
+            "  border-radius: 16px;"
+            "  color: %2;"
+            "  padding-bottom: 10px;"
+            "}"
+            "QPushButton:hover {"
+            "  background: %3;"
+            "  border: none;"
+            "}"
+            "QPushButton:pressed {"
+            "  background: %4;"
+            "}")
+            .arg(rgba(tileBg))
+            .arg(textColor)
+            .arg(rgba(tileHover))
+            .arg(rgba(tilePressed));
+
         for (QPushButton *tile : m_tiles) {
-            QString appName = tile->property("appName").toString();
-            Q_UNUSED(appName);
-            tile->setStyleSheet(QString(
-                "QPushButton {"
-                "  background: %1;"
-                "  border: none;"
-                "  border-radius: 16px;"
-                "  color: %3;"
-                "  padding-bottom: 10px;"
-                "}"
-                "QPushButton:hover {"
-                "  background: %4;"
-                "  border: none;"
-                "}"
-                "QPushButton:pressed {"
-                "  background: %6;"
-                "}")
-                .arg(rgba(QColor(0, 0, 0, 60)),
-                     rgba(m_theme.accentSoft),
-                     m_theme.textPrimary.name(),
-                     rgba(QColor(255, 255, 255, 40)),
-                     rgba(m_theme.accent),
-                     rgba(m_theme.accentStrong)));
+            tile->setStyleSheet(css);
         }
-        for (QLabel *l : m_iconLabels) {
-            l->setStyleSheet(QString(
-                "font-size: 38px; color: %1; background: transparent;")
-                .arg(m_theme.accent.name()));
-        }
+
         for (QLabel *l : m_nameLabels) {
             l->setStyleSheet(QString(
                 "font-size: 12px; color: %1; background: transparent;")
-                .arg(m_theme.textPrimary.name()));
+                .arg(textColor));
         }
     }
 
@@ -1069,10 +1483,31 @@ private:
         v->setContentsMargins(8, 14, 8, 10);
         v->setSpacing(6);
 
-        QLabel *ic = new QLabel(icon);
-        ic->setAlignment(Qt::AlignCenter);
-        ic->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        v->addWidget(ic);
+        // Custom vector icon widget (replaces old emoji label)
+        class TileIcon : public QWidget {
+        public:
+            TileIcon(const QString &iconName, QWidget *parent = nullptr)
+                : QWidget(parent), m_name(iconName) {
+                setFixedSize(52, 52);
+                setAttribute(Qt::WA_TransparentForMouseEvents, true);
+                ThemeManager::instance().subscribe([this](const Theme &t) {
+                    m_color = t.textPrimary;
+                    update();
+                });
+            }
+        protected:
+            void paintEvent(QPaintEvent *) override {
+                QPainter p(this);
+                p.setRenderHint(QPainter::Antialiasing);
+                Icons::drawFor(m_name, p, QRectF(rect()), m_color);
+            }
+        private:
+            QString m_name;
+            QColor  m_color = QColor(230, 230, 240);
+        };
+
+        TileIcon *ic = new TileIcon(name);
+        v->addWidget(ic, 0, Qt::AlignHCenter);
 
         QLabel *nm = new QLabel(name);
         nm->setAlignment(Qt::AlignCenter);
@@ -1080,8 +1515,8 @@ private:
         v->addWidget(nm);
 
         m_tiles.append(tile);
-        m_iconLabels.append(ic);
         m_nameLabels.append(nm);
+        // m_iconLabels no longer used — vector icons self-style
 
         QString appName = name;
         int offset = index;
@@ -1090,6 +1525,8 @@ private:
             QStringList args;
             if (appName == "Settings")
                 args = { "--settings" };
+            else if (appName == "Finder")
+                args = { "--files" };
             else
                 args = { "--demo", appName, QString::number(offset) };
             QProcess::startDetached(
@@ -1116,6 +1553,7 @@ private:
 // =========================================================
 // DockIcon + Dock
 // =========================================================
+
 class DockIcon : public QWidget {
 public:
     DockIcon(const QString &icon, const QString &name, int index,
@@ -1160,16 +1598,15 @@ protected:
 
         int boost = int(qBound(0.0, (m_current - 1.0) / 0.42, 1.0) * 90);
 
-        // Softer gradient — dialed back from 150/150, diagonal flow
-        QColor top = m_theme.accentSoft.lighter(120);
+        // Vertical light-to-dark: brighter on top, darker at bottom
+        QColor top = m_theme.accentSoft.lighter(180);
         QColor mid = m_theme.accentSoft;
-        QColor bot = m_theme.accentSoft.darker(130);
-        top.setAlpha(qMin(255, top.alpha() + boost + 20));
-        mid.setAlpha(qMin(255, mid.alpha() + boost));
-        bot.setAlpha(qMin(255, bot.alpha() + boost - 15));
+        QColor bot = m_theme.accentSoft.darker(200);
+        top.setAlpha(qMin(255, top.alpha() + boost + 30));
+        mid.setAlpha(qMin(255, mid.alpha() + boost + 5));
+        bot.setAlpha(qMin(255, bot.alpha() + boost - 20));
 
-        // Diagonal: top-left → bottom-right
-        QLinearGradient grad(x, y, x + visual, y + visual);
+        QLinearGradient grad(x, y, x, y + visual);
         grad.setColorAt(0.0, top);
         grad.setColorAt(0.5, mid);
         grad.setColorAt(1.0, bot);
@@ -1181,11 +1618,10 @@ protected:
         p.setPen(QPen(br, 1));
         p.drawRoundedRect(x, y, visual, visual, radius, radius);
 
-        QFont f = font();
-        f.setPixelSize(int(visual * 0.44));
-        p.setFont(f);
-        p.setPen(m_theme.textPrimary);
-        p.drawText(QRect(x, y, visual, visual), Qt::AlignCenter, m_icon);
+        // Vector icon, centered in the rounded rect
+        QRectF iconRect(x + visual * 0.17, y + visual * 0.17,
+                        visual * 0.66, visual * 0.66);
+        Icons::drawFor(m_name, p, iconRect, m_theme.textPrimary);
 
         // Running indicator dot under the icon
         if (m_running) {
@@ -1195,19 +1631,86 @@ protected:
         }
     }
 
+    void launchApp() {
+        // Map dock icon -> real program to run
+        QString program;
+        QStringList args;
+
+        if (m_name == "Finder") {
+            // Our own FileExplorer
+            program = QCoreApplication::applicationFilePath();
+            args = { "--files" };
+        } else if (m_name == "Launchpad") {
+            // In-process: trigger the shell's own launcher overlay
+            if (ShellRegistry::launcherToggle()) {
+                ShellRegistry::launcherToggle()();
+            }
+            return;
+        } else if (m_name == "Settings") {
+            program = QCoreApplication::applicationFilePath();
+            args = { "--settings" };
+        } else if (m_name == "Photos") {
+            program = "eog";
+        } else if (m_name == "Music") {
+            program = "totem";
+        } else if (m_name == "Notes") {
+            program = "gnome-text-editor";
+        } else if (m_name == "Mail") {
+            program = "thunderbird";
+        } else if (m_name == "Power") {
+            // Menu is handled separately below
+            return;
+        } else {
+            program = QCoreApplication::applicationFilePath();
+            args = { "--demo", m_name, QString::number(m_index) };
+        }
+
+        QProcess::startDetached(program, args, QString(), &m_pid);
+        m_running = true;
+        update();
+    }
+
+    void showPowerMenu(QPoint globalPos) {
+        const Theme &t = ThemeManager::instance().current();
+        QMenu m(this);
+        m.setStyleSheet(QString(
+            "QMenu { background: %1; border: 1px solid %2;"
+            "  border-radius: 8px; padding: 5px; color: %3;"
+            "  font-size: 12px; }"
+            "QMenu::item { padding: 6px 18px; border-radius: 5px; }"
+            "QMenu::item:selected { background: %4; }")
+            .arg(rgba(t.panelBg), rgba(t.chromeBorder),
+                 t.textPrimary.name(), rgba(t.accentSoft)));
+
+        QAction *lock    = m.addAction("Lock Screen");
+        QAction *suspend = m.addAction("Suspend");
+        m.addSeparator();
+        QAction *reboot  = m.addAction("Restart…");
+        QAction *shutdn  = m.addAction("Shut Down…");
+
+        QObject::connect(lock, &QAction::triggered, []() {
+            QProcess::startDetached("loginctl", { "lock-session" });
+        });
+        QObject::connect(suspend, &QAction::triggered, []() {
+            QProcess::startDetached("systemctl", { "suspend" });
+        });
+        QObject::connect(reboot, &QAction::triggered, []() {
+            QProcess::startDetached("systemctl", { "reboot" });
+        });
+        QObject::connect(shutdn, &QAction::triggered, []() {
+            QProcess::startDetached("systemctl", { "poweroff" });
+        });
+
+        m.exec(globalPos);
+    }
+
     void mousePressEvent(QMouseEvent *e) override {
         if (e->button() == Qt::LeftButton) {
-            QStringList args;
-            if (m_name == "Settings")
-                args = { "--settings" };
-            else
-                args = { "--demo", m_name, QString::number(m_index) };
-
-            QProcess::startDetached(
-                QCoreApplication::applicationFilePath(),
-                args, QString(), &m_pid);
-            m_running = true;
-            update();
+            if (m_name == "Power") {
+                showPowerMenu(e->globalPosition().toPoint());
+            } else {
+                launchApp();
+            }
         } else if (e->button() == Qt::RightButton) {
             const Theme &t = ThemeManager::instance().current();
             QMenu m(this);
@@ -1234,16 +1737,7 @@ protected:
                 QAction *launchAct = m.addAction(
                     QString("Open %1").arg(m_name));
                 QObject::connect(launchAct, &QAction::triggered, [this]() {
-                    QStringList args;
-                    if (m_name == "Settings")
-                        args = { "--settings" };
-                    else
-                        args = { "--demo", m_name, QString::number(m_index) };
-                    QProcess::startDetached(
-                        QCoreApplication::applicationFilePath(),
-                        args, QString(), &m_pid);
-                    m_running = true;
-                    update();
+                    launchApp();
                 });
             }
             m.exec(e->globalPosition().toPoint());
@@ -1341,6 +1835,11 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override {
         m_cursorX  = e->position().x();
         m_hasCursor = true;
+        if (!m_debugOnce) {
+            qDebug() << "[dock] first mouseMove at x=" << m_cursorX
+                     << "y=" << e->position().y();
+            m_debugOnce = true;
+        }
     }
     void leaveEvent(QEvent *) override { m_hasCursor = false; }
 
@@ -1376,6 +1875,7 @@ private:
     QTimer *m_pollTimer = nullptr;
     qreal m_cursorX = 0;
     bool  m_hasCursor = false;
+    bool  m_debugOnce = false;
     Theme m_theme;
 };
 
@@ -1488,6 +1988,16 @@ protected:
         p.setRenderHint(QPainter::Antialiasing);
         QRect r = rect().adjusted(0, 0, -1, -1);
 
+        // Soft outer shadow — many thin rings
+        p.setPen(Qt::NoPen);
+        for (int i = 14; i >= 1; --i) {
+            QColor sh(0, 0, 0);
+            sh.setAlphaF(0.012);
+            p.setBrush(sh);
+            p.drawRoundedRect(r.adjusted(-i, -i + 3, i, i + 3),
+                              16 + i, 16 + i);
+        }
+
         QPainterPath path;
         path.addRoundedRect(r, 16, 16);
 
@@ -1502,11 +2012,15 @@ protected:
             p.restore();
         }
 
-        QColor panel = m_theme.panelBg;
-        panel.setAlpha(int(vc.controlCenterAlpha * m_slide));
-        p.setBrush(panel);
+        QColor gTop = m_theme.panelBg.lighter(120);
+        QColor gBot = m_theme.panelBg.darker(130);
+        gTop.setAlpha(int(vc.controlCenterAlpha * m_slide));
+        gBot.setAlpha(int(vc.controlCenterAlpha * m_slide));
+        QLinearGradient lg(r.topLeft(), r.bottomRight());
+        lg.setColorAt(0.0, gTop);
+        lg.setColorAt(1.0, gBot);
+        p.setBrush(lg);
         QColor border = m_theme.chromeBorder;
-        border.setAlpha(int(140 * m_slide));
         p.setPen(QPen(border, 1));
         p.drawPath(path);
     }
@@ -1759,6 +2273,458 @@ private:
 };
 
 // =========================================================
+// File Explorer — translucent macOS-style file browser
+// =========================================================
+class FileExplorer : public QWidget {
+public:
+    explicit FileExplorer(QWidget *parent = nullptr) : QWidget(parent) {
+        setWindowFlags(Qt::FramelessWindowHint);
+        setWindowTitle("Files");
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        resize(900, 560);
+
+        if (QScreen *s = QApplication::primaryScreen())
+            move(s->availableGeometry().center() - QPoint(450, 280));
+
+        // Render the current wallpaper, blurred, as glass backdrop
+        buildBlurredBackdrop();
+
+        buildUi();
+
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_theme = t;
+            restyleAll();
+            update();
+        });
+
+        show();
+        update();
+        const QString startPath = QDir::homePath();
+        qDebug() << "[finder] ctor done, home=" << startPath
+                 << "homeExists=" << QFileInfo(startPath).isDir();
+        QTimer::singleShot(600, this, [this, startPath]() {
+            qDebug() << "[finder] timer fired, calling navigateTo";
+            navigateTo(startPath);
+        });
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton) {
+            if (QWindow *wh = window()->windowHandle()) {
+                if (wh->startSystemMove()) { e->accept(); return; }
+            }
+        }
+        QWidget::mousePressEvent(e);
+    }
+
+    void buildBlurredBackdrop() {
+        Wallpaper *wp = WallpaperConfig::makeById(WallpaperConfig::loadId());
+        if (!wp) return;
+        const int DOWN = 8;
+        QImage small(qMax(1, width()/DOWN), qMax(1, height()/DOWN),
+                     QImage::Format_ARGB32_Premultiplied);
+        small.fill(Qt::transparent);
+        QPainter p(&small);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.scale(1.0/DOWN, 1.0/DOWN);
+        wp->paint(p, QRect(0, 0, width(), height()));
+        p.end();
+        m_blurredBg = QPixmap::fromImage(
+            small.scaled(size(), Qt::IgnoreAspectRatio,
+                         Qt::SmoothTransformation));
+        delete wp;
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        QRect frameRect = rect().adjusted(0, 0, -1, -1);
+        QPainterPath path;
+        path.addRoundedRect(frameRect, 14, 14);
+
+        // ---- Unified soft edge: many thin rings = smooth fade ----
+        p.setPen(Qt::NoPen);
+        for (int i = 14; i >= 1; --i) {
+            QColor sh(0, 0, 0);
+            sh.setAlphaF(0.012);
+            p.setBrush(sh);
+            p.drawRoundedRect(frameRect.adjusted(-i, -i + 3, i, i + 3),
+                              14 + i, 14 + i);
+        }
+
+        // ---- Blurred wallpaper as glass backdrop ----
+        if (!m_blurredBg.isNull()) {
+            p.save();
+            p.setClipPath(path);
+            p.setOpacity(0.85);
+            p.drawPixmap(rect(), m_blurredBg);
+            p.restore();
+        }
+
+        // ---- Tint from config (user tunable in Settings) ----
+        const auto &vc = VisualConfigManager::instance().cfg();
+        QColor tint = m_theme.panelBg;
+        tint.setAlpha(vc.finderAlpha);
+        p.setBrush(tint);
+        QColor edge = m_theme.chromeBorder;
+        p.setPen(QPen(edge, 1));
+        p.drawPath(path);
+
+        // ---- Header strip: slightly stronger tint ----
+        QPainterPath hdrPath;
+        hdrPath.addRoundedRect(QRect(0, 0, width(), 48), 14, 14);
+        QPainterPath squareBottom;
+        squareBottom.addRect(QRect(0, 14, width(), 34));
+        QPainterPath hdrFinal = hdrPath.united(squareBottom);
+
+        QColor hdrTint = m_theme.chromeBg;
+        hdrTint.setAlpha(160);
+        p.fillPath(hdrFinal, hdrTint);
+
+        // ---- Separators ----
+        p.setPen(QPen(m_theme.chromeBorder, 1));
+        p.drawLine(0, 48, width(), 48);
+        if (m_sidebar)
+            p.drawLine(m_sidebar->width(), 48,
+                       m_sidebar->width(), height() - 1);
+    }
+
+private:
+    static void flog(const QString &msg) {
+        QFile f("/tmp/finder.log");
+        if (f.open(QIODevice::Append | QIODevice::Text)) {
+            f.write((QDateTime::currentDateTime()
+                     .toString("HH:mm:ss.zzz ")).toUtf8());
+            f.write(msg.toUtf8());
+            f.write("\n");
+        }
+    }
+
+    void buildUi() {
+        // Cage sessions have no XDG settings daemon, so QIcon theme lookup
+        // fails. Point Qt at standard icon directories and pick Adwaita.
+        QIcon::setThemeSearchPaths({
+            "/usr/share/icons",
+            "/usr/local/share/icons",
+            QDir::homePath() + "/.icons",
+            QDir::homePath() + "/.local/share/icons"
+        });
+        QIcon::setThemeName("Adwaita");
+
+        QVBoxLayout *root = new QVBoxLayout(this);
+        root->setContentsMargins(0, 0, 0, 0);
+        root->setSpacing(0);
+
+        // ---- Header strip: traffic lights + title ----
+        m_header = new QWidget;
+        m_header->setFixedHeight(30);
+        m_header->setAttribute(Qt::WA_NoSystemBackground, true);
+        QHBoxLayout *hh = new QHBoxLayout(m_header);
+        hh->setContentsMargins(14, 0, 14, 0);
+        hh->setSpacing(8);
+
+        auto makeLight = [](const QString &idle, const QString &hover) {
+            QPushButton *b = new QPushButton;
+            b->setFixedSize(13, 13);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setStyleSheet(QString(
+                "QPushButton { background: %1;"
+                "  border: 1px solid rgba(0,0,0,60); border-radius: 6px; }"
+                "QPushButton:hover { background: %2; }").arg(idle, hover));
+            return b;
+        };
+        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
+        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
+        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
+        QObject::connect(closeBtn, &QPushButton::clicked,
+                         [this]() { close(); deleteLater(); });
+        QObject::connect(minBtn, &QPushButton::clicked,
+                         [this]() { hide(); });
+        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
+            static bool zoomed = false;
+            QSize sz = zoomed ? QSize(900, 560) : QSize(1150, 720);
+            zoomed = !zoomed;
+            resize(sz);
+            if (QScreen *s = QApplication::primaryScreen())
+                move(s->availableGeometry().center()
+                     - QPoint(sz.width()/2, sz.height()/2));
+        });
+        hh->addWidget(closeBtn);
+        hh->addWidget(minBtn);
+        hh->addWidget(maxBtn);
+        hh->addSpacing(12);
+
+        m_title = new QLabel("Files");
+        hh->addWidget(m_title);
+        hh->addStretch();
+        root->addWidget(m_header);
+
+        // ---- Toolbar: nav + breadcrumb + search ----
+        m_toolbar = new QWidget;
+        m_toolbar->setFixedHeight(46);
+        m_toolbar->setAttribute(Qt::WA_NoSystemBackground, true);
+        QHBoxLayout *th = new QHBoxLayout(m_toolbar);
+        th->setContentsMargins(16, 8, 16, 8);
+        th->setSpacing(8);
+
+        auto mkNavBtn = [this](const QString &glyph) {
+            QPushButton *b = new QPushButton(glyph);
+            b->setFixedSize(28, 28);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setFlat(true);
+            m_navButtons.append(b);
+            return b;
+        };
+        m_backBtn = mkNavBtn(QString::fromUtf8("\xE2\x86\x90"));
+        m_fwdBtn  = mkNavBtn(QString::fromUtf8("\xE2\x86\x92"));
+        m_upBtn   = mkNavBtn(QString::fromUtf8("\xE2\x86\x91"));
+
+        QObject::connect(m_backBtn, &QPushButton::clicked, [this]() { goBack(); });
+        QObject::connect(m_fwdBtn,  &QPushButton::clicked, [this]() { goForward(); });
+        QObject::connect(m_upBtn,   &QPushButton::clicked, [this]() {
+            QDir d(m_currentPath);
+            if (d.cdUp()) navigateTo(d.absolutePath());
+        });
+
+        th->addWidget(m_backBtn);
+        th->addWidget(m_fwdBtn);
+        th->addWidget(m_upBtn);
+        th->addSpacing(10);
+
+        m_breadcrumb = new QLabel;
+        m_breadcrumb->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        th->addWidget(m_breadcrumb, 1);
+
+        m_search = new QLineEdit;
+        m_search->setPlaceholderText("Search");
+        m_search->setFixedWidth(180);
+        m_search->setAttribute(Qt::WA_MacShowFocusRect, false);
+        QObject::connect(m_search, &QLineEdit::textChanged, [this](const QString &s) {
+            if (s.isEmpty()) {
+                m_proxy->setFilterFixedString("");
+            } else {
+                m_proxy->setFilterFixedString(s);
+            }
+        });
+        th->addWidget(m_search);
+
+        root->addWidget(m_toolbar);
+
+        // ---- Body: sidebar + file view ----
+        QHBoxLayout *body = new QHBoxLayout;
+        body->setContentsMargins(0, 0, 0, 0);
+        body->setSpacing(0);
+
+        m_sidebar = new QWidget;
+        m_sidebar->setFixedWidth(170);
+        m_sidebar->setAttribute(Qt::WA_NoSystemBackground, true);
+        QVBoxLayout *sb = new QVBoxLayout(m_sidebar);
+        sb->setContentsMargins(10, 12, 10, 12);
+        sb->setSpacing(3);
+
+        struct Place { const char *icon; const char *name; const char *path; };
+        QString home = QDir::homePath();
+        const Place places[] = {
+            { "\xF0\x9F\x8F\xA0", "Home",      "%HOME%"      },
+            { "\xF0\x9F\x96\xA5", "Desktop",   "%HOME%/Desktop" },
+            { "\xF0\x9F\x93\x84", "Documents", "%HOME%/Documents" },
+            { "\xE2\xAC\x87",     "Downloads", "%HOME%/Downloads" },
+            { "\xF0\x9F\x8E\xB5", "Music",     "%HOME%/Music" },
+            { "\xF0\x9F\x96\xBC", "Pictures",  "%HOME%/Pictures" },
+            { "\xF0\x9F\x8E\xAC", "Videos",    "%HOME%/Videos" },
+        };
+        for (const auto &p : places) {
+            QString path = QString(p.path).replace("%HOME%", home);
+            QPushButton *b = new QPushButton(
+                QString("%1  %2").arg(QString::fromUtf8(p.icon), p.name));
+            b->setCursor(Qt::PointingHandCursor);
+            b->setFlat(true);
+            b->setStyleSheet("");  // styled in restyleAll
+            m_placeButtons.append(b);
+            sb->addWidget(b);
+            QObject::connect(b, &QPushButton::clicked,
+                             [this, path]() { navigateTo(path); });
+        }
+        sb->addStretch();
+
+        // ---- File view ----
+        m_fs = new QFileSystemModel(this);
+        m_fs->setRootPath(QDir::homePath());
+        m_fs->setFilter(QDir::AllEntries | QDir::NoDotAndDotDot);
+        m_fs->setReadOnly(true);
+
+        m_proxy = new QSortFilterProxyModel(this);
+        m_proxy->setSourceModel(m_fs);
+        m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
+
+        m_view = new QListView;
+        m_view->setModel(m_proxy);
+        m_view->setViewMode(QListView::IconMode);
+        m_view->setIconSize(QSize(56, 56));
+        m_view->setGridSize(QSize(140, 120));
+        m_view->setTextElideMode(Qt::ElideMiddle);
+        m_view->setWordWrap(true);
+        m_view->setResizeMode(QListView::Adjust);
+        m_view->setMovement(QListView::Static);
+        m_view->setWordWrap(true);
+        m_view->setUniformItemSizes(true);
+        m_view->setSelectionMode(QAbstractItemView::SingleSelection);
+        m_view->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        m_view->setFrameShape(QFrame::NoFrame);
+
+        QObject::connect(m_view, &QListView::doubleClicked,
+                         [this](const QModelIndex &idx) {
+            flog(QString("doubleClicked valid=%1").arg(idx.isValid()));
+            QModelIndex srcIdx = m_proxy->mapToSource(idx);
+            QString path = m_fs->filePath(srcIdx);
+            QFileInfo fi(path);
+            flog(QString("  -> path=%1 isDir=%2").arg(path).arg(fi.isDir()));
+            if (fi.isDir()) navigateTo(path);
+        });
+
+        // Also log single-click for diagnostics
+        QObject::connect(m_view, &QListView::clicked,
+                         [this](const QModelIndex &idx) {
+            flog(QString("clicked valid=%1").arg(idx.isValid()));
+        });
+
+        body->addWidget(m_sidebar);
+        body->addWidget(m_view, 1);
+        root->addLayout(body, 1);
+    }
+
+    void navigateTo(const QString &path) {
+        QFileInfo fi(path);
+        flog(QString("navigateTo path=%1 exists=%2 isDir=%3")
+             .arg(path)
+             .arg(fi.exists())
+             .arg(fi.isDir()));
+        if (!fi.exists() || !fi.isDir()) return;
+
+        if (!m_currentPath.isEmpty() && m_currentPath != path) {
+            m_history = m_history.mid(0, m_historyIndex + 1);
+            m_history.append(path);
+            m_historyIndex = m_history.size() - 1;
+        } else if (m_history.isEmpty()) {
+            m_history.append(path);
+            m_historyIndex = 0;
+        }
+
+        m_currentPath = path;
+        m_view->setRootIndex(m_proxy->mapFromSource(m_fs->index(path)));
+        m_breadcrumb->setText(shortenPath(path));
+        updateNavButtons();
+    }
+
+    void goBack() {
+        if (m_historyIndex <= 0) return;
+        --m_historyIndex;
+        m_currentPath = m_history[m_historyIndex];
+        m_view->setRootIndex(m_proxy->mapFromSource(
+            m_fs->index(m_currentPath)));
+        m_breadcrumb->setText(shortenPath(m_currentPath));
+        updateNavButtons();
+    }
+
+    void goForward() {
+        if (m_historyIndex >= m_history.size() - 1) return;
+        ++m_historyIndex;
+        m_currentPath = m_history[m_historyIndex];
+        m_view->setRootIndex(m_proxy->mapFromSource(
+            m_fs->index(m_currentPath)));
+        m_breadcrumb->setText(shortenPath(m_currentPath));
+        updateNavButtons();
+    }
+
+    void updateNavButtons() {
+        m_backBtn->setEnabled(m_historyIndex > 0);
+        m_fwdBtn->setEnabled(m_historyIndex < m_history.size() - 1);
+    }
+
+    QString shortenPath(const QString &p) const {
+        QString home = QDir::homePath();
+        if (p.startsWith(home)) return "~" + p.mid(home.size());
+        return p;
+    }
+
+    void restyleAll() {
+        const Theme &t = m_theme;
+
+        m_title->setStyleSheet(QString(
+            "color: %1; font-size: 13px; font-weight: 600;"
+            " background: transparent;").arg(t.textPrimary.name()));
+
+        m_breadcrumb->setStyleSheet(QString(
+            "color: %1; font-size: 13px; background: transparent;")
+            .arg(t.textPrimary.name()));
+
+        m_search->setStyleSheet(QString(
+            "QLineEdit { background: %1; color: %2; border: none;"
+            "  border-radius: 8px; padding: 5px 10px; font-size: 12px; }"
+            "QLineEdit:focus { background: %3; }")
+            .arg(rgba(t.chromeBg.lighter(130)),
+                 t.textPrimary.name(),
+                 rgba(t.chromeBg.lighter(150))));
+
+        for (QPushButton *b : m_navButtons) {
+            b->setStyleSheet(QString(
+                "QPushButton { color: %1; background: transparent;"
+                "  border: none; font-size: 15px; border-radius: 6px; }"
+                "QPushButton:hover { background: %2; }"
+                "QPushButton:disabled { color: %3; }")
+                .arg(t.textPrimary.name(),
+                     rgba(t.accentSoft),
+                     t.textDim.name()));
+        }
+
+        for (QPushButton *b : m_placeButtons) {
+            b->setStyleSheet(QString(
+                "QPushButton { text-align: left; padding: 6px 10px;"
+                "  color: %1; background: transparent; border: none;"
+                "  border-radius: 8px; font-size: 13px; }"
+                "QPushButton:hover { background: %2; color: %3; }")
+                .arg(t.textSecondary.name(),
+                     rgba(t.accentSoft),
+                     t.textPrimary.name()));
+        }
+
+        m_view->setStyleSheet(QString(
+            "QListView { background: transparent; border: none;"
+            "  padding: 12px; color: %1; font-size: 12px; }"
+            "QListView::item { padding: 8px; border-radius: 8px; }"
+            "QListView::item:hover { background: %2; }"
+            "QListView::item:selected { background: %3; color: %4; }")
+            .arg(t.textPrimary.name(),
+                 rgba(t.accentSoft),
+                 rgba(t.accent),
+                 t.textPrimary.name()));
+    }
+
+    Theme m_theme;
+    QPixmap m_blurredBg;
+    QWidget *m_header = nullptr;
+    QWidget *m_toolbar = nullptr;
+    QWidget *m_sidebar = nullptr;
+    QLabel *m_title = nullptr;
+    QLabel *m_breadcrumb = nullptr;
+    QLineEdit *m_search = nullptr;
+    QPushButton *m_backBtn = nullptr;
+    QPushButton *m_fwdBtn = nullptr;
+    QPushButton *m_upBtn = nullptr;
+    QListView *m_view = nullptr;
+    QFileSystemModel *m_fs = nullptr;
+    QSortFilterProxyModel *m_proxy = nullptr;
+    QList<QPushButton *> m_navButtons;
+    QList<QPushButton *> m_placeButtons;
+    QString m_currentPath;
+    QStringList m_history;
+    int m_historyIndex = -1;
+};
+
+// =========================================================
 // Settings window
 // =========================================================
 class SettingsWindow : public QWidget {
@@ -1798,12 +2764,18 @@ protected:
         path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
 
         // Full window background (header strip + main body)
-        QColor bodyCol = m_theme.panelBg;
-        bodyCol.setAlpha(235);
+        QColor bodyTop = m_theme.panelBg.lighter(118);
+        QColor bodyBot = m_theme.panelBg.darker(125);
+        bodyTop.setAlpha(235);
+        bodyBot.setAlpha(235);
+
+        QLinearGradient bodyGrad(rect().topLeft(), rect().bottomRight());
+        bodyGrad.setColorAt(0.0, bodyTop);
+        bodyGrad.setColorAt(1.0, bodyBot);
+        p.fillPath(path, bodyGrad);
+
         QColor hdrCol = m_theme.chromeBg.lighter(115);
         hdrCol.setAlpha(235);
-
-        p.fillPath(path, bodyCol);
 
         // Header strip on top with rounded top corners
         QPainterPath hdrPath;
@@ -1970,6 +2942,30 @@ private:
                 [pct](VisualConfig &c) { c.widgetCardAlpha = pct; });
         });
 
+        addSlider(v, "Finder opacity", vc.finderAlpha, 0, 255,
+                  [](int pct) {
+            VisualConfigManager::instance().setAndSave(
+                [pct](VisualConfig &c) { c.finderAlpha = pct; });
+        });
+
+        v->addSpacing(24);
+        QPushButton *resetBtn = new QPushButton("Reset to Defaults");
+        resetBtn->setCursor(Qt::PointingHandCursor);
+        resetBtn->setFixedHeight(38);
+        QObject::connect(resetBtn, &QPushButton::clicked, [this]() {
+            VisualConfigManager::instance().resetToDefaults();
+            auto &c = VisualConfigManager::instance().cfg();
+            if (m_sliders.size() >= 6) {
+                m_sliders[0]->setValue(int(c.blurStrength * 100));
+                m_sliders[1]->setValue(c.topBarAlpha);
+                m_sliders[2]->setValue(c.dockAlpha);
+                m_sliders[3]->setValue(c.launcherAlpha);
+                m_sliders[4]->setValue(c.widgetCardAlpha);
+                m_sliders[5]->setValue(c.finderAlpha);
+            }
+        });
+        v->addWidget(resetBtn);
+
         v->addStretch();
         return page;
     }
@@ -1990,7 +2986,8 @@ private:
             { "ruby",       "Ruby"       },
             { "starfield",  "Starfield"  },
             { "aurora",     "Aurora"     },
-            { "goldengate", "Golden Gate" }
+            { "goldengate", "Golden Gate" },
+            { "everest",    "Everest"    }
         };
         int col = 0, row = 0;
         for (const auto &wp : wps) {
@@ -2212,6 +3209,8 @@ class DesktopWidgets : public QWidget {
 public:
     explicit DesktopWidgets(QWidget *parent = nullptr) : QWidget(parent) {
         setAttribute(Qt::WA_NoSystemBackground, true);
+        // Decorative only — let clicks/hovers pass through to whatever's below.
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
         buildUi();
 
         m_tickTimer = new QTimer(this);
@@ -2364,6 +3363,16 @@ protected:
 
 private:
     void drawCard(QPainter &p, const QRect &r) {
+        // Soft outer shadow — many thin rings
+        p.setPen(Qt::NoPen);
+        for (int i = 10; i >= 1; --i) {
+            QColor sh(0, 0, 0);
+            sh.setAlphaF(0.012);
+            p.setBrush(sh);
+            p.drawRoundedRect(r.adjusted(-i, -i + 2, i, i + 2),
+                              14 + i, 14 + i);
+        }
+
         QPainterPath path;
         path.addRoundedRect(r, 14, 14);
 
@@ -2378,11 +3387,32 @@ private:
             p.restore();
         }
 
-        QColor fill = m_theme.panelBg;
-        fill.setAlpha(vc.widgetCardAlpha);
-        p.setBrush(fill);
+        // Two dark gradients from opposite ends:
+        //  - Primary: top-left -> bottom-right (larger, darker)
+        //  - Secondary: bottom-right -> top-left (smaller, darker)
+        QColor top = m_theme.panelBg.lighter(118);
+        QColor bot = m_theme.panelBg.darker(135);
+        top.setAlpha(vc.widgetCardAlpha);
+        bot.setAlpha(vc.widgetCardAlpha);
+
+        QLinearGradient diag(r.topLeft(), r.bottomRight());
+        diag.setColorAt(0.0, top);
+        diag.setColorAt(1.0, bot);
+        p.fillPath(path, diag);
+
+        // Smaller second gradient from opposite corner
+        QRadialGradient inset(r.bottomRight() - QPoint(r.width()/3, r.height()/3),
+                              r.width()/2);
+        QColor dim = m_theme.panelBg.darker(160);
+        dim.setAlpha(int(vc.widgetCardAlpha * 0.7));
+        QColor fade = m_theme.panelBg.darker(160);
+        fade.setAlpha(0);
+        inset.setColorAt(0.0, dim);
+        inset.setColorAt(1.0, fade);
+        p.fillPath(path, inset);
+
         QColor edge = m_theme.chromeBorder;
-        edge.setAlpha(120);
+        edge.setAlpha(40);
         p.setPen(QPen(edge, 1));
         p.drawPath(path);
     }
@@ -2606,7 +3636,7 @@ protected:
         QColor tint = t.chromeBg;
         tint.setAlpha(150);
         p.fillRect(QRect(0, 0, width(), TOP_H), tint);
-        p.setPen(QPen(t.accent, 2));
+        p.setPen(QPen(QColor(255, 255, 255, 8), 1));
         p.drawLine(0, TOP_H - 1, width(), TOP_H - 1);
     }
 
@@ -2704,26 +3734,43 @@ static int runShell(int argc, char *argv[])
 
     AppLauncher *launcher = new AppLauncher;
     root->setLauncher(launcher);
+    ShellRegistry::launcherToggle() = [launcher]() { launcher->toggle(); };
 
     NotificationCenter *notifications = new NotificationCenter(root);
     notifications->resize(360, root->height());
     notifications->hide();
     root->setNotifications(notifications);
 
-    // Diamond button
-    QPushButton *btnDiamond = new QPushButton(QString::fromUtf8("\xE2\x97\x86"));
-    btnDiamond->setCursor(Qt::PointingHandCursor);
-    btnDiamond->setFlat(true);
-    ThemeManager::instance().subscribe([btnDiamond](const Theme &t) {
-        btnDiamond->setStyleSheet(QString(
-            "QPushButton { color: %1; background: transparent;"
-            "  border: none; font-size: 15px; padding: 2px 4px; }"
-            "QPushButton:hover { color: %2;"
-            "  background: %3; border-radius: 5px; }"
-            "QPushButton:pressed { background: %4; }")
-            .arg(t.accent.name(), t.accent.lighter(120).name(),
-                 rgba(t.accentSoft), rgba(t.accentStrong)));
-    });
+    // Omega button (Launchpad — vector, matches dock)
+    class OmegaButton : public QPushButton {
+    public:
+        OmegaButton(QWidget *parent = nullptr) : QPushButton(parent) {
+            setFixedSize(20, 20);
+            setCursor(Qt::PointingHandCursor);
+            setFlat(true);
+            ThemeManager::instance().subscribe([this](const Theme &t) {
+                m_color = t.textPrimary;
+                m_hover = t.textPrimary; m_hover.setAlpha(45);
+                update();
+            });
+        }
+    protected:
+        void paintEvent(QPaintEvent *) override {
+            QPainter p(this);
+            p.setRenderHint(QPainter::Antialiasing);
+            if (underMouse() || isDown()) {
+                p.setPen(Qt::NoPen);
+                p.setBrush(m_hover);
+                p.drawRoundedRect(rect(), 5, 5);
+            }
+            Icons::drawLaunchpad(p, QRectF(rect()), m_color);
+        }
+    private:
+        QColor m_color = QColor(230, 230, 240);
+        QColor m_hover = QColor(230, 230, 240, 45);
+    };
+
+    OmegaButton *btnDiamond = new OmegaButton;
     topLayout->addWidget(btnDiamond);
     QObject::connect(btnDiamond, &QPushButton::clicked, [launcher]() {
         launcher->toggle();
@@ -2826,7 +3873,8 @@ static int runShell(int argc, char *argv[])
         { "ruby",       "Ruby"       },
         { "starfield",  "Starfield"  },
         { "aurora",     "Aurora"     },
-        { "goldengate", "Golden Gate" }
+        { "goldengate", "Golden Gate" },
+        { "everest",    "Everest"    }
     };
     for (const auto &w : wallpapers) {
         QAction *a = wallSub->addAction(w.name);
@@ -3207,6 +4255,17 @@ static int runShell(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    if (argc >= 2 && QString(argv[1]) == "--files") {
+        QApplication app(argc, argv);
+        app.setApplicationName("Apokolips Files");
+        Wallpaper *wp = WallpaperConfig::makeById(WallpaperConfig::loadId());
+        ThemeManager::instance().setTheme(wp->theme());
+        delete wp;
+        FileExplorer w;
+        w.show();
+        return app.exec();
+    }
+
     if (argc >= 2 && QString(argv[1]) == "--settings") {
         QApplication app(argc, argv);
         app.setApplicationName("Apokolips Settings");
