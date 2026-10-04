@@ -29,6 +29,9 @@
 #include <QStackedWidget>
 #include <unistd.h>
 #include <QShortcut>
+#include <QInputDialog>
+#include <QEventLoop>
+#include <QDialog>
 #include <QWidgetAction>
 #include <QDate>
 #include <QCalendarWidget>
@@ -1128,6 +1131,68 @@ namespace ShellRegistry {
 }
 
 // =========================================================
+// SysState — reads live system state for tray icons
+// =========================================================
+namespace SysState {
+
+inline QString networkKind() {
+    // "wifi" | "ethernet" | "offline"
+    QProcess p;
+    p.start("nmcli", { "-t", "-f", "DEVICE,TYPE,STATE", "device" });
+    p.waitForFinished(500);
+    QString out = QString::fromUtf8(p.readAllStandardOutput());
+    bool ethernet = false, wifi = false, wifiConnected = false;
+    for (const QString &line : out.split('\n')) {
+        QStringList parts = line.trimmed().split(':');
+        if (parts.size() < 3) continue;
+        if (parts[1] == "ethernet" && parts[2].startsWith("connected"))
+            ethernet = true;
+        if (parts[1] == "wifi") {
+            wifi = true;
+            if (parts[2].startsWith("connected")) wifiConnected = true;
+        }
+    }
+    if (wifi && wifiConnected) return "wifi";
+    if (ethernet)              return "ethernet";
+    if (wifi)                  return "wifi";
+    return "offline";
+}
+
+inline bool bluetoothPresent() {
+    QDir d("/sys/class/bluetooth");
+    if (!d.exists()) return false;
+    return !d.entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty();
+}
+
+inline int batteryPercent() {
+    QDir d("/sys/class/power_supply");
+    if (!d.exists()) return -1;
+    for (const QString &entry : d.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        if (!entry.startsWith("BAT")) continue;
+        QFile cap("/sys/class/power_supply/" + entry + "/capacity");
+        if (!cap.open(QIODevice::ReadOnly)) continue;
+        return QString(cap.readAll()).trimmed().toInt();
+    }
+    return -1;
+}
+
+inline bool batteryCharging() {
+    QDir d("/sys/class/power_supply");
+    if (!d.exists()) return false;
+    for (const QString &entry : d.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        if (!entry.startsWith("BAT")) continue;
+        QFile s("/sys/class/power_supply/" + entry + "/status");
+        if (!s.open(QIODevice::ReadOnly)) continue;
+        QString v = QString(s.readAll()).trimmed();
+        return v.compare("Charging", Qt::CaseInsensitive) == 0 ||
+               v.compare("Full", Qt::CaseInsensitive) == 0;
+    }
+    return false;
+}
+
+} // namespace SysState
+
+// =========================================================
 // Custom icon set — vector line-art, adapts to theme color
 // =========================================================
 namespace Icons {
@@ -1255,6 +1320,83 @@ static void drawFor(const QString &name, QPainter &p,
     else if (name == "Mail")      drawMail(p, r, c);
     else if (name == "Settings")  drawSettings(p, r, c);
     else if (name == "Power")     drawPower(p, r, c);
+}
+
+static void drawWifi(QPainter &p, const QRectF &r, const QColor &c, bool on) {
+    QPen pen(on ? c : QColor(c.red(), c.green(), c.blue(), 90),
+             r.width() * 0.09, Qt::SolidLine, Qt::RoundCap);
+    p.setPen(pen); p.setBrush(Qt::NoBrush);
+    QPointF ctr(r.center().x(), r.center().y() + r.height() * 0.10);
+    for (int i = 0; i < 3; ++i) {
+        qreal rad = r.width() * (0.14 + 0.13 * i);
+        QRectF arc(ctr.x() - rad, ctr.y() - rad, 2*rad, 2*rad);
+        p.drawArc(arc, 45 * 16, 90 * 16);
+    }
+    p.setPen(Qt::NoPen);
+    p.setBrush(on ? c : QColor(c.red(), c.green(), c.blue(), 90));
+    p.drawEllipse(ctr, r.width()*0.055, r.width()*0.055);
+}
+
+static void drawEthernet(QPainter &p, const QRectF &r, const QColor &c, bool on) {
+    QColor col = on ? c : QColor(c.red(), c.green(), c.blue(), 90);
+    QPen pen(col, r.width() * 0.085, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    p.setPen(pen); p.setBrush(Qt::NoBrush);
+    // A rectangle at bottom with 3 pins above
+    qreal w = r.width() * 0.42;
+    qreal h = r.height() * 0.30;
+    QRectF box(r.center().x() - w/2, r.center().y() + r.height()*0.02, w, h);
+    p.drawRoundedRect(box, r.width()*0.05, r.width()*0.05);
+    qreal step = w / 4.0;
+    for (int i = 1; i <= 3; ++i) {
+        qreal x = box.left() + step * i;
+        p.drawLine(QPointF(x, box.top()),
+                   QPointF(x, box.top() - r.height()*0.12));
+    }
+}
+
+static void drawBluetooth(QPainter &p, const QRectF &r, const QColor &c, bool on) {
+    QColor col = on ? c : QColor(c.red(), c.green(), c.blue(), 90);
+    QPen pen(col, r.width() * 0.09, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    p.setPen(pen); p.setBrush(Qt::NoBrush);
+    // Classic bluetooth rune
+    QPointF ctr = r.center();
+    qreal s = r.width() * 0.28;
+    QPolygonF path;
+    path << QPointF(ctr.x(), ctr.y() - s)         // top
+         << QPointF(ctr.x() + s*0.7, ctr.y() - s*0.5)
+         << QPointF(ctr.x() - s*0.7, ctr.y() + s*0.5)
+         << QPointF(ctr.x(), ctr.y() + s)
+         << QPointF(ctr.x(), ctr.y() - s)
+         << QPointF(ctr.x() - s*0.7, ctr.y() - s*0.5)
+         << QPointF(ctr.x() + s*0.7, ctr.y() + s*0.5)
+         << QPointF(ctr.x(), ctr.y() + s);
+    p.drawPolyline(path);
+}
+
+static void drawBattery(QPainter &p, const QRectF &r, const QColor &c,
+                        int pct, bool charging)
+{
+    qreal w = r.width() * 0.72;
+    qreal h = r.height() * 0.40;
+    QRectF body(r.center().x() - w/2, r.center().y() - h/2, w, h);
+    QPen pen(c, r.width() * 0.075, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    p.setPen(pen); p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(body, r.width()*0.04, r.width()*0.04);
+    // Nub
+    QRectF nub(body.right() + r.width()*0.03,
+               body.center().y() - h*0.18,
+               r.width()*0.06, h*0.36);
+    p.setBrush(c); p.setPen(Qt::NoPen);
+    p.drawRoundedRect(nub, 2, 2);
+    // Fill
+    if (pct >= 0) {
+        qreal inner = w * (pct / 100.0) * 0.88;
+        QRectF fill(body.left() + w*0.06, body.top() + h*0.20,
+                    inner, h*0.60);
+        QColor fc = charging ? QColor(80, 200, 120) : c;
+        p.setBrush(fc);
+        p.drawRoundedRect(fill, 2, 2);
+    }
 }
 
 static QPixmap render(const QString &name, int size, const QColor &color) {
@@ -1955,6 +2097,65 @@ static QString menuStyle(const Theme &t)
 // =========================================================
 // Control Center — macOS-style dropdown panel
 // =========================================================
+// =========================================================
+// SysControl — audio (wpctl) + brightness (sysfs)
+// =========================================================
+namespace SysControl {
+
+inline int audioGet() {
+    QProcess p;
+    p.start("wpctl", { "get-volume", "@DEFAULT_AUDIO_SINK@" });
+    p.waitForFinished(500);
+    QString out = QString::fromUtf8(p.readAllStandardOutput());
+    // Output format: "Volume: 0.40" or "Volume: 0.40 [MUTED]"
+    int idx = out.indexOf("Volume:");
+    if (idx == -1) return 50;
+    QString num = out.mid(idx + 7).trimmed().split(' ').first();
+    bool ok = false;
+    double v = num.toDouble(&ok);
+    if (!ok) return 50;
+    return int(v * 100.0 + 0.5);
+}
+
+inline void audioSet(int pct) {
+    pct = qBound(0, pct, 150);
+    QProcess::startDetached("wpctl",
+        { "set-volume", "@DEFAULT_AUDIO_SINK@",
+          QString::number(pct) + "%" });
+}
+
+inline int brightnessGet() {
+    QDir d("/sys/class/backlight");
+    if (!d.exists()) return 50;
+    QStringList entries = d.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    if (entries.isEmpty()) return 50;
+    QFile maxF("/sys/class/backlight/" + entries.first() + "/max_brightness");
+    QFile curF("/sys/class/backlight/" + entries.first() + "/brightness");
+    if (!maxF.open(QIODevice::ReadOnly)) return 50;
+    if (!curF.open(QIODevice::ReadOnly)) return 50;
+    int mx = QString(maxF.readAll()).trimmed().toInt();
+    int cu = QString(curF.readAll()).trimmed().toInt();
+    if (mx <= 0) return 50;
+    return int(100.0 * cu / mx + 0.5);
+}
+
+inline void brightnessSet(int pct) {
+    QDir d("/sys/class/backlight");
+    if (!d.exists()) return;
+    QStringList entries = d.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    if (entries.isEmpty()) return;
+    QFile maxF("/sys/class/backlight/" + entries.first() + "/max_brightness");
+    if (!maxF.open(QIODevice::ReadOnly)) return;
+    int mx = QString(maxF.readAll()).trimmed().toInt();
+    if (mx <= 0) return;
+    int target = qBound(0, pct, 100) * mx / 100;
+    QFile curF("/sys/class/backlight/" + entries.first() + "/brightness");
+    if (!curF.open(QIODevice::WriteOnly)) return;
+    curF.write(QString::number(target).toUtf8());
+}
+
+} // namespace SysControl
+
 class ControlCenter : public QWidget {
 public:
     explicit ControlCenter(QWidget *parent = nullptr) : QWidget(parent) {
@@ -2223,7 +2424,8 @@ private:
         return row;
     }
 
-    QWidget *makeSliderRow(const QString &label, int value) {
+    QWidget *makeSliderRow(const QString &label, int value,
+                           std::function<void(int)> onChange = {}) {
         QWidget *row = new QWidget;
         QVBoxLayout *v = new QVBoxLayout(row);
         v->setContentsMargins(0, 0, 0, 0);
@@ -2248,6 +2450,9 @@ private:
             "  background: %2; border-radius: 3px; }")
             .arg(rgba(m_theme.chromeBg.lighter(140)),
                  m_theme.accent.name()));
+        if (onChange) {
+            QObject::connect(s, &QSlider::valueChanged, onChange);
+        }
         v->addWidget(s);
         return row;
     }
@@ -2261,8 +2466,13 @@ private:
         outer->addWidget(makeCard("BLUETOOTH", makeBTRow()));
         outer->addWidget(makeCard("NOW PLAYING", makeMediaRow()));
         outer->addWidget(makeTogglesRow());
-        outer->addWidget(makeCard("SOUND", makeSliderRow("Output", 65)));
-        outer->addWidget(makeCard("DISPLAY", makeSliderRow("Brightness", 80)));
+        outer->addWidget(makeCard("SOUND",
+            makeSliderRow("Output", SysControl::audioGet(),
+                [](int v) { SysControl::audioSet(v); })));
+
+        outer->addWidget(makeCard("DISPLAY",
+            makeSliderRow("Brightness", SysControl::brightnessGet(),
+                [](int v) { SysControl::brightnessSet(v); })));
         outer->addStretch();
     }
 
@@ -2275,6 +2485,288 @@ private:
 // =========================================================
 // File Explorer — translucent macOS-style file browser
 // =========================================================
+// =========================================================
+// ApokolipsInputDialog — themed prompt (glass + traffic lights)
+// =========================================================
+class ApokolipsInputDialog : public QDialog {
+public:
+    static QString getText(QWidget *parent,
+                           const QString &title,
+                           const QString &label,
+                           const QString &initialText,
+                           bool *ok)
+    {
+        ApokolipsInputDialog dlg(title, label, initialText, parent);
+        int r = dlg.exec();
+        if (ok) *ok = (r == QDialog::Accepted);
+        return (r == QDialog::Accepted) ? dlg.text() : QString();
+    }
+
+    ApokolipsInputDialog(const QString &title, const QString &label,
+                         const QString &initialText, QWidget *parent)
+        : QDialog(parent, Qt::Dialog | Qt::FramelessWindowHint)
+    {
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        resize(420, 180);
+
+        if (parent) {
+            QPoint c = parent->mapToGlobal(
+                QPoint(parent->width()/2, parent->height()/2));
+            move(c.x() - 210, c.y() - 90);
+        } else if (QScreen *s = QApplication::primaryScreen()) {
+            QRect g = s->availableGeometry();
+            move(g.center().x() - 210, g.center().y() - 90);
+        }
+
+        // Build blurred backdrop from wallpaper
+        Wallpaper *wp = WallpaperConfig::makeById(WallpaperConfig::loadId());
+        if (wp) {
+            const int DOWN = 8;
+            QImage small(qMax(1, width()/DOWN), qMax(1, height()/DOWN),
+                         QImage::Format_ARGB32_Premultiplied);
+            small.fill(Qt::transparent);
+            QPainter p(&small);
+            p.setRenderHint(QPainter::Antialiasing);
+            p.scale(1.0/DOWN, 1.0/DOWN);
+            wp->paint(p, QRect(0, 0, width(), height()));
+            p.end();
+            m_blurredBg = QPixmap::fromImage(
+                small.scaled(size(), Qt::IgnoreAspectRatio,
+                             Qt::SmoothTransformation));
+            delete wp;
+        }
+
+        buildUi(title, label, initialText);
+        m_edit->setFocus();
+        m_edit->selectAll();
+
+        // Subscribe AFTER buildUi so restyle() has widgets to touch
+        m_theme = ThemeManager::instance().current();
+        restyle();
+
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_theme = t;
+            restyle();
+            update();
+        });
+    }
+
+    QString text() const { return m_edit->text(); }
+
+protected:
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton) {
+            if (QWindow *wh = window()->windowHandle()) {
+                if (wh->startSystemMove()) { e->accept(); return; }
+            }
+        }
+        QWidget::mousePressEvent(e);
+    }
+
+    void keyPressEvent(QKeyEvent *e) override {
+        if (e->key() == Qt::Key_Escape) {
+            finish(QDialog::Rejected);
+        } else if (e->key() == Qt::Key_Return ||
+                   e->key() == Qt::Key_Enter) {
+            finish(QDialog::Accepted);
+        } else {
+            QWidget::keyPressEvent(e);
+        }
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        QRect frameRect = rect().adjusted(0, 0, -1, -1);
+        QPainterPath path;
+        path.addRoundedRect(frameRect, 14, 14);
+
+        // Soft edge shadow
+        p.setPen(Qt::NoPen);
+        for (int i = 14; i >= 1; --i) {
+            QColor sh(0, 0, 0);
+            sh.setAlphaF(0.012);
+            p.setBrush(sh);
+            p.drawRoundedRect(frameRect.adjusted(-i, -i + 3, i, i + 3),
+                              14 + i, 14 + i);
+        }
+
+        // Blurred wallpaper glass backdrop
+        if (!m_blurredBg.isNull()) {
+            p.save();
+            p.setClipPath(path);
+            p.setOpacity(0.85);
+            p.drawPixmap(rect(), m_blurredBg);
+            p.restore();
+        }
+
+        // Tint
+        QColor tint = m_theme.panelBg;
+        tint.setAlpha(130);
+        p.setBrush(tint);
+        QColor edge = m_theme.chromeBorder;
+        p.setPen(QPen(edge, 1));
+        p.drawPath(path);
+
+        // Header strip
+        QPainterPath hdr;
+        hdr.addRoundedRect(QRect(0, 0, width(), 36), 14, 14);
+        QPainterPath sq;
+        sq.addRect(QRect(0, 14, width(), 22));
+        QPainterPath hdrFinal = hdr.united(sq);
+        QColor hdrCol = m_theme.chromeBg;
+        hdrCol.setAlpha(150);
+        p.fillPath(hdrFinal, hdrCol);
+
+        // Header separator
+        p.setPen(QPen(m_theme.chromeBorder, 1));
+        p.drawLine(0, 36, width(), 36);
+    }
+
+private:
+    void buildUi(const QString &title, const QString &label,
+                 const QString &initialText)
+    {
+        QVBoxLayout *root = new QVBoxLayout(this);
+        root->setContentsMargins(0, 0, 0, 0);
+        root->setSpacing(0);
+
+        // Header: traffic lights on left, title centered
+        QWidget *header = new QWidget;
+        header->setFixedHeight(36);
+        header->setAttribute(Qt::WA_NoSystemBackground, true);
+        QHBoxLayout *hl = new QHBoxLayout(header);
+        hl->setContentsMargins(12, 0, 12, 0);
+        hl->setSpacing(8);
+
+        auto makeLight = [](const QString &idle, const QString &hover) {
+            QPushButton *b = new QPushButton;
+            b->setFixedSize(12, 12);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setStyleSheet(QString(
+                "QPushButton { background: %1;"
+                "  border: 1px solid rgba(0,0,0,60); border-radius: 6px; }"
+                "QPushButton:hover { background: %2; }").arg(idle, hover));
+            return b;
+        };
+
+        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
+        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
+        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
+
+        hl->addWidget(closeBtn);
+        hl->addWidget(minBtn);
+        hl->addWidget(maxBtn);
+        hl->addSpacing(10);
+
+        m_title = new QLabel(title);
+        m_title->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        hl->addWidget(m_title);
+        hl->addStretch();
+
+        QObject::connect(closeBtn, &QPushButton::clicked,
+                         [this]() { finish(QDialog::Rejected); });
+        QObject::connect(minBtn, &QPushButton::clicked,
+                         [this]() { showMinimized(); });
+        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
+            static bool z = false;
+            resize(z ? QSize(420, 180) : QSize(700, 320));
+            z = !z;
+        });
+
+        root->addWidget(header);
+
+        // Body: label + line edit + buttons
+        QWidget *body = new QWidget;
+        body->setAttribute(Qt::WA_NoSystemBackground, true);
+        QVBoxLayout *bl = new QVBoxLayout(body);
+        bl->setContentsMargins(20, 14, 20, 16);
+        bl->setSpacing(10);
+
+        m_label = new QLabel(label);
+        bl->addWidget(m_label);
+
+        m_edit = new QLineEdit(initialText);
+        bl->addWidget(m_edit);
+
+        QHBoxLayout *btnRow = new QHBoxLayout;
+        btnRow->addStretch();
+
+        m_cancelBtn = new QPushButton("Cancel");
+        m_cancelBtn->setCursor(Qt::PointingHandCursor);
+        m_cancelBtn->setFixedHeight(28);
+        btnRow->addWidget(m_cancelBtn);
+
+        m_okBtn = new QPushButton("OK");
+        m_okBtn->setCursor(Qt::PointingHandCursor);
+        m_okBtn->setFixedHeight(28);
+        m_okBtn->setDefault(true);
+        btnRow->addWidget(m_okBtn);
+
+        QObject::connect(m_okBtn, &QPushButton::clicked,
+                         [this]() { finish(QDialog::Accepted); });
+        QObject::connect(m_cancelBtn, &QPushButton::clicked,
+                         [this]() { finish(QDialog::Rejected); });
+
+        bl->addLayout(btnRow);
+        root->addWidget(body);
+    }
+
+    void restyle() {
+        const Theme &t = m_theme;
+
+        m_title->setStyleSheet(QString(
+            "color: %1; font-size: 13px; font-weight: 600;"
+            " background: transparent;").arg(t.textPrimary.name()));
+
+        m_label->setStyleSheet(QString(
+            "color: %1; font-size: 12px; background: transparent;")
+            .arg(t.textSecondary.name()));
+
+        m_edit->setStyleSheet(QString(
+            "QLineEdit { background: %1; color: %2;"
+            "  border: 1px solid %3; border-radius: 8px;"
+            "  padding: 8px 12px; font-size: 13px;"
+            "  selection-background-color: %4; }"
+            "QLineEdit:focus { border: 1px solid %5; }")
+            .arg(rgba(t.chromeBg.lighter(130)),
+                 t.textPrimary.name(),
+                 rgba(t.chromeBorder),
+                 rgba(t.accentSoft),
+                 t.accent.name()));
+
+        QString btnCss = QString(
+            "QPushButton { background: %1; color: %2;"
+            "  border: 1px solid %3; border-radius: 8px;"
+            "  padding: 4px 18px; font-size: 12px; }"
+            "QPushButton:hover { background: %4; }"
+            "QPushButton:pressed { background: %5; }")
+            .arg(rgba(t.chromeBg.lighter(120)),
+                 t.textPrimary.name(),
+                 rgba(t.chromeBorder),
+                 rgba(t.accentSoft),
+                 rgba(t.accentStrong));
+
+        m_okBtn->setStyleSheet(btnCss);
+        m_cancelBtn->setStyleSheet(btnCss);
+    }
+
+    void finish(int result) {
+        if (result == QDialog::Accepted) accept();
+        else                             reject();
+    }
+
+    QLabel *m_title = nullptr;
+    QLabel *m_label = nullptr;
+    QLineEdit *m_edit = nullptr;
+    QPushButton *m_okBtn = nullptr;
+    QPushButton *m_cancelBtn = nullptr;
+    QPixmap m_blurredBg;
+    Theme m_theme;
+};
+
 class FileExplorer : public QWidget {
 public:
     explicit FileExplorer(QWidget *parent = nullptr) : QWidget(parent) {
@@ -2298,13 +2790,35 @@ public:
             update();
         });
 
+        // ---- Keyboard shortcuts ----
+        auto sc = [this](const QString &key,
+                         std::function<void()> fn) {
+            QShortcut *s = new QShortcut(QKeySequence(key), this);
+            QObject::connect(s, &QShortcut::activated, this, fn);
+        };
+        sc("F2",       [this]() { renameSelected();   });
+        sc("Delete",   [this]() { deleteSelected();   });
+        sc("Backspace",[this]() {
+            QDir d(m_currentPath);
+            if (d.cdUp()) navigateTo(d.absolutePath());
+        });
+        sc("Ctrl+C",   [this]() { copySelected(false); });
+        sc("Ctrl+X",   [this]() { copySelected(true);  });
+        sc("Ctrl+V",   [this]() { pasteInto();         });
+        sc("Ctrl+H",   [this]() { toggleHidden();      });
+        sc("Alt+Left", [this]() { goBack();            });
+        sc("Alt+Right",[this]() { goForward();         });
+        sc("Ctrl+L",   [this]() {
+            bool ok = false;
+            QString p = ApokolipsInputDialog::getText(this, "Go to",
+                "Path:", m_currentPath, &ok);
+            if (ok && !p.isEmpty()) navigateTo(p);
+        });
+
         show();
         update();
         const QString startPath = QDir::homePath();
-        qDebug() << "[finder] ctor done, home=" << startPath
-                 << "homeExists=" << QFileInfo(startPath).isDir();
         QTimer::singleShot(600, this, [this, startPath]() {
-            qDebug() << "[finder] timer fired, calling navigateTo";
             navigateTo(startPath);
         });
     }
@@ -2575,6 +3089,10 @@ private:
         m_view->setEditTriggers(QAbstractItemView::NoEditTriggers);
         m_view->setFrameShape(QFrame::NoFrame);
 
+        m_view->setContextMenuPolicy(Qt::CustomContextMenu);
+        QObject::connect(m_view, &QListView::customContextMenuRequested,
+                         this, &FileExplorer::showContextMenu);
+
         QObject::connect(m_view, &QListView::doubleClicked,
                          [this](const QModelIndex &idx) {
             flog(QString("doubleClicked valid=%1").arg(idx.isValid()));
@@ -2594,6 +3112,24 @@ private:
         body->addWidget(m_sidebar);
         body->addWidget(m_view, 1);
         root->addLayout(body, 1);
+
+        // ---- Floating status toast (bottom-right of window) ----
+        m_statusLabel = new QLabel(this);
+        m_statusLabel->setVisible(false);
+        m_statusLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        m_statusLabel->setStyleSheet(
+            "QLabel { background: rgba(0,0,0,180); color: white;"
+            "  padding: 6px 12px; border-radius: 8px;"
+            "  font-size: 12px; }");
+    }
+
+    void resizeEvent(QResizeEvent *e) override {
+        QWidget::resizeEvent(e);
+        if (m_statusLabel) {
+            m_statusLabel->adjustSize();
+            m_statusLabel->move(width() - m_statusLabel->width() - 20,
+                                height() - m_statusLabel->height() - 20);
+        }
     }
 
     void navigateTo(const QString &path) {
@@ -2642,6 +3178,185 @@ private:
     void updateNavButtons() {
         m_backBtn->setEnabled(m_historyIndex > 0);
         m_fwdBtn->setEnabled(m_historyIndex < m_history.size() - 1);
+    }
+
+    QString selectedPath() const {
+        QModelIndex idx = m_view->currentIndex();
+        if (!idx.isValid()) return {};
+        return m_fs->filePath(m_proxy->mapToSource(idx));
+    }
+
+    void openSelected() {
+        QString p = selectedPath();
+        if (p.isEmpty()) return;
+        QFileInfo fi(p);
+        if (fi.isDir()) navigateTo(p);
+        else QProcess::startDetached("xdg-open", { p });
+    }
+
+    void renameSelected() {
+        QString p = selectedPath();
+        if (p.isEmpty()) return;
+        QFileInfo fi(p);
+        bool ok = false;
+        QString newName = ApokolipsInputDialog::getText(this, "Rename",
+            "New name:", fi.fileName(), &ok);
+        if (!ok || newName.isEmpty() || newName == fi.fileName()) return;
+        QDir d(fi.absolutePath());
+        if (d.rename(fi.fileName(), newName))
+            showStatus("Renamed to " + newName);
+        else
+            showStatus("Rename failed");
+    }
+
+    void deleteSelected() {
+        QString p = selectedPath();
+        if (p.isEmpty()) return;
+        QFileInfo fi(p);
+        // Prefer trash, fall back to permanent
+        QProcess tr;
+        tr.start("gio", { "trash", p });
+        tr.waitForFinished(1500);
+        bool ok = (tr.exitStatus() == QProcess::NormalExit && tr.exitCode() == 0);
+        if (!ok) {
+            if (fi.isDir()) QDir(p).removeRecursively();
+            else            QFile::remove(p);
+        }
+        showStatus("Moved to trash: " + fi.fileName());
+    }
+
+    void copySelected(bool cut) {
+        QString p = selectedPath();
+        if (p.isEmpty()) return;
+        m_clipboardPaths = { p };
+        m_clipboardCut = cut;
+        showStatus((cut ? "Cut: " : "Copied: ") + QFileInfo(p).fileName());
+    }
+
+    void pasteInto() {
+        if (m_clipboardPaths.isEmpty()) return;
+        QDir dest(m_currentPath);
+        for (const QString &srcPath : m_clipboardPaths) {
+            QFileInfo fi(srcPath);
+            QString target = dest.filePath(fi.fileName());
+            // Avoid overwriting
+            if (QFile::exists(target)) {
+                QString base = fi.completeBaseName();
+                QString ext = fi.suffix().isEmpty()
+                              ? "" : "." + fi.suffix();
+                int n = 1;
+                while (QFile::exists(target)) {
+                    target = dest.filePath(
+                        QString("%1 copy %2%3").arg(base).arg(n).arg(ext));
+                    ++n;
+                }
+            }
+            if (m_clipboardCut) {
+                if (fi.isDir()) {
+                    // Qt needs the dir to not exist for rename
+                    QProcess::startDetached("mv", { srcPath, target });
+                } else {
+                    QProcess::startDetached("mv", { srcPath, target });
+                }
+            } else {
+                if (fi.isDir())
+                    QProcess::startDetached("cp",
+                        { "-r", srcPath, target });
+                else
+                    QProcess::startDetached("cp", { srcPath, target });
+            }
+        }
+        showStatus(m_clipboardCut ? "Moved" : "Pasted");
+        if (m_clipboardCut) { m_clipboardPaths.clear(); m_clipboardCut = false; }
+    }
+
+    void newFolder() {
+        QDir dest(m_currentPath);
+        QString target = dest.filePath("New Folder");
+        int n = 1;
+        while (QFile::exists(target))
+            target = dest.filePath(QString("New Folder %1").arg(++n));
+        if (dest.mkdir(QFileInfo(target).fileName()))
+            showStatus("New folder created");
+    }
+
+    void newFile() {
+        QDir dest(m_currentPath);
+        QString target = dest.filePath("Untitled.txt");
+        int n = 1;
+        while (QFile::exists(target))
+            target = dest.filePath(QString("Untitled %1.txt").arg(++n));
+        QFile f(target);
+        if (f.open(QIODevice::WriteOnly)) {
+            f.close();
+            showStatus("New file created");
+        }
+    }
+
+    void toggleHidden() {
+        m_showHidden = !m_showHidden;
+        m_fs->setFilter(m_showHidden
+            ? (QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden)
+            : (QDir::AllEntries | QDir::NoDotAndDotDot));
+        showStatus(m_showHidden ? "Hidden files shown" : "Hidden files hidden");
+    }
+
+    void showStatus(const QString &msg) {
+        if (!m_statusLabel) return;
+        m_statusLabel->setText(msg);
+        m_statusLabel->setVisible(true);
+        QTimer::singleShot(2200, m_statusLabel, [this]() {
+            if (m_statusLabel) m_statusLabel->setVisible(false);
+        });
+    }
+
+    void showContextMenu(const QPoint &pos) {
+        QModelIndex idx = m_view->indexAt(pos);
+        if (idx.isValid()) m_view->setCurrentIndex(idx);
+
+        const Theme &t = ThemeManager::instance().current();
+        QMenu menu(this);
+        menu.setStyleSheet(QString(
+            "QMenu { background: %1; border: 1px solid %2;"
+            "  border-radius: 8px; padding: 5px; color: %3;"
+            "  font-size: 12px; }"
+            "QMenu::item { padding: 6px 20px 6px 14px; border-radius: 5px; }"
+            "QMenu::item:selected { background: %4; }"
+            "QMenu::separator { height: 1px; background: %2;"
+            "  margin: 4px 8px; }")
+            .arg(rgba(t.panelBg), rgba(t.chromeBorder),
+                 t.textPrimary.name(), rgba(t.accentSoft)));
+
+        QAction *aOpen   = menu.addAction("Open");
+        QAction *aRename = menu.addAction("Rename");
+        menu.addSeparator();
+        QAction *aCut   = menu.addAction("Cut");
+        QAction *aCopy  = menu.addAction("Copy");
+        QAction *aPaste = menu.addAction("Paste");
+        menu.addSeparator();
+        QAction *aNewFolder = menu.addAction("New Folder");
+        QAction *aNewFile   = menu.addAction("New File");
+        menu.addSeparator();
+        QAction *aDelete = menu.addAction("Move to Trash");
+
+        bool hasSel = idx.isValid();
+        aOpen->setEnabled(hasSel);
+        aRename->setEnabled(hasSel);
+        aCut->setEnabled(hasSel);
+        aCopy->setEnabled(hasSel);
+        aDelete->setEnabled(hasSel);
+        aPaste->setEnabled(!m_clipboardPaths.isEmpty());
+
+        QObject::connect(aOpen,      &QAction::triggered, this, &FileExplorer::openSelected);
+        QObject::connect(aRename,    &QAction::triggered, this, &FileExplorer::renameSelected);
+        QObject::connect(aCut,       &QAction::triggered, [this]() { copySelected(true); });
+        QObject::connect(aCopy,      &QAction::triggered, [this]() { copySelected(false); });
+        QObject::connect(aPaste,     &QAction::triggered, this, &FileExplorer::pasteInto);
+        QObject::connect(aNewFolder, &QAction::triggered, this, &FileExplorer::newFolder);
+        QObject::connect(aNewFile,   &QAction::triggered, this, &FileExplorer::newFile);
+        QObject::connect(aDelete,    &QAction::triggered, this, &FileExplorer::deleteSelected);
+
+        menu.exec(m_view->mapToGlobal(pos));
     }
 
     QString shortenPath(const QString &p) const {
@@ -2722,6 +3437,12 @@ private:
     QString m_currentPath;
     QStringList m_history;
     int m_historyIndex = -1;
+
+    // ---- Clipboard (internal) + selection state ----
+    QStringList m_clipboardPaths;
+    bool        m_clipboardCut = false;
+    bool        m_showHidden   = false;
+    QLabel     *m_statusLabel  = nullptr;
 };
 
 // =========================================================
@@ -3653,6 +4374,77 @@ private:
 // =========================================================
 // Shell
 // =========================================================
+// =========================================================
+// TrayIcon — live-updating network / bluetooth / battery
+// =========================================================
+class TrayIcon : public QWidget {
+public:
+    enum Kind { Network, Bluetooth, Battery };
+    TrayIcon(Kind k, QWidget *parent = nullptr)
+        : QWidget(parent), m_kind(k) {
+        setFixedSize(22, 18);
+        setCursor(Qt::PointingHandCursor);
+        setToolTip(k == Network   ? "Network"
+                 : k == Bluetooth ? "Bluetooth"
+                                  : "Battery");
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_color = t.textPrimary;
+            update();
+        });
+        m_timer = new QTimer(this);
+        m_timer->setInterval(5000);
+        QObject::connect(m_timer, &QTimer::timeout,
+                         this, &TrayIcon::refresh);
+        m_timer->start();
+        refresh();
+    }
+    void refresh() {
+        if (m_kind == Network) {
+            m_netKind = SysState::networkKind();
+        } else if (m_kind == Bluetooth) {
+            m_btOn = SysState::bluetoothPresent();
+        } else {
+            m_battPct = SysState::batteryPercent();
+            m_battCharging = SysState::batteryCharging();
+        }
+        update();
+    }
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QRectF r(rect());
+        if (m_kind == Network) {
+            if (m_netKind == "wifi")
+                Icons::drawWifi(p, r, m_color, true);
+            else if (m_netKind == "ethernet")
+                Icons::drawEthernet(p, r, m_color, true);
+            else
+                Icons::drawWifi(p, r, m_color, false);
+        } else if (m_kind == Bluetooth) {
+            Icons::drawBluetooth(p, r, m_color, m_btOn);
+        } else {
+            Icons::drawBattery(p, r, m_color, m_battPct, m_battCharging);
+        }
+    }
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton) {
+            QProcess::startDetached("gnome-control-center",
+                { m_kind == Bluetooth ? "bluetooth"
+                  : m_kind == Battery ? "power"
+                  : "wifi" });
+        }
+    }
+private:
+    Kind m_kind;
+    QColor m_color = QColor(220, 220, 230);
+    QTimer *m_timer = nullptr;
+    QString m_netKind = "offline";
+    bool m_btOn = false;
+    int  m_battPct = -1;
+    bool m_battCharging = false;
+};
+
 static int runShell(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -3906,25 +4698,11 @@ static int runShell(int argc, char *argv[])
 
     // ---- Right-side status cluster (macOS style) ----
 
-    // WiFi
-    QLabel *wifiLbl = new QLabel(QString::fromUtf8("\xE2\x97\x8F"));
-    wifiLbl->setCursor(Qt::PointingHandCursor);
-    ThemeManager::instance().subscribe([wifiLbl](const Theme &t) {
-        wifiLbl->setStyleSheet(QString(
-            "color: %1; background: transparent; font-size: 12px;"
-            " padding: 0px 5px;").arg(t.textPrimary.name()));
-    });
-    topLayout->addWidget(wifiLbl);
-
-    // Bluetooth
-    QLabel *btLbl = new QLabel(QString::fromUtf8("\xE2\x9C\xA6"));
-    btLbl->setCursor(Qt::PointingHandCursor);
-    ThemeManager::instance().subscribe([btLbl](const Theme &t) {
-        btLbl->setStyleSheet(QString(
-            "color: %1; background: transparent; font-size: 12px;"
-            " padding: 0px 5px;").arg(t.textPrimary.name()));
-    });
-    topLayout->addWidget(btLbl);
+    // Live tray icons
+    topLayout->addWidget(new TrayIcon(TrayIcon::Network));
+    topLayout->addWidget(new TrayIcon(TrayIcon::Bluetooth));
+    if (SysState::batteryPercent() >= 0)
+        topLayout->addWidget(new TrayIcon(TrayIcon::Battery));
 
     // Control-center toggle — custom-painted macOS-style pill icon
     class CCToggle : public QPushButton {
