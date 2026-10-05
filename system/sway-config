@@ -1,10 +1,10 @@
 # =========================================================
 # Apokolips OS — sway configuration
+# Rule order matters: catch-all first, overrides last.
 # =========================================================
 
 set $mod Mod4
 
-# Solid black under everything (shell draws the wallpaper)
 output * bg #000000 solid_color
 
 default_border none
@@ -14,27 +14,25 @@ gaps outer 0
 
 font pango:DejaVu Sans 10
 
-# Launch the shell
-exec_always sh -c 'while true; do /home/lytone/apokolips-shell/run-session.sh; sleep 1; done'
+exec /home/lytone/apokolips-shell/run-session.sh
 
-# ---- Window rules (first-match wins) ----
-
-# Shell: tiled, no border, never floating, never fullscreen
-for_window [app_id="apokolips-shell"] border none
-for_window [app_id="apokolips-shell"] floating disable
-for_window [app_id="apokolips-shell"] fullscreen disable
-
-# Everything else floats by default
+# ---- Catch-all: everything floats by default ----
 for_window [app_id=".*"] floating enable
 for_window [title=".*"]  floating enable
 
-# Explicit sizes for common apps
+# ---- Shell overrides LAST, so they win ----
+for_window [app_id="apokolips-shell"] floating disable
+for_window [app_id="apokolips-shell"] border none
+for_window [app_id="apokolips-shell"] fullscreen disable
+
+# ---- Explicit sizes for common apps ----
 for_window [app_id="org.gnome.Terminal"] floating enable, resize set 1000 650, move position center
-for_window [app_id="org.gnome.Nautilus"] floating enable, resize set 1000 700, move position center
-for_window [app_id="apokolips-shell" title="Files"] floating enable, resize set 1000 700, move position center
-for_window [title="Settings"] floating enable, resize set 780 540, move position center
-for_window [title="Apokolips Settings"] floating enable, resize set 780 540, move position center
-for_window [app_id="firefox"] floating enable, resize set 1200 800, move position center
+for_window [app_id="foot"]                floating enable, resize set 1000 650, move position center
+for_window [app_id="org.gnome.Nautilus"]  floating enable, resize set 1000 700, move position center
+for_window [title="Settings"]             floating enable, resize set 780 540, move position center
+for_window [title="Apokolips Settings"]   floating enable, resize set 780 540, move position center
+for_window [title="Files"]                floating enable, resize set 1000 700, move position center
+for_window [app_id="firefox"]             floating enable, resize set 1200 800, move position center
 
 # ---- Keybindings ----
 bindsym $mod+Return exec foot
@@ -50,7 +48,4 @@ bindsym $mod+1 workspace 1
 bindsym $mod+2 workspace 2
 bindsym $mod+3 workspace 3
 
-# ---- Hide sway's default bar ----
-bar {
-    mode invisible
-}
+# NO bar {} block — the shell has its own top bar.
