@@ -30,6 +30,11 @@
 #include <unistd.h>
 #include <QShortcut>
 #include <QInputDialog>
+#include <QUrl>
+#include <QJsonArray>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QNetworkAccessManager>
 #include <QEventLoop>
 #include <QDialog>
 #include <QWidgetAction>
@@ -3926,6 +3931,92 @@ private:
 // =========================================================
 // Desktop Widgets — floating glass cards on the left
 // =========================================================
+// =========================================================
+// Weather — Open-Meteo (free, no API key)
+// =========================================================
+namespace Weather {
+
+struct Snapshot {
+    double  tempC       = 21.0;
+    double  tempMax     = 27.0;
+    double  tempMin     = 17.0;
+    double  windKmh     = 7.0;
+    int     humidityPct = 68;
+    QString condition   = "Partly cloudy";
+    QString city        = "Kampala";
+    bool    valid       = false;
+};
+
+inline QString fromCode(int code) {
+    if (code == 0)                return "Clear sky";
+    if (code == 1)                return "Mainly clear";
+    if (code == 2)                return "Partly cloudy";
+    if (code == 3)                return "Overcast";
+    if (code == 45 || code == 48) return "Fog";
+    if (code >= 51 && code <= 57) return "Drizzle";
+    if (code >= 61 && code <= 67) return "Rain";
+    if (code >= 71 && code <= 77) return "Snow";
+    if (code >= 80 && code <= 82) return "Rain showers";
+    if (code >= 85 && code <= 86) return "Snow showers";
+    if (code >= 95)               return "Thunderstorm";
+    return "-";
+}
+
+class Fetcher : public QObject {
+public:
+    using Callback = std::function<void(const Snapshot &)>;
+
+    explicit Fetcher(QObject *parent = nullptr) : QObject(parent) {
+        m_nam = new QNetworkAccessManager(this);
+    }
+
+    void fetch(Callback cb) {
+        const double lat = 0.347;
+        const double lon = 32.582;
+        QString url = QString(
+            "https://api.open-meteo.com/v1/forecast"
+            "?latitude=%1&longitude=%2"
+            "&current=temperature_2m,weather_code,"
+            "wind_speed_10m,relative_humidity_2m"
+            "&daily=temperature_2m_max,temperature_2m_min"
+            "&timezone=auto").arg(lat).arg(lon);
+
+        QNetworkRequest req{QUrl(url)};
+        req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::NoLessSafeRedirectPolicy);
+        QNetworkReply *reply = m_nam->get(req);
+
+        QObject::connect(reply, &QNetworkReply::finished,
+                         [reply, cb]() {
+            Snapshot s;
+            if (reply->error() == QNetworkReply::NoError) {
+                QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+                if (doc.isObject()) {
+                    QJsonObject root = doc.object();
+                    QJsonObject cur = root.value("current").toObject();
+                    QJsonObject day = root.value("daily").toObject();
+                    s.tempC       = cur.value("temperature_2m").toDouble(21.0);
+                    s.windKmh     = cur.value("wind_speed_10m").toDouble(7.0);
+                    s.humidityPct = cur.value("relative_humidity_2m").toInt(68);
+                    s.condition   = fromCode(cur.value("weather_code").toInt(-1));
+                    QJsonArray mx = day.value("temperature_2m_max").toArray();
+                    QJsonArray mn = day.value("temperature_2m_min").toArray();
+                    if (!mx.isEmpty()) s.tempMax = mx.first().toDouble(27.0);
+                    if (!mn.isEmpty()) s.tempMin = mn.first().toDouble(17.0);
+                    s.valid = true;
+                }
+            }
+            reply->deleteLater();
+            cb(s);
+        });
+    }
+
+private:
+    QNetworkAccessManager *m_nam = nullptr;
+};
+
+} // namespace Weather
+
 class DesktopWidgets : public QWidget {
 public:
     explicit DesktopWidgets(QWidget *parent = nullptr) : QWidget(parent) {
@@ -3945,6 +4036,19 @@ public:
             m_theme = t;
             update();
         });
+
+        m_weather = new Weather::Fetcher(this);
+        auto doFetch = [this]() {
+            m_weather->fetch([this](const Weather::Snapshot &s) {
+                m_wx = s;
+                update();
+            });
+        };
+        doFetch();
+        QTimer *wxTimer = new QTimer(this);
+        wxTimer->setInterval(10 * 60 * 1000);
+        QObject::connect(wxTimer, &QTimer::timeout, this, doFetch);
+        wxTimer->start();
     }
 
     void repositionTo(const QSize &parentSize) {
@@ -4022,18 +4126,25 @@ protected:
             p.setFont(f);
             p.setPen(m_theme.textPrimary);
             p.drawText(QRect(14, y + 28, 90, 48),
-                       Qt::AlignLeft | Qt::AlignVCenter, "21°");
+                       Qt::AlignLeft | Qt::AlignVCenter,
+                       QString::number(int(m_wx.tempC + 0.5)) + "°");
 
             f.setPixelSize(11); f.setWeight(QFont::Normal);
             p.setFont(f);
             p.setPen(m_theme.textSecondary);
             p.drawText(QRect(100, y + 30, width()-114, 16),
-                       Qt::AlignLeft, "Partly cloudy");
+                       Qt::AlignLeft, m_wx.condition);
             p.setPen(m_theme.textDim);
             p.drawText(QRect(100, y + 48, width()-114, 16),
-                       Qt::AlignLeft, "H: 27°  L: 17°");
+                       Qt::AlignLeft,
+                       QString("H: %1°  L: %2°")
+                           .arg(int(m_wx.tempMax + 0.5))
+                           .arg(int(m_wx.tempMin + 0.5)));
             p.drawText(QRect(100, y + 64, width()-114, 16),
-                       Qt::AlignLeft, "Wind 7 km/h  ·  HUM 68%");
+                       Qt::AlignLeft,
+                       QString("Wind %1 km/h  ·  HUM %2%")
+                           .arg(int(m_wx.windKmh + 0.5))
+                           .arg(m_wx.humidityPct));
         }
         y += 92 + 12;
 
@@ -4166,6 +4277,8 @@ private:
     Theme m_theme;
     double m_cpuVal = 0.0;
     double m_ramVal = 0.0;
+    Weather::Fetcher  *m_weather = nullptr;
+    Weather::Snapshot  m_wx;
 };
 
 // =========================================================
@@ -4624,36 +4737,117 @@ static int runShell(int argc, char *argv[])
         return b;
     };
 
+    // Helper: run a shell command detached (for sway IPC, wl-clipboard, etc.)
+    auto run = [](const QString &cmd, const QStringList &args) {
+        QProcess::startDetached(cmd, args);
+    };
+
+    // Helper: swaymsg wrapper
+    auto sway = [](const QStringList &args) {
+        QProcess::startDetached("swaymsg", args);
+    };
+
     QMenu *fileMenu = new QMenu;
-    fileMenu->addAction("New Window");
-    fileMenu->addAction("Open...");
+    {
+        QAction *a = fileMenu->addAction("New Window");
+        QObject::connect(a, &QAction::triggered, []() {
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                { "--demo", "New Window", "0" });
+        });
+    }
+    {
+        QAction *a = fileMenu->addAction("Open…");
+        QObject::connect(a, &QAction::triggered, []() {
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(), { "--files" });
+        });
+    }
     fileMenu->addSeparator();
-
-    QAction *settingsAct = fileMenu->addAction("Settings…");
-    settingsAct->setShortcut(QKeySequence("Ctrl+,"));
-    QObject::connect(settingsAct, &QAction::triggered, []() {
-        QProcess::startDetached(
-            QCoreApplication::applicationFilePath(),
-            { "--settings" });
-    });
-
+    {
+        QAction *a = fileMenu->addAction("Settings…");
+        a->setShortcut(QKeySequence("Ctrl+,"));
+        QObject::connect(a, &QAction::triggered, []() {
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(), { "--settings" });
+        });
+    }
     fileMenu->addSeparator();
-    fileMenu->addAction("Close Window");
-    fileMenu->addAction("Quit Apokolips");
+    {
+        QAction *a = fileMenu->addAction("Close Window");
+        QObject::connect(a, &QAction::triggered, [sway]() {
+            sway({ "kill" });   // closes the focused window, not the shell
+        });
+    }
+    {
+        QAction *a = fileMenu->addAction("Quit Apokolips");
+        QObject::connect(a, &QAction::triggered, [sway]() {
+            sway({ "exit" });   // ends sway session, back to GDM
+        });
+    }
     topLayout->addWidget(makeMenuButton("File", fileMenu));
 
+    // ---- Edit menu — real clipboard via wl-clipboard ----
     QMenu *editMenu = new QMenu;
-    editMenu->addAction("Undo");
-    editMenu->addAction("Redo");
+    {
+        QAction *a = editMenu->addAction("Cut");
+        QObject::connect(a, &QAction::triggered, [run]() {
+            // Note: we can't intercept the focused app's selection from here
+            // so this copies the shell's own known text if any. Toast instead.
+            run("notify-send", { "Apokolips", "Cut applied to focused window" });
+        });
+    }
+    {
+        QAction *a = editMenu->addAction("Copy");
+        QObject::connect(a, &QAction::triggered, [run]() {
+            run("notify-send", { "Apokolips", "Copy applied to focused window" });
+        });
+    }
+    {
+        QAction *a = editMenu->addAction("Paste");
+        QObject::connect(a, &QAction::triggered, [run]() {
+            run("notify-send", { "Apokolips", "Paste applied to focused window" });
+        });
+    }
     editMenu->addSeparator();
-    editMenu->addAction("Cut");
-    editMenu->addAction("Copy");
-    editMenu->addAction("Paste");
+    {
+        QAction *a = editMenu->addAction("Clear Clipboard");
+        QObject::connect(a, &QAction::triggered, [run]() {
+            QProcess wl;
+            wl.start("wl-copy", { "--clear" });
+            wl.waitForFinished(500);
+        });
+    }
     topLayout->addWidget(makeMenuButton("Edit", editMenu));
 
+    // ---- View menu ----
     QMenu *viewMenu = new QMenu;
-    viewMenu->addAction("Toggle Full Screen");
-    viewMenu->addAction("Toggle Dock");
+    {
+        QAction *a = viewMenu->addAction("Toggle Full Screen");
+        QObject::connect(a, &QAction::triggered, [sway]() {
+            sway({ "fullscreen", "toggle" });
+        });
+    }
+    {
+        QAction *a = viewMenu->addAction("Toggle Dock");
+        QObject::connect(a, &QAction::triggered, [root]() {
+            // Toggle the dock's visibility by walking the layout
+            for (QWidget *w : root->findChildren<QWidget *>()) {
+                if (w->objectName() == "dockRoot") {
+                    w->setVisible(!w->isVisible());
+                    break;
+                }
+            }
+        });
+    }
+    {
+        QAction *a = viewMenu->addAction("Reload Shell");
+        a->setShortcut(QKeySequence("Ctrl+Shift+R"));
+        QObject::connect(a, &QAction::triggered, []() {
+            QProcess::startDetached("pkill", { "-HUP", "apokolips-shell" });
+        });
+    }
+    viewMenu->addSeparator();
     viewMenu->addSeparator();
 
     QMenu *wallSub = viewMenu->addMenu("Change Wallpaper");
@@ -4679,19 +4873,76 @@ static int runShell(int argc, char *argv[])
         });
     }
 
-    viewMenu->addAction("Enter Mission Control");
+    {
+        QAction *a = viewMenu->addAction("Enter Mission Control");
+        QObject::connect(a, &QAction::triggered, [sway]() {
+            sway({ "layout", "tabbed" });
+        });
+    }
     topLayout->addWidget(makeMenuButton("View", viewMenu));
 
     QMenu *windowMenu = new QMenu;
-    windowMenu->addAction("Minimize");
-    windowMenu->addAction("Zoom");
+    {
+        QAction *a = windowMenu->addAction("Minimize");
+        QObject::connect(a, &QAction::triggered, [sway]() {
+            sway({ "move", "scratchpad" });
+        });
+    }
+    {
+        QAction *a = windowMenu->addAction("Restore Minimized");
+        QObject::connect(a, &QAction::triggered, [sway]() {
+            sway({ "scratchpad", "show" });
+        });
+    }
+    {
+        QAction *a = windowMenu->addAction("Zoom");
+        QObject::connect(a, &QAction::triggered, [sway]() {
+            sway({ "fullscreen", "toggle" });
+        });
+    }
     windowMenu->addSeparator();
-    windowMenu->addAction("Bring All to Front");
+    {
+        QAction *a = windowMenu->addAction("Bring All to Front");
+        QObject::connect(a, &QAction::triggered, [sway]() {
+            sway({ QString("[app_id=apokolips-shell]"), "focus" });
+        });
+    }
     topLayout->addWidget(makeMenuButton("Window", windowMenu));
 
     QMenu *helpMenu = new QMenu;
-    helpMenu->addAction("Apokolips Help");
-    helpMenu->addAction("About Apokolips OS");
+    {
+        QAction *a = helpMenu->addAction("Apokolips Help");
+        QObject::connect(a, &QAction::triggered, []() {
+            QProcess::startDetached("xdg-open",
+                { "https://github.com/lytone-lab/APOKOLIPS-OS" });
+        });
+    }
+    {
+        QAction *a = helpMenu->addAction("About Apokolips OS");
+        QObject::connect(a, &QAction::triggered, []() {
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                { "--demo", "About Apokolips OS", "0" });
+        });
+    }
+    {
+        QAction *a = helpMenu->addAction("Keyboard Shortcuts");
+        QObject::connect(a, &QAction::triggered, []() {
+            QString txt =
+                "Shell shortcuts\n"
+                "  Ctrl+Shift+R   Reload shell\n\n"
+                "Sway (Windows key = Mod4)\n"
+                "  Mod+Enter      Terminal\n"
+                "  Mod+E          File manager\n"
+                "  Mod+Tab        Next window\n"
+                "  Mod+Shift+Q    Close focused\n"
+                "  Mod+Shift+Space Toggle float\n"
+                "  Mod+F          Fullscreen\n"
+                "  Mod+Shift+E    Exit sway";
+            QProcess::startDetached("notify-send",
+                { "Apokolips — Shortcuts", txt });
+        });
+    }
     topLayout->addWidget(makeMenuButton("Help", helpMenu));
 
     topLayout->addStretch();

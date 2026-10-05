@@ -7,8 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 
 add_executable(apokolips-shell main.cpp)
 
-target_link_libraries(apokolips-shell PRIVATE Qt6::Widgets)
+target_link_libraries(apokolips-shell PRIVATE Qt6::Widgets Qt6::Network)
