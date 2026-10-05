@@ -1198,6 +1198,43 @@ inline bool batteryCharging() {
 } // namespace SysState
 
 // =========================================================
+// BadgeRegistry — pending notification counts per app
+// =========================================================
+namespace BadgeRegistry {
+
+inline QHash<QString, int> &counts() {
+    static QHash<QString, int> c;
+    return c;
+}
+
+inline int get(const QString &app) {
+    return counts().value(app, 0);
+}
+
+inline void set(const QString &app, int n) {
+    if (n <= 0) counts().remove(app);
+    else        counts()[app] = n;
+}
+
+inline void decrement(const QString &app) {
+    int n = get(app);
+    if (n > 0) set(app, n - 1);
+}
+
+inline void clear(const QString &app) {
+    counts().remove(app);
+}
+
+inline void seedDefaults() {
+    // Matches the hardcoded notification cards in NotificationCenter
+    set("Mail", 3);
+    set("Music", 1);
+    set("Settings", 1);
+}
+
+} // namespace BadgeRegistry
+
+// =========================================================
 // Custom icon set — vector line-art, adapts to theme color
 // =========================================================
 namespace Icons {
@@ -1776,9 +1813,32 @@ protected:
             p.setBrush(m_theme.accent);
             p.drawEllipse(QPoint(width() / 2, height() - 6), 3, 3);
         }
+
+        // Notification badge (top-right)
+        int badgeCount = BadgeRegistry::get(m_name);
+        if (badgeCount > 0) {
+            int badgeR = 9;
+            QPoint badgeCtr(width() - 12, 12);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(220, 40, 60));
+            p.drawEllipse(badgeCtr, badgeR, badgeR);
+            QFont bf = font();
+            bf.setPixelSize(10);
+            bf.setBold(true);
+            p.setFont(bf);
+            p.setPen(QColor(255, 255, 255));
+            QString txt = badgeCount > 9 ? "9+" : QString::number(badgeCount);
+            p.drawText(QRect(badgeCtr.x() - badgeR, badgeCtr.y() - badgeR,
+                             2*badgeR, 2*badgeR),
+                       Qt::AlignCenter, txt);
+        }
     }
 
     void launchApp() {
+        // Clear this app's notification badge when launched
+        BadgeRegistry::clear(m_name);
+        update();
+
         // Map dock icon -> real program to run
         QString program;
         QStringList args;
@@ -4571,6 +4631,8 @@ static int runShell(int argc, char *argv[])
     QMainWindow window;
     window.setWindowFlags(Qt::FramelessWindowHint);
     window.setWindowTitle("Apokolips OS");
+
+    BadgeRegistry::seedDefaults();
 
     DesktopBackground *root = new DesktopBackground;
     root->setWallpaper(initialWallpaper);
