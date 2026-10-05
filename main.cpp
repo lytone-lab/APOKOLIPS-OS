@@ -4582,15 +4582,50 @@ protected:
                      t.textPrimary.name(), rgba(t.accentSoft),
                      t.textPrimary.name(), rgba(t.chromeBorder)));
 
+            // ---- New ----
             QAction *aNewFolder = menu.addAction("New Folder");
-            QAction *aNewFile   = menu.addAction("New File");
+            QAction *aNewFile   = menu.addAction("New Text File");
             menu.addSeparator();
-            QAction *aChangeBg  = menu.addAction("Change Wallpaper...");
-            QAction *aTerminal  = menu.addAction("Open Terminal Here");
-            menu.addSeparator();
-            QAction *aDisplay   = menu.addAction("Display Settings");
-            QAction *aAbout     = menu.addAction("About Apokolips");
 
+            // ---- Open ----
+            QAction *aOpenTerminal = menu.addAction("Open Terminal");
+            QAction *aOpenFiles    = menu.addAction("Open File Manager");
+            QAction *aOpenHome     = menu.addAction("Open Home Folder");
+            menu.addSeparator();
+
+            // ---- Wallpaper submenu ----
+            QMenu *wallSub = menu.addMenu("Change Wallpaper");
+            {
+                struct WP { const char *id; const char *name; };
+                const WP wps[] = {
+                    { "ruby",       "Ruby"        },
+                    { "starfield",  "Starfield"   },
+                    { "aurora",     "Aurora"      },
+                    { "goldengate", "Golden Gate" },
+                    { "everest",    "Everest"     }
+                };
+                for (const auto &w : wps) {
+                    QAction *wa = wallSub->addAction(w.name);
+                    QString id = w.id;
+                    QObject::connect(wa, &QAction::triggered,
+                                     [this, id]() {
+                        Wallpaper *nw = WallpaperConfig::makeById(id);
+                        setWallpaper(nw);
+                        ThemeManager::instance().setTheme(nw->theme());
+                        WallpaperConfig::saveId(id);
+                    });
+                }
+            }
+
+            // ---- System ----
+            QAction *aSettings = menu.addAction("System Settings…");
+            QAction *aDisplay  = menu.addAction("Display Settings");
+            menu.addSeparator();
+
+            // ---- About ----
+            QAction *aAbout = menu.addAction("About Apokolips");
+
+            // ---- Connect ----
             QObject::connect(aNewFolder, &QAction::triggered, []() {
                 QString base = QDir::homePath() + "/Desktop";
                 QDir().mkpath(base);
@@ -4608,29 +4643,39 @@ protected:
                 while (QFile::exists(path))
                     path = base + QString("/Untitled %1.txt").arg(++n);
                 QFile f(path);
-                f.open(QIODevice::WriteOnly);
-                f.close();
+                if (f.open(QIODevice::WriteOnly)) f.close();
             });
-            QObject::connect(aTerminal, &QAction::triggered, []() {
-                QProcess::startDetached("x-terminal-emulator",
-                    { "--working-directory=" + QDir::homePath() });
+
+            QObject::connect(aOpenTerminal, &QAction::triggered, []() {
+                // foot is Wayland-native; no D-Bus session needed
+                QProcess::startDetached("foot");
+            });
+            QObject::connect(aOpenFiles, &QAction::triggered, []() {
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--files" });
+            });
+            QObject::connect(aOpenHome, &QAction::triggered, []() {
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--files" });
+            });
+
+            QObject::connect(aSettings, &QAction::triggered, []() {
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--settings" });
             });
             QObject::connect(aDisplay, &QAction::triggered, []() {
                 QProcess::startDetached("gnome-control-center",
                     { "display" });
             });
+
             QObject::connect(aAbout, &QAction::triggered, []() {
                 QProcess::startDetached(
                     QCoreApplication::applicationFilePath(),
-                    { "--demo", "About Apokolips", "0" });
+                    { "--demo", "About Apokolips OS", "0" });
             });
-
-            // Change Wallpaper delegates to the same signal the View
-            // menu uses — but we don't have a direct handle to root here,
-            // so it re-emits via a lightweight path: open the submenu.
-            QMenu *wallSub = menu.addMenu("Change Wallpaper");
-            Q_UNUSED(aChangeBg);
-            Q_UNUSED(wallSub);
 
             menu.exec(e->globalPosition().toPoint());
         }
