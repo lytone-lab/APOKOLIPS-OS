@@ -4109,10 +4109,48 @@ public:
         wxTimer->setInterval(10 * 60 * 1000);
         QObject::connect(wxTimer, &QTimer::timeout, this, doFetch);
         wxTimer->start();
+
+        // Hover magnify: track mouse, animate at 60 Hz
+        setMouseTracking(true);
+        m_hoverTimer = new QTimer(this);
+        m_hoverTimer->setInterval(16);
+        QObject::connect(m_hoverTimer, &QTimer::timeout, this, [this]() {
+            bool needsRepaint = false;
+            for (int i = 0; i < 4; ++i) {
+                double target = (i == m_hoverCard) ? 1.04 : 1.0;
+                double diff   = target - m_scales[i];
+                if (qAbs(diff) > 0.001) {
+                    m_scales[i] += diff * 0.22;
+                    needsRepaint = true;
+                }
+            }
+            if (needsRepaint) update();
+        });
+        m_hoverTimer->start();
     }
 
+protected:
+    void mouseMoveEvent(QMouseEvent *e) override {
+        int idx = cardAt(e->position().toPoint());
+        if (idx != m_hoverCard) {
+            m_hoverCard = idx;
+            update();
+        }
+        QWidget::mouseMoveEvent(e);
+    }
+
+    void leaveEvent(QEvent *e) override {
+        if (m_hoverCard != -1) {
+            m_hoverCard = -1;
+            update();
+        }
+        QWidget::leaveEvent(e);
+    }
+
+public:
+
     void repositionTo(const QSize &parentSize) {
-        const int CARD_W = 200;
+        const int CARD_W = 240;
         setFixedWidth(CARD_W);
         move(20, 50);
         setFixedHeight(qMin(parentSize.height() - 130, 560));
@@ -4148,11 +4186,15 @@ protected:
         y += 96 + 12;
 
         // --- System rings ---
-        drawCard(p, QRect(0, y, width(), 128));
+        drawCard(p, QRect(0, y, width(), 132));
         {
             int r = 34;
-            int cx1 = 14 + r, cy = y + 56;
-            int cx2 = 14 + r + 2*r + 30 + r;
+            int gap = 32;
+            int totalW = 4*r + gap;            // 4 radiuses + gap
+            int leftPad = (width() - totalW) / 2;
+            int cy = y + 56;
+            int cx1 = leftPad + r;
+            int cx2 = leftPad + 3*r + gap;
 
             drawRing(p, QPoint(cx1, cy), r, m_cpuVal, m_theme.accent);
             drawRing(p, QPoint(cx2, cy), r, m_ramVal, m_theme.accent.lighter(120));
@@ -4185,26 +4227,30 @@ protected:
             f.setPixelSize(30); f.setWeight(QFont::Light);
             p.setFont(f);
             p.setPen(m_theme.textPrimary);
-            p.drawText(QRect(14, y + 28, 90, 48),
+            p.drawText(QRect(14, y + 28, 80, 48),
                        Qt::AlignLeft | Qt::AlignVCenter,
                        QString::number(int(m_wx.tempC + 0.5)) + "°");
 
             f.setPixelSize(11); f.setWeight(QFont::Normal);
             p.setFont(f);
+            int infoX = 92;
+            int infoW = width() - infoX - 14;
             p.setPen(m_theme.textSecondary);
-            p.drawText(QRect(100, y + 30, width()-114, 16),
+            p.drawText(QRect(infoX, y + 30, infoW, 16),
                        Qt::AlignLeft, m_wx.condition);
             p.setPen(m_theme.textDim);
-            p.drawText(QRect(100, y + 48, width()-114, 16),
+            p.drawText(QRect(infoX, y + 48, infoW, 16),
                        Qt::AlignLeft,
                        QString("H: %1°  L: %2°")
                            .arg(int(m_wx.tempMax + 0.5))
                            .arg(int(m_wx.tempMin + 0.5)));
-            p.drawText(QRect(100, y + 64, width()-114, 16),
+            p.drawText(QRect(infoX, y + 64, infoW, 16),
                        Qt::AlignLeft,
-                       QString("Wind %1 km/h  ·  HUM %2%")
-                           .arg(int(m_wx.windKmh + 0.5))
-                           .arg(m_wx.humidityPct));
+                       QString("Wind %1 km/h")
+                           .arg(int(m_wx.windKmh + 0.5)));
+            p.drawText(QRect(infoX, y + 64, infoW, 16),
+                       Qt::AlignRight,
+                       QString("HUM %1%").arg(m_wx.humidityPct));
         }
         y += 92 + 12;
 
@@ -4307,6 +4353,38 @@ private:
         edge.setAlpha(40);
         p.setPen(QPen(edge, 1));
         p.drawPath(path);
+
+        // ---- Depth: inner top highlight + inner bottom shadow ----
+        // Top highlight: thin bright line inside the top edge
+        p.setPen(Qt::NoPen);
+        QLinearGradient topHi(r.topLeft() + QPoint(0, 1),
+                              r.topLeft() + QPoint(0, 8));
+        QColor hiTop = m_theme.textPrimary;
+        hiTop.setAlpha(45);
+        QColor hiBot = m_theme.textPrimary;
+        hiBot.setAlpha(0);
+        topHi.setColorAt(0.0, hiTop);
+        topHi.setColorAt(1.0, hiBot);
+        QPainterPath hiPath;
+        hiPath.addRoundedRect(r.adjusted(1, 1, -1, -8),
+                              13, 13);
+        p.setClipPath(path);
+        p.fillPath(hiPath, topHi);
+
+        // Bottom inner shadow: dark band inside bottom edge
+        QLinearGradient botSh(r.bottomLeft() - QPoint(0, 1),
+                              r.bottomLeft() - QPoint(0, 12));
+        QColor shTop = QColor(0, 0, 0);
+        shTop.setAlpha(0);
+        QColor shBot = QColor(0, 0, 0);
+        shBot.setAlpha(60);
+        botSh.setColorAt(0.0, shTop);
+        botSh.setColorAt(1.0, shBot);
+        QPainterPath shPath;
+        shPath.addRoundedRect(r.adjusted(1, 8, -1, -1), 13, 13);
+        p.fillPath(shPath, botSh);
+
+        p.setClipping(false);
     }
 
     void drawRing(QPainter &p, const QPoint &c, int r,
@@ -4339,6 +4417,29 @@ private:
     double m_ramVal = 0.0;
     Weather::Fetcher  *m_weather = nullptr;
     Weather::Snapshot  m_wx;
+
+    // ---- Hover magnify ----
+    QTimer *m_hoverTimer = nullptr;
+    int    m_hoverCard = -1;          // -1 = none
+    double m_scales[4] = {1.0, 1.0, 1.0, 1.0};
+
+    // Card Y bands (top-left positions of each card)
+    QRect cardRect(int idx) const {
+        switch (idx) {
+            case 0: return QRect(0,   0, width(),  96);
+            case 1: return QRect(0, 108, width(), 128);
+            case 2: return QRect(0, 248, width(),  92);
+            case 3: return QRect(0, 352, width(), 130);
+        }
+        return {};
+    }
+
+    int cardAt(const QPoint &pos) const {
+        for (int i = 0; i < 4; ++i) {
+            if (cardRect(i).contains(pos)) return i;
+        }
+        return -1;
+    }
 };
 
 // =========================================================
