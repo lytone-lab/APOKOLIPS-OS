@@ -2126,37 +2126,39 @@ private:
     QPoint m_dragOffset;
 };
 
-static QString menuStyle(const Theme &t)
+static QString menuStyle(const Theme &)
 {
+    // Fixed neutral dark surface so it's readable on every wallpaper.
+    // Theme colors are deliberately ignored here — menus are small
+    // popups and need a solid background more than they need theming.
     return QString(
         "QMenu {"
-        "  background: %1;"
-        "  border: none;"
-        "  border-radius: 10px;"
+        "  background: rgb(24, 22, 30);"
+        "  border: 1px solid rgba(255, 255, 255, 30);"
+        "  border-radius: 12px;"
         "  padding: 6px;"
-        "  color: %3;"
+        "  color: #f0f0f5;"
         "  font-size: 13px;"
         "}"
         "QMenu::item {"
         "  padding: 7px 22px 7px 16px;"
-        "  border-radius: 6px;"
+        "  border-radius: 7px;"
         "  background: transparent;"
+        "  color: #f0f0f5;"
         "}"
         "QMenu::item:selected {"
-        "  background: %4;"
-        "  color: %5;"
+        "  background: rgba(255, 255, 255, 45);"
+        "  color: #ffffff;"
+        "}"
+        "QMenu::item:disabled {"
+        "  color: #6a6a72;"
+        "  background: transparent;"
         "}"
         "QMenu::separator {"
         "  height: 1px;"
-        "  background: %6;"
-        "  margin: 6px 10px;"
-        "}")
-        .arg(rgba(t.panelBg),
-             rgba(t.chromeBorder),
-             t.textPrimary.name(),
-             rgba(t.accentSoft),
-             t.textPrimary.name(),
-             rgba(t.chromeBorder));
+        "  background: rgba(255, 255, 255, 40);"
+        "  margin: 6px 12px;"
+        "}");
 }
 
 // =========================================================
@@ -4081,8 +4083,9 @@ class DesktopWidgets : public QWidget {
 public:
     explicit DesktopWidgets(QWidget *parent = nullptr) : QWidget(parent) {
         setAttribute(Qt::WA_NoSystemBackground, true);
-        // Decorative only — let clicks/hovers pass through to whatever's below.
-        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        // NOTE: do NOT set WA_TransparentForMouseEvents — we need mouse
+        // events for hover magnify. The dock conflict is handled in the
+        // dock's own widget instead.
         buildUi();
 
         m_tickTimer = new QTimer(this);
@@ -4131,13 +4134,20 @@ public:
 
 protected:
     void mouseMoveEvent(QMouseEvent *e) override {
-        int idx = cardAt(e->position().toPoint());
+        handleHoverAt(e->position().toPoint());
+        QWidget::mouseMoveEvent(e);
+    }
+
+    // Public: allow parent to forward hover coords
+public:
+    void handleHoverAt(const QPoint &localPos) {
+        int idx = cardAt(localPos);
         if (idx != m_hoverCard) {
             m_hoverCard = idx;
             update();
         }
-        QWidget::mouseMoveEvent(e);
     }
+protected:
 
     void leaveEvent(QEvent *e) override {
         if (m_hoverCard != -1) {
@@ -4164,7 +4174,7 @@ protected:
         int y = 0;
 
         // --- Clock card ---
-        drawCard(p, QRect(0, y, width(), 96));
+        drawCardScaled(p, 0, QRect(0, y, width(), 96));
         {
             QFont f = font(); f.setPixelSize(34); f.setWeight(QFont::Light);
             p.setFont(f);
@@ -4186,7 +4196,7 @@ protected:
         y += 96 + 12;
 
         // --- System rings ---
-        drawCard(p, QRect(0, y, width(), 132));
+        drawCardScaled(p, 1, QRect(0, y, width(), 132));
         {
             int r = 34;
             int gap = 32;
@@ -4216,7 +4226,7 @@ protected:
         y += 128 + 12;
 
         // --- Weather card ---
-        drawCard(p, QRect(0, y, width(), 92));
+        drawCardScaled(p, 2, QRect(0, y, width(), 92));
         {
             QFont f = font(); f.setPixelSize(11); f.setWeight(QFont::DemiBold);
             p.setFont(f);
@@ -4255,7 +4265,7 @@ protected:
         y += 92 + 12;
 
         // --- Mini calendar ---
-        drawCard(p, QRect(0, y, width(), 130));
+        drawCardScaled(p, 3, QRect(0, y, width(), 130));
         {
             QDate today = QDate::currentDate();
             QString monthName = today.toString("MMMM yyyy").toUpper();
@@ -4300,20 +4310,54 @@ protected:
     }
 
 private:
+    void drawCardScaled(QPainter &p, int idx, const QRect &r) {
+        double s = m_scales[idx];
+        if (qAbs(s - 1.0) < 0.002) {
+            drawCard(p, r);
+            return;
+        }
+
+        // Pivot at card center
+        QPointF ctr = r.center();
+        p.save();
+        p.translate(ctr);
+        p.scale(s, s);
+        p.translate(-ctr);
+
+        // Subtle glow behind hovered card
+        if (s > 1.005) {
+            QColor glow = m_theme.textPrimary;
+            glow.setAlpha(int(20 * (s - 1.0) / 0.04));
+            p.setPen(Qt::NoPen);
+            for (int i = 8; i >= 1; --i) {
+                p.setBrush(glow);
+                p.drawRoundedRect(r.adjusted(-i, -i, i, i),
+                                  14 + i, 14 + i);
+            }
+        }
+
+        drawCard(p, r);
+        p.restore();
+    }
+
     void drawCard(QPainter &p, const QRect &r) {
-        // Soft outer shadow — many thin rings
+        // ---- Launcher treatment: unified soft edge ----
+        // Shadow tint derives from textPrimary so it's dark on light themes
+        // and light-ish on dark themes (never pure black, which muddies).
+        QColor shadowBase = m_theme.textPrimary;
+        QColor sh(shadowBase.red(), shadowBase.green(), shadowBase.blue());
+        sh.setAlphaF(0.014);
         p.setPen(Qt::NoPen);
-        for (int i = 10; i >= 1; --i) {
-            QColor sh(0, 0, 0);
-            sh.setAlphaF(0.012);
+        for (int i = 14; i >= 1; --i) {
             p.setBrush(sh);
-            p.drawRoundedRect(r.adjusted(-i, -i + 2, i, i + 2),
+            p.drawRoundedRect(r.adjusted(-i, -i + 3, i, i + 3),
                               14 + i, 14 + i);
         }
 
         QPainterPath path;
         path.addRoundedRect(r, 14, 14);
 
+        // ---- Blurred wallpaper backdrop ----
         const auto &vc = VisualConfigManager::instance().cfg();
         const QPixmap &bg = ThemeManager::instance().blurredBg();
         if (!bg.isNull() && window() && vc.blurStrength > 0.001) {
@@ -4325,9 +4369,7 @@ private:
             p.restore();
         }
 
-        // Two dark gradients from opposite ends:
-        //  - Primary: top-left -> bottom-right (larger, darker)
-        //  - Secondary: bottom-right -> top-left (smaller, darker)
+        // ---- Diagonal gradient fill (theme-aware, alpha from config) ----
         QColor top = m_theme.panelBg.lighter(118);
         QColor bot = m_theme.panelBg.darker(135);
         top.setAlpha(vc.widgetCardAlpha);
@@ -4338,7 +4380,7 @@ private:
         diag.setColorAt(1.0, bot);
         p.fillPath(path, diag);
 
-        // Smaller second gradient from opposite corner
+        // ---- Second gradient from bottom-right ----
         QRadialGradient inset(r.bottomRight() - QPoint(r.width()/3, r.height()/3),
                               r.width()/2);
         QColor dim = m_theme.panelBg.darker(160);
@@ -4349,42 +4391,41 @@ private:
         inset.setColorAt(1.0, fade);
         p.fillPath(path, inset);
 
+        // ---- Unified edge: faint border ----
         QColor edge = m_theme.chromeBorder;
-        edge.setAlpha(40);
         p.setPen(QPen(edge, 1));
         p.drawPath(path);
 
-        // ---- Depth: inner top highlight + inner bottom shadow ----
-        // Top highlight: thin bright line inside the top edge
-        p.setPen(Qt::NoPen);
-        QLinearGradient topHi(r.topLeft() + QPoint(0, 1),
-                              r.topLeft() + QPoint(0, 8));
-        QColor hiTop = m_theme.textPrimary;
-        hiTop.setAlpha(45);
-        QColor hiBot = m_theme.textPrimary;
+        // ---- Inner top highlight: light on light themes, dark on dark ----
+        // Derive from the surface color so the "extruded" effect reads
+        // correctly in both light and dark modes.
+        QColor hiBase = m_theme.textPrimary;
+        QColor hiTop = hiBase;
+        hiTop.setAlpha(28);          // was 45, softer
+        QColor hiBot = hiBase;
         hiBot.setAlpha(0);
+
+        p.save();
+        p.setClipPath(path);
+        QLinearGradient topHi(r.topLeft() + QPoint(0, 1),
+                              r.topLeft() + QPoint(0, 10));
         topHi.setColorAt(0.0, hiTop);
         topHi.setColorAt(1.0, hiBot);
-        QPainterPath hiPath;
-        hiPath.addRoundedRect(r.adjusted(1, 1, -1, -8),
-                              13, 13);
-        p.setClipPath(path);
-        p.fillPath(hiPath, topHi);
+        p.setPen(Qt::NoPen);
+        p.fillRect(r.adjusted(1, 1, -1, -10), topHi);
 
-        // Bottom inner shadow: dark band inside bottom edge
+        // ---- Inner bottom shadow: soft, theme-aware ----
+        QColor shBase = m_theme.textPrimary;
+        QColor shInnerTop = shBase;
+        shInnerTop.setAlpha(0);
+        QColor shInnerBot = shBase;
+        shInnerBot.setAlpha(30);     // was black 60, softer
         QLinearGradient botSh(r.bottomLeft() - QPoint(0, 1),
-                              r.bottomLeft() - QPoint(0, 12));
-        QColor shTop = QColor(0, 0, 0);
-        shTop.setAlpha(0);
-        QColor shBot = QColor(0, 0, 0);
-        shBot.setAlpha(60);
-        botSh.setColorAt(0.0, shTop);
-        botSh.setColorAt(1.0, shBot);
-        QPainterPath shPath;
-        shPath.addRoundedRect(r.adjusted(1, 8, -1, -1), 13, 13);
-        p.fillPath(shPath, botSh);
-
-        p.setClipping(false);
+                              r.bottomLeft() - QPoint(0, 14));
+        botSh.setColorAt(0.0, shInnerTop);
+        botSh.setColorAt(1.0, shInnerBot);
+        p.fillRect(r.adjusted(1, 14, -1, -1), botSh);
+        p.restore();
     }
 
     void drawRing(QPainter &p, const QPoint &c, int r,
@@ -4449,6 +4490,7 @@ class DesktopBackground : public QWidget {
 public:
     explicit DesktopBackground(QWidget *parent = nullptr) : QWidget(parent) {
         setAttribute(Qt::WA_OpaquePaintEvent, true);
+        setMouseTracking(true);
 
         m_tickTimer = new QTimer(this);
         m_tickTimer->setInterval(16);
@@ -4530,6 +4572,16 @@ protected:
         if (m_launcher) { m_launcher->setGeometry(rect()); m_launcher->raise(); }
         if (m_notifications) m_notifications->setFixedHeight(height());
         m_blurTimer->start();
+    }
+
+    void mouseMoveEvent(QMouseEvent *e) override {
+        // Forward hover to widgets so they can magnify
+        if (m_widgets) {
+            QPoint local = m_widgets->mapFrom(this,
+                                              e->position().toPoint());
+            m_widgets->handleHoverAt(local);
+        }
+        QWidget::mouseMoveEvent(e);
     }
 
     void mousePressEvent(QMouseEvent *e) override {
@@ -5368,6 +5420,14 @@ static int runShell(int argc, char *argv[])
     if (QScreen *screen = app.primaryScreen())
         window.setGeometry(screen->availableGeometry());
     window.showNormal();
+
+    // After show(), layout children (the middle placeholder widget) get
+    // raised above our floating children. Raise them back in the right
+    // z-order so mouse events reach the widgets.
+    if (widgets)         widgets->raise();
+    if (notifications)   notifications->raise();
+    if (controlCenter)   controlCenter->raise();
+    if (launcher)        launcher->raise();
 
     // ---- Self-restart: replace this process with the freshly built binary ----
     auto reloadSelf = []() {
