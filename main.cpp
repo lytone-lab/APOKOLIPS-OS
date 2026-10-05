@@ -177,6 +177,26 @@ inline void subscribe(std::function<void(VisualStyle)> cb) {
     cb(current());
 }
 
+inline QTimer *startPolling(QObject *parent, std::function<void()> onChange) {
+    QTimer *timer = new QTimer(parent);
+    timer->setInterval(400);
+    int *last = new int(static_cast<int>(current()));
+    QObject::connect(timer, &QTimer::timeout, [last, onChange]() {
+        QFile f(path());
+        if (!f.open(QIODevice::ReadOnly)) return;
+        QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+        if (!doc.isObject()) return;
+        int n = doc.object().value("style").toInt(*last);
+        if (n < 0 || n > 3) n = 0;
+        if (n == *last) return;
+        *last = n;
+        current() = static_cast<VisualStyle>(n);
+        onChange();
+    });
+    timer->start();
+    return timer;
+}
+
 inline QString name(VisualStyle s) {
     switch (s) {
         case VisualStyle::Glass:         return "Glass";
@@ -255,12 +275,19 @@ inline void drawPanel(QPainter &p, const QRectF &r, qreal radius,
         g.setColorAt(1.0, bot);
         p.fillPath(path, g);
 
-        // Glossy highlight along top inside edge
-        QColor gloss(255, 255, 255, 70);
+        // Glossy highlight — confined to top ~22%, softer
+        QColor glossTop(255, 255, 255, 55);
+        QColor glossBot(255, 255, 255, 0);
+        qreal glossH = r.height() * 0.22;
+        QLinearGradient glossGrad(r.topLeft() + QPointF(0, 2),
+                                  r.topLeft() + QPointF(0, glossH));
+        glossGrad.setColorAt(0.0, glossTop);
+        glossGrad.setColorAt(1.0, glossBot);
         QPainterPath gl;
-        gl.addRoundedRect(r.adjusted(2, 2, -2, -r.height() * 0.45),
+        gl.addRoundedRect(QRectF(r.left() + 2, r.top() + 2,
+                                 r.width() - 4, glossH),
                           radius - 1, radius - 1);
-        p.fillPath(gl, gloss);
+        p.fillPath(gl, glossGrad);
 
         // Metallic bezel
         QColor bezel = t.textPrimary;
@@ -1027,6 +1054,7 @@ public:
         layout->addWidget(header);
         layout->addWidget(body, 1);
 
+        StyleManager::startPolling(this, [this]() { update(); });
         ThemeManager::instance().subscribe(
             [this, dot, title, close, big, sub](const Theme &t) {
             m_theme = t;
@@ -1072,26 +1100,22 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        // Soft outer shadow — many thin rings
+        // Soft outer shadow
         p.setPen(Qt::NoPen);
-        for (int i = 14; i >= 1; --i) {
-            QColor sh(0, 0, 0);
-            sh.setAlphaF(0.012);
+        for (int i = 5; i >= 1; --i) {
+            QColor sh = m_theme.textPrimary;
+            sh.setAlphaF(0.02 * (i / 5.0));
             p.setBrush(sh);
-            p.drawRoundedRect(rect().adjusted(-i, -i + 3, i - 1, i + 2),
+            p.drawRoundedRect(rect().adjusted(-i, -i + 2, i - 1, i + 1),
                               14 + i, 14 + i);
         }
 
         QPainterPath path;
         path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
 
-        // Body diagonal gradient
-        QColor bodyTop = m_theme.panelBg.lighter(118);
-        QColor bodyBot = m_theme.panelBg.darker(125);
-        QLinearGradient g(rect().topLeft(), rect().bottomRight());
-        g.setColorAt(0.0, bodyTop);
-        g.setColorAt(1.0, bodyBot);
-        p.fillPath(path, g);
+        // Style-aware body
+        StyleRenderer::drawPanel(p, QRectF(rect().adjusted(0, 0, -1, -1)),
+                                 14, m_theme, 235);
 
         // Header strip on top
         QPainterPath hdrPath;
@@ -1162,16 +1186,10 @@ protected:
                               14 + i, 14 + i);
         }
 
-        QColor gTop = m_theme.panelBg.lighter(120);
-        QColor gBot = m_theme.panelBg.darker(130);
-        gTop.setAlpha(int(230 * m_slide));
-        gBot.setAlpha(int(230 * m_slide));
-        QLinearGradient lg(rect().topLeft(), rect().bottomRight());
-        lg.setColorAt(0.0, gTop);
-        lg.setColorAt(1.0, gBot);
-        p.fillRect(rect(), lg);
-
-        QColor edge = m_theme.accent;
+        QRectF ncRect(rect());
+        StyleRenderer::drawPanel(p, ncRect, 0, m_theme,
+                                 int(230 * m_slide));
+        QColor edge = m_theme.chromeBorder;
         edge.setAlpha(int(230 * m_slide));
         p.setPen(QPen(edge, 1));
         p.drawLine(0, 0, 0, height());
@@ -1696,13 +1714,8 @@ protected:
         }
 
         // ---- Very light tint so tiles stay legible ----
-        QColor panel = m_theme.panelBg;
-        panel.setAlpha(int(80 * m_opacity));
-        p.setBrush(panel);
-        QColor edge = m_theme.chromeBorder;
-        edge.setAlpha(int(edge.alpha() * m_opacity));
-        p.setPen(QPen(edge, 1));
-        p.drawRoundedRect(panelRect, 22, 22);
+        StyleRenderer::drawPanel(p, QRectF(panelRect), 22, m_theme,
+                                 int(200 * m_opacity));
     }
 
     void keyPressEvent(QKeyEvent *e) override {
@@ -2157,6 +2170,8 @@ public:
             m_theme = t;
             update();
         });
+        StyleManager::subscribe([this](VisualStyle) { update(); });
+        StyleManager::startPolling(this, [this]() { update(); });
 
         m_layout = new QHBoxLayout(this);
         m_layout->setContentsMargins(18, 18, 18, 14);
@@ -2213,13 +2228,9 @@ protected:
             p.restore();
         }
 
-        QColor tint = m_theme.chromeBg;
-        tint.setAlpha(160);
-        p.fillPath(path, tint);
-
-        p.setPen(QPen(m_theme.chromeBorder, 1));
-        p.setBrush(Qt::NoBrush);
-        p.drawPath(path);
+        const auto &vc = VisualConfigManager::instance().cfg();
+        StyleRenderer::drawPanel(p, QRectF(rect().adjusted(1, 1, -1, -1)),
+                                 20, m_theme, vc.dockAlpha);
     }
 
     void mouseMoveEvent(QMouseEvent *e) override {
@@ -2463,17 +2474,8 @@ protected:
             p.restore();
         }
 
-        QColor gTop = m_theme.panelBg.lighter(120);
-        QColor gBot = m_theme.panelBg.darker(130);
-        gTop.setAlpha(int(vc.controlCenterAlpha * m_slide));
-        gBot.setAlpha(int(vc.controlCenterAlpha * m_slide));
-        QLinearGradient lg(r.topLeft(), r.bottomRight());
-        lg.setColorAt(0.0, gTop);
-        lg.setColorAt(1.0, gBot);
-        p.setBrush(lg);
-        QColor border = m_theme.chromeBorder;
-        p.setPen(QPen(border, 1));
-        p.drawPath(path);
+        StyleRenderer::drawPanel(p, QRectF(r), 16, m_theme,
+                                 int(vc.controlCenterAlpha * m_slide));
     }
 
     void keyPressEvent(QKeyEvent *e) override {
@@ -3039,6 +3041,7 @@ public:
             restyleAll();
             update();
         });
+        StyleManager::startPolling(this, [this]() { update(); });
 
         // ---- Keyboard shortcuts ----
         auto sc = [this](const QString &key,
@@ -3109,17 +3112,17 @@ protected:
         QPainterPath path;
         path.addRoundedRect(frameRect, 14, 14);
 
-        // ---- Unified soft edge: many thin rings = smooth fade ----
+        // ---- Soft outer shadow ----
         p.setPen(Qt::NoPen);
-        for (int i = 14; i >= 1; --i) {
-            QColor sh(0, 0, 0);
-            sh.setAlphaF(0.012);
+        for (int i = 5; i >= 1; --i) {
+            QColor sh = m_theme.textPrimary;
+            sh.setAlphaF(0.02 * (i / 5.0));
             p.setBrush(sh);
-            p.drawRoundedRect(frameRect.adjusted(-i, -i + 3, i, i + 3),
+            p.drawRoundedRect(frameRect.adjusted(-i, -i + 2, i, i + 2),
                               14 + i, 14 + i);
         }
 
-        // ---- Blurred wallpaper as glass backdrop ----
+        // ---- Blurred wallpaper backdrop ----
         if (!m_blurredBg.isNull()) {
             p.save();
             p.setClipPath(path);
@@ -3128,14 +3131,10 @@ protected:
             p.restore();
         }
 
-        // ---- Tint from config (user tunable in Settings) ----
+        // ---- Style-aware body ----
         const auto &vc = VisualConfigManager::instance().cfg();
-        QColor tint = m_theme.panelBg;
-        tint.setAlpha(vc.finderAlpha);
-        p.setBrush(tint);
-        QColor edge = m_theme.chromeBorder;
-        p.setPen(QPen(edge, 1));
-        p.drawPath(path);
+        StyleRenderer::drawPanel(p, QRectF(frameRect), 14, m_theme,
+                                 vc.finderAlpha);
 
         // ---- Header strip: slightly stronger tint ----
         QPainterPath hdrPath;
@@ -3701,6 +3700,7 @@ private:
 class SettingsWindow : public QWidget {
 public:
     explicit SettingsWindow(QWidget *parent = nullptr) : QWidget(parent) {
+        StyleManager::load();   // <-- read saved style so buttons highlight correctly
         setWindowFlags(Qt::FramelessWindowHint);
         setWindowTitle("Apokolips Settings");
         setAttribute(Qt::WA_TranslucentBackground, true);
@@ -3716,6 +3716,7 @@ public:
             m_theme = t;
             restyleAll();
         });
+        StyleManager::startPolling(this, [this]() { update(); });
     }
 
 protected:
@@ -3734,16 +3735,9 @@ protected:
         QPainterPath path;
         path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
 
-        // Full window background (header strip + main body)
-        QColor bodyTop = m_theme.panelBg.lighter(118);
-        QColor bodyBot = m_theme.panelBg.darker(125);
-        bodyTop.setAlpha(235);
-        bodyBot.setAlpha(235);
-
-        QLinearGradient bodyGrad(rect().topLeft(), rect().bottomRight());
-        bodyGrad.setColorAt(0.0, bodyTop);
-        bodyGrad.setColorAt(1.0, bodyBot);
-        p.fillPath(path, bodyGrad);
+        // Style-aware body
+        StyleRenderer::drawPanel(p, QRectF(rect().adjusted(0, 0, -1, -1)),
+                                 14, m_theme, 235);
 
         QColor hdrCol = m_theme.chromeBg.lighter(115);
         hdrCol.setAlpha(235);
@@ -4591,9 +4585,7 @@ private:
     }
 
     void drawCard(QPainter &p, const QRect &r) {
-        // ---- Soft outer shadow (launcher treatment) ----
-        // Derive from textPrimary so light themes get a soft navy edge,
-        // dark themes get a soft light edge. Never pure black.
+        // Soft outer shadow
         QColor shadowBase = m_theme.textPrimary;
         p.setPen(Qt::NoPen);
         for (int i = 5; i >= 1; --i) {
@@ -4604,13 +4596,11 @@ private:
                               14 + i, 14 + i);
         }
 
+        // Blur backdrop
+        const auto &vc = VisualConfigManager::instance().cfg();
+        const QPixmap &bg = ThemeManager::instance().blurredBg();
         QPainterPath path;
         path.addRoundedRect(r, 14, 14);
-
-        const auto &vc = VisualConfigManager::instance().cfg();
-
-        // ---- Blurred wallpaper backdrop ----
-        const QPixmap &bg = ThemeManager::instance().blurredBg();
         if (!bg.isNull() && window() && vc.blurStrength > 0.001) {
             p.save();
             p.setClipPath(path);
@@ -4620,32 +4610,9 @@ private:
             p.restore();
         }
 
-        // ---- Diagonal gradient fill ----
-        QColor top = m_theme.panelBg.lighter(118);
-        QColor bot = m_theme.panelBg.darker(135);
-        top.setAlpha(vc.widgetCardAlpha);
-        bot.setAlpha(vc.widgetCardAlpha);
-
-        QLinearGradient diag(r.topLeft(), r.bottomRight());
-        diag.setColorAt(0.0, top);
-        diag.setColorAt(1.0, bot);
-        p.fillPath(path, diag);
-
-        // ---- Second subtle gradient from bottom-right ----
-        QRadialGradient inset(r.bottomRight() - QPoint(r.width()/3, r.height()/3),
-                              r.width()/2);
-        QColor dim = m_theme.panelBg.darker(160);
-        dim.setAlpha(int(vc.widgetCardAlpha * 0.5));
-        QColor fade = m_theme.panelBg.darker(160);
-        fade.setAlpha(0);
-        inset.setColorAt(0.0, dim);
-        inset.setColorAt(1.0, fade);
-        p.fillPath(path, inset);
-
-        // ---- Faint border only. No inner highlight, no inner shadow. ----
-        QColor edge = m_theme.chromeBorder;
-        p.setPen(QPen(edge, 1));
-        p.drawPath(path);
+        // Style-aware panel
+        StyleRenderer::drawPanel(p, QRectF(r), 14, m_theme,
+                                 vc.widgetCardAlpha);
     }
 
     void drawRing(QPainter &p, const QPoint &c, int r,
@@ -4940,16 +4907,17 @@ protected:
 
         const Theme &t = ThemeManager::instance().current();
         const int TOP_H = 30;
+        const auto &vc = VisualConfigManager::instance().cfg();
         const QPixmap &bg = ThemeManager::instance().blurredBg();
-        if (!bg.isNull()) {
+        if (!bg.isNull() && vc.blurStrength > 0.001) {
+            p.save();
+            p.setOpacity(vc.blurStrength);
             p.drawPixmap(QRect(0, 0, width(), TOP_H), bg,
                          QRect(0, 0, width(), TOP_H));
+            p.restore();
         }
-        QColor tint = t.chromeBg;
-        tint.setAlpha(150);
-        p.fillRect(QRect(0, 0, width(), TOP_H), tint);
-        p.setPen(QPen(QColor(255, 255, 255, 8), 1));
-        p.drawLine(0, TOP_H - 1, width(), TOP_H - 1);
+        StyleRenderer::drawPanel(p, QRectF(0, 0, width(), TOP_H),
+                                 0, t, vc.topBarAlpha);
     }
 
 private:
