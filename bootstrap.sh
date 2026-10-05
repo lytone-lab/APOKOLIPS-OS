@@ -23,7 +23,8 @@ sudo apt install -y \
     build-essential cmake g++ git \
     qt6-base-dev qt6-declarative-dev qt6-base-dev-tools qt6-wayland \
     libgl1-mesa-dev \
-    cage \
+    sway swaybg swayidle swaylock \
+    wl-clipboard \
     plymouth plymouth-themes imagemagick \
     gnome-terminal eog totem \
     openssh-server
@@ -102,19 +103,8 @@ sudo sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Apokolips OS 26.04"/' \
     /etc/os-release /usr/lib/os-release
 sudo dconf update 2>/dev/null || true
 
-# ---- 5. Apokolips Wayland session ----
-say "Registering Apokolips session..."
-sudo mkdir -p /usr/share/wayland-sessions
-cat > /tmp/apokolips.desktop <<EOF
-[Desktop Entry]
-Name=Apokolips
-Comment=Apokolips OS - custom shell
-Exec=cage $REPO_DIR/run-session.sh
-Type=Application
-DesktopNames=Apokolips
-EOF
-sudo cp /tmp/apokolips.desktop /usr/share/wayland-sessions/apokolips.desktop
-
+# ---- 5. Shell launcher ----
+say "Writing shell launcher..."
 cat > "$REPO_DIR/run-session.sh" <<EOF
 #!/bin/bash
 cd "$REPO_DIR"
@@ -122,7 +112,47 @@ exec ./build/apokolips-shell
 EOF
 chmod +x "$REPO_DIR/run-session.sh"
 
-# ---- 6. AccountsService — default this user to Apokolips ----
+# ---- 6. Sway config ----
+say "Installing sway config..."
+mkdir -p "$HOME/.config/sway"
+if [ -f "$SYS/sway-config" ]; then
+    # Patch path placeholders to this machine's REPO_DIR
+    sed "s|/home/lytone/apokolips-shell|$REPO_DIR|g" \
+        "$SYS/sway-config" > "$HOME/.config/sway/config"
+else
+    warn "system/sway-config missing — writing minimal config"
+    cat > "$HOME/.config/sway/config" <<EOF
+set \$mod Mod4
+output * bg #000000 solid_color
+default_border none
+default_floating_border normal 2
+font pango:DejaVu Sans 10
+exec_always sh -c 'while true; do $REPO_DIR/run-session.sh; sleep 1; done'
+for_window [app_id=".*"] floating enable
+for_window [title=".*"] floating enable
+for_window [app_id="apokolips-shell"] floating disable
+for_window [app_id="apokolips-shell"] border none
+bindsym \$mod+Return exec foot
+bindsym \$mod+Shift+q kill
+bindsym \$mod+Tab focus next
+bindsym \$mod+1 workspace 1
+EOF
+fi
+
+# ---- 7. Apokolips Wayland session ----
+say "Registering Apokolips session..."
+sudo mkdir -p /usr/share/wayland-sessions
+cat > /tmp/apokolips.desktop <<EOF
+[Desktop Entry]
+Name=Apokolips
+Comment=Apokolips OS - custom shell
+Exec=sway
+Type=Application
+DesktopNames=Apokolips
+EOF
+sudo cp /tmp/apokolips.desktop /usr/share/wayland-sessions/apokolips.desktop
+
+# ---- 8. AccountsService — default this user to Apokolips ----
 say "Setting default session to Apokolips..."
 CURRENT_USER="${SUDO_USER:-$USER}"
 sudo mkdir -p /var/lib/AccountsService/users
@@ -135,15 +165,19 @@ EOF
 sudo chmod 600 /var/lib/AccountsService/users/$CURRENT_USER
 sudo chown root:root /var/lib/AccountsService/users/$CURRENT_USER
 
-# ---- 7. Rebuild initramfs (for Plymouth) ----
+# ---- 9. Rebuild initramfs (for Plymouth) ----
 say "Rebuilding initramfs..."
 sudo update-initramfs -u
 
-# ---- 8. Build the shell ----
+# ---- 10. Build the shell ----
 say "Building Apokolips shell..."
 cd "$REPO_DIR"
-cmake -S . -B build
+cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 cmake --build build
 
-say "Done. Reboot to see the fully branded boot chain."
-say "Login: pick 'Apokolips' from the session gear, or it's already default."
+# ---- 11. Convenience symlink for IntelliSense ----
+ln -sf build/compile_commands.json "$REPO_DIR/compile_commands.json"
+
+say "Done."
+say "Reboot. Login picks Apokolips session by default (sway + shell)."
+say "If shell dies, sway auto-respawns it."
