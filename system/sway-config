@@ -14,7 +14,7 @@ gaps outer 0
 
 font pango:DejaVu Sans 10
 
-exec /home/lytone/apokolips-shell/run-session.sh
+exec systemctl --user start apokolips-shell.service
 
 # ---- Catch-all: everything floats by default ----
 for_window [app_id=".*"] floating enable

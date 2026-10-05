@@ -30,6 +30,9 @@
 #include <unistd.h>
 #include <QShortcut>
 #include <QInputDialog>
+#include <QRegularExpression>
+#include <QListWidget>
+#include <csignal>
 #include <QUrl>
 #include <QJsonArray>
 #include <QNetworkReply>
@@ -342,6 +345,7 @@ struct VisualConfig {
     int    controlCenterAlpha = 165;
     int    widgetCardAlpha    = 140;
     int    finderAlpha        = 110;
+    bool   widgetsVisible     = true;
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
     double dockSigma          = 55.0;
@@ -387,6 +391,9 @@ public:
         m_cfg.controlCenterAlpha = getI("controlCenterAlpha", m_cfg.controlCenterAlpha);
         m_cfg.widgetCardAlpha    = getI("widgetCardAlpha",    m_cfg.widgetCardAlpha);
         m_cfg.finderAlpha        = getI("finderAlpha",        m_cfg.finderAlpha);
+        m_cfg.widgetsVisible     = o.contains("widgetsVisible")
+                                   ? o["widgetsVisible"].toBool(true)
+                                   : m_cfg.widgetsVisible;
         m_cfg.blurRefreshMs      = getI("blurRefreshMs",      m_cfg.blurRefreshMs);
         m_cfg.dockMagnifyMax     = getD("dockMagnifyMax",     m_cfg.dockMagnifyMax);
         m_cfg.dockSigma          = getD("dockSigma",          m_cfg.dockSigma);
@@ -419,6 +426,7 @@ public:
         o["controlCenterAlpha"] = m_cfg.controlCenterAlpha;
         o["widgetCardAlpha"]    = m_cfg.widgetCardAlpha;
         o["finderAlpha"]        = m_cfg.finderAlpha;
+        o["widgetsVisible"]     = m_cfg.widgetsVisible;
         o["blurRefreshMs"]      = m_cfg.blurRefreshMs;
         o["dockMagnifyMax"]     = m_cfg.dockMagnifyMax;
         o["dockSigma"]          = m_cfg.dockSigma;
@@ -4402,7 +4410,7 @@ public:
     void repositionTo(const QSize &parentSize) {
         const int CARD_W = 240;
         setFixedWidth(CARD_W);
-        move(20, 50);
+        move(parentSize.width() - CARD_W - 20, 50);
         setFixedHeight(qMin(parentSize.height() - 130, 560));
     }
 
@@ -4667,6 +4675,273 @@ private:
 };
 
 // =========================================================
+// Spotlight — global search overlay (macOS-style)
+// =========================================================
+static volatile sig_atomic_t g_spotlightToggle = 0;
+
+extern "C" void spotlightSignalHandler(int) {
+    g_spotlightToggle = 1;
+}
+
+class SpotlightOverlay : public QWidget {
+public:
+    explicit SpotlightOverlay(QWidget *parent = nullptr) : QWidget(parent) {
+        setFocusPolicy(Qt::StrongFocus);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        buildUi();
+        hide();
+
+        m_scanTimer = new QTimer(this);
+        m_scanTimer->setInterval(600);
+        QObject::connect(m_scanTimer, &QTimer::timeout,
+                         this, &SpotlightOverlay::updateSearch);
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_theme = t;
+            restyle();
+            update();
+        });
+        StyleManager::startPolling(this, [this]() { update(); });
+    }
+
+    void toggle() { isVisible() ? hideNow() : showNow(); }
+
+    void showNow() {
+        raise(); show(); setFocus();
+        m_search->clear();
+        m_search->setFocus();
+        m_results->clear();
+        updateSearch();
+    }
+
+    void hideNow() { hide(); }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        // Full-screen dim backdrop (theme-aware, subtle)
+        QColor dim = (m_theme.textPrimary.lightness() > 128)
+                     ? QColor(0, 0, 0, 90)
+                     : QColor(0, 0, 0, 120);
+        p.fillRect(rect(), dim);
+    }
+
+    void keyPressEvent(QKeyEvent *e) override {
+        if (e->key() == Qt::Key_Escape) {
+            hideNow(); e->accept();
+        } else if (e->key() == Qt::Key_Return ||
+                   e->key() == Qt::Key_Enter) {
+            activateCurrent(); e->accept();
+        } else if (e->key() == Qt::Key_Down) {
+            int i = m_results->currentRow();
+            if (i < m_results->count() - 1)
+                m_results->setCurrentRow(i + 1);
+            e->accept();
+        } else if (e->key() == Qt::Key_Up) {
+            int i = m_results->currentRow();
+            if (i > 0) m_results->setCurrentRow(i - 1);
+            e->accept();
+        } else {
+            QWidget::keyPressEvent(e);
+        }
+    }
+
+    void mousePressEvent(QMouseEvent *e) override {
+        // Clicking outside the panel closes
+        if (!m_panel || !m_panel->geometry().contains(e->pos()))
+            hideNow();
+        else
+            QWidget::mousePressEvent(e);
+    }
+
+private:
+    struct Result {
+        QString kind;      // "App", "Calc", "Path"
+        QString title;
+        QString subtitle;
+        QString payload;   // exe path, calc result, or path
+    };
+
+    void buildUi() {
+        m_panel = new QWidget(this);
+        m_panel->setAttribute(Qt::WA_NoSystemBackground, true);
+        m_panel->setObjectName("spotlightPanel");
+
+        QVBoxLayout *v = new QVBoxLayout(m_panel);
+        v->setContentsMargins(20, 18, 20, 18);
+        v->setSpacing(12);
+
+        m_search = new QLineEdit;
+        m_search->setPlaceholderText("Spotlight Search");
+        m_search->setStyleSheet(
+            "QLineEdit { background: transparent; border: none;"
+            "  font-size: 22px; padding: 4px 2px; color: #f0f0f5; }");
+        v->addWidget(m_search);
+
+        m_results = new QListWidget;
+        m_results->setFrameShape(QFrame::NoFrame);
+        m_results->setStyleSheet(
+            "QListWidget { background: transparent; border: none;"
+            "  outline: none; color: #f0f0f5; font-size: 13px; }"
+            "QListWidget::item { padding: 8px 6px; border-radius: 8px; }"
+            "QListWidget::item:selected { background: rgba(255,255,255,40); }");
+        v->addWidget(m_results, 1);
+
+        QObject::connect(m_search, &QLineEdit::textChanged,
+                         this, &SpotlightOverlay::updateSearch);
+        QObject::connect(m_results, &QListWidget::itemActivated,
+                         this, &SpotlightOverlay::activateCurrent);
+
+        setLayout(new QVBoxLayout(this));
+        layout()->setContentsMargins(0, 0, 0, 0);
+    }
+
+    void updateSearch() {
+        m_results->clear();
+        m_scanTimer->stop();
+        QString q = m_search->text().trimmed();
+
+        // ---- Calculator: if query looks mathy ----
+        if (!q.isEmpty() && q.at(0).isDigit()) {
+            QString val = tryCalculate(q);
+            if (!val.isEmpty()) {
+                addResult({"Calc", val, "Copy to clipboard", val});
+            }
+        }
+
+        // ---- Paths: if starts with / or ~ ----
+        if (q.startsWith("/") || q.startsWith("~")) {
+            QString expanded = q;
+            if (expanded.startsWith("~"))
+                expanded.replace(0, 1, QDir::homePath());
+            QDir d(expanded);
+            if (d.exists()) {
+                for (const QString &entry : d.entryList(
+                         QDir::AllEntries | QDir::NoDotAndDotDot))
+                {
+                    addResult({"Path",
+                               entry,
+                               d.absolutePath() + "/" + entry,
+                               d.absolutePath() + "/" + entry});
+                    if (m_results->count() > 40) break;
+                }
+            }
+        }
+
+        // ---- Apps: scan .desktop files ----
+        QDir appDir("/usr/share/applications");
+        if (appDir.exists()) {
+            QStringList files = appDir.entryList({"*.desktop"}, QDir::Files);
+            int shown = 0;
+            for (const QString &file : files) {
+                if (shown > 25) break;
+                QFile f(appDir.filePath(file));
+                if (!f.open(QIODevice::ReadOnly)) continue;
+                QString name, exec;
+                while (!f.atEnd()) {
+                    QString line = QString::fromUtf8(f.readLine()).trimmed();
+                    if (line.startsWith("Name=") && name.isEmpty())
+                        name = line.mid(5);
+                    else if (line.startsWith("Exec="))
+                        exec = line.mid(5).section(' ', 0, 0);
+                    else if (line.startsWith("NoDisplay=true"))
+                        name.clear();
+                }
+                f.close();
+                if (name.isEmpty() || exec.isEmpty()) continue;
+                if (!q.isEmpty() &&
+                    !name.toLower().contains(q.toLower())) continue;
+                addResult({"App", name, exec, exec});
+                ++shown;
+            }
+        }
+    }
+
+    QString tryCalculate(const QString &expr) {
+        // Very small safe evaluator: digits, + - * / ( ) . space
+        for (QChar c : expr) {
+            if (!c.isDigit() && !QString("+-*/() .").contains(c))
+                return {};
+        }
+        QProcess py;
+        py.start("python3", {"-c",
+            QString("print(%1)").arg(expr)});
+        py.waitForFinished(400);
+        QString out = QString::fromUtf8(py.readAllStandardOutput()).trimmed();
+        return out.isEmpty() ? QString() : out;
+    }
+
+    void addResult(const Result &r) {
+        QString display = QString("%1   %2")
+            .arg(r.title, -30)
+            .arg(r.subtitle);
+        QListWidgetItem *item = new QListWidgetItem(display);
+        item->setData(Qt::UserRole, r.kind);
+        item->setData(Qt::UserRole + 1, r.payload);
+        m_results->addItem(item);
+        if (m_results->currentRow() < 0)
+            m_results->setCurrentRow(0);
+    }
+
+    void activateCurrent() {
+        QListWidgetItem *it = m_results->currentItem();
+        if (!it) return;
+        QString kind = it->data(Qt::UserRole).toString();
+        QString payload = it->data(Qt::UserRole + 1).toString();
+
+        if (kind == "App") {
+            QProcess::startDetached(payload);
+        } else if (kind == "Path") {
+            QProcess::startDetached("xdg-open", { payload });
+        } else if (kind == "Calc") {
+            QProcess wl;
+            wl.start("wl-copy");
+            wl.write(payload.toUtf8());
+            wl.closeWriteChannel();
+            wl.waitForFinished(300);
+        }
+        hideNow();
+    }
+
+    void restyle() {
+        const Theme &t = m_theme;
+        if (!m_panel) return;
+
+        // Panel styling done via paintEvent fallback? No — do it here
+        m_panel->setStyleSheet(QString(
+            "#spotlightPanel {"
+            "  background: rgba(28, 26, 34, 240);"
+            "  border: 1px solid rgba(255,255,255,30);"
+            "  border-radius: 14px;"
+            "}"));
+        m_search->setStyleSheet(
+            "QLineEdit { background: transparent; border: none;"
+            "  font-size: 22px; padding: 4px 2px; color: #f0f0f5; }");
+        m_results->setStyleSheet(
+            "QListWidget { background: transparent; border: none;"
+            "  outline: none; color: #f0f0f5; font-size: 13px; }"
+            "QListWidget::item { padding: 8px 6px; border-radius: 8px; }"
+            "QListWidget::item:selected { background: rgba(255,255,255,40); }");
+    }
+
+    void resizeEvent(QResizeEvent *e) override {
+        QWidget::resizeEvent(e);
+        int pw = qMin(640, width() - 80);
+        int ph = qMin(460, height() - 120);
+        m_panel->setGeometry((width() - pw) / 2, height() / 5,
+                             pw, ph);
+    }
+
+    QWidget     *m_panel   = nullptr;
+    QLineEdit   *m_search  = nullptr;
+    QListWidget *m_results = nullptr;
+    QTimer      *m_scanTimer = nullptr;
+    Theme        m_theme;
+};
+
+// =========================================================
 // Desktop background
 // =========================================================
 class DesktopBackground : public QWidget {
@@ -4740,6 +5015,14 @@ public:
         if (m_notifications) m_notifications->raise();
         if (m_controlCenter) m_controlCenter->raise();
         if (m_launcher)      m_launcher->raise();
+        if (m_spotlight)     m_spotlight->raise();
+    }
+
+    void setSpotlight(SpotlightOverlay *s) {
+        m_spotlight = s;
+        s->setParent(this);
+        s->setGeometry(rect());
+        s->raise();
     }
 
     void setWallpaper(Wallpaper *w) {
@@ -4922,6 +5205,7 @@ private:
     NotificationCenter *m_notifications = nullptr;
     ControlCenter      *m_controlCenter = nullptr;
     DesktopWidgets     *m_widgets = nullptr;
+    SpotlightOverlay   *m_spotlight = nullptr;
     QTimer             *m_tickTimer = nullptr;
     QTimer             *m_blurTimer = nullptr;
 };
@@ -5005,6 +5289,8 @@ static int runShell(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setApplicationName("Apokolips Shell");
 
+    std::signal(SIGUSR1, spotlightSignalHandler);
+
     // Load theme BEFORE creating any chrome widget
     Wallpaper *initialWallpaper =
         WallpaperConfig::makeById(WallpaperConfig::loadId());
@@ -5085,6 +5371,22 @@ static int runShell(int argc, char *argv[])
     AppLauncher *launcher = new AppLauncher;
     root->setLauncher(launcher);
     ShellRegistry::launcherToggle() = [launcher]() { launcher->toggle(); };
+
+    // Spotlight overlay
+    SpotlightOverlay *spotlight = new SpotlightOverlay(root);
+    spotlight->setGeometry(0, 0, root->width(), root->height());
+    root->setSpotlight(spotlight);
+
+    // Poll SIGUSR1 → toggle Spotlight (sway keybind sends the signal)
+    QTimer *signalPoll = new QTimer(&window);
+    signalPoll->setInterval(120);
+    QObject::connect(signalPoll, &QTimer::timeout, [spotlight]() {
+        if (g_spotlightToggle) {
+            g_spotlightToggle = 0;
+            spotlight->toggle();
+        }
+    });
+    signalPoll->start();
 
     NotificationCenter *notifications = new NotificationCenter(root);
     notifications->resize(360, root->height());
@@ -5286,6 +5588,20 @@ static int runShell(int argc, char *argv[])
         });
     }
     {
+        QAction *a = viewMenu->addAction("Toggle Desktop Widgets");
+        QObject::connect(a, &QAction::triggered, [root]() {
+            auto &cfg = VisualConfigManager::instance().cfg();
+            cfg.widgetsVisible = !cfg.widgetsVisible;
+            VisualConfigManager::instance().save();
+            for (QObject *child : root->children()) {
+                if (auto *w = dynamic_cast<DesktopWidgets *>(child)) {
+                    w->setVisible(cfg.widgetsVisible);
+                    if (cfg.widgetsVisible) w->raise();
+                }
+            }
+        });
+    }
+    {
         QAction *a = viewMenu->addAction("Reload Shell");
         a->setShortcut(QKeySequence("Ctrl+Shift+R"));
         QObject::connect(a, &QAction::triggered, []() {
@@ -5449,6 +5765,10 @@ static int runShell(int argc, char *argv[])
 
     DesktopWidgets *widgets = new DesktopWidgets(root);
     root->setDesktopWidgets(widgets);
+    widgets->setVisible(
+        VisualConfigManager::instance().cfg().widgetsVisible);
+    // Spotlight must sit above ALL other chrome so it dims everything
+    if (spotlight) spotlight->raise();
 
     // Avatar badge — small accent-tinted circle with user glyph
     class AvatarBadge : public QLabel {
@@ -5658,6 +5978,8 @@ static int runShell(int argc, char *argv[])
     if (notifications)   notifications->raise();
     if (controlCenter)   controlCenter->raise();
     if (launcher)        launcher->raise();
+    if (spotlight)       spotlight->raise();
+    if (spotlight)       spotlight->raise();
 
     // ---- Self-restart: replace this process with the freshly built binary ----
     auto reloadSelf = []() {
@@ -5720,6 +6042,16 @@ static int runShell(int argc, char *argv[])
             *lastMod = m;
             VisualConfigManager::instance().load();
             if (root) {
+                // Apply widget visibility in case it changed elsewhere
+                auto &cfg = VisualConfigManager::instance().cfg();
+                for (QObject *child : root->children()) {
+                    if (auto *w = dynamic_cast<DesktopWidgets *>(child)) {
+                        if (w->isVisible() != cfg.widgetsVisible) {
+                            w->setVisible(cfg.widgetsVisible);
+                            if (cfg.widgetsVisible) w->raise();
+                        }
+                    }
+                }
                 root->update();
                 for (QWidget *w : root->findChildren<QWidget *>()) w->update();
             }
