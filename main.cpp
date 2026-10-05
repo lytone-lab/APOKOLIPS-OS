@@ -4341,24 +4341,25 @@ private:
     }
 
     void drawCard(QPainter &p, const QRect &r) {
-        // ---- Launcher treatment: unified soft edge ----
-        // Shadow tint derives from textPrimary so it's dark on light themes
-        // and light-ish on dark themes (never pure black, which muddies).
+        // ---- Soft outer shadow (launcher treatment) ----
+        // Derive from textPrimary so light themes get a soft navy edge,
+        // dark themes get a soft light edge. Never pure black.
         QColor shadowBase = m_theme.textPrimary;
-        QColor sh(shadowBase.red(), shadowBase.green(), shadowBase.blue());
-        sh.setAlphaF(0.014);
         p.setPen(Qt::NoPen);
-        for (int i = 14; i >= 1; --i) {
+        for (int i = 5; i >= 1; --i) {
+            QColor sh = shadowBase;
+            sh.setAlphaF(0.02 * (i / 5.0));
             p.setBrush(sh);
-            p.drawRoundedRect(r.adjusted(-i, -i + 3, i, i + 3),
+            p.drawRoundedRect(r.adjusted(-i, -i + 2, i, i + 2),
                               14 + i, 14 + i);
         }
 
         QPainterPath path;
         path.addRoundedRect(r, 14, 14);
 
-        // ---- Blurred wallpaper backdrop ----
         const auto &vc = VisualConfigManager::instance().cfg();
+
+        // ---- Blurred wallpaper backdrop ----
         const QPixmap &bg = ThemeManager::instance().blurredBg();
         if (!bg.isNull() && window() && vc.blurStrength > 0.001) {
             p.save();
@@ -4369,7 +4370,7 @@ private:
             p.restore();
         }
 
-        // ---- Diagonal gradient fill (theme-aware, alpha from config) ----
+        // ---- Diagonal gradient fill ----
         QColor top = m_theme.panelBg.lighter(118);
         QColor bot = m_theme.panelBg.darker(135);
         top.setAlpha(vc.widgetCardAlpha);
@@ -4380,52 +4381,21 @@ private:
         diag.setColorAt(1.0, bot);
         p.fillPath(path, diag);
 
-        // ---- Second gradient from bottom-right ----
+        // ---- Second subtle gradient from bottom-right ----
         QRadialGradient inset(r.bottomRight() - QPoint(r.width()/3, r.height()/3),
                               r.width()/2);
         QColor dim = m_theme.panelBg.darker(160);
-        dim.setAlpha(int(vc.widgetCardAlpha * 0.7));
+        dim.setAlpha(int(vc.widgetCardAlpha * 0.5));
         QColor fade = m_theme.panelBg.darker(160);
         fade.setAlpha(0);
         inset.setColorAt(0.0, dim);
         inset.setColorAt(1.0, fade);
         p.fillPath(path, inset);
 
-        // ---- Unified edge: faint border ----
+        // ---- Faint border only. No inner highlight, no inner shadow. ----
         QColor edge = m_theme.chromeBorder;
         p.setPen(QPen(edge, 1));
         p.drawPath(path);
-
-        // ---- Inner top highlight: light on light themes, dark on dark ----
-        // Derive from the surface color so the "extruded" effect reads
-        // correctly in both light and dark modes.
-        QColor hiBase = m_theme.textPrimary;
-        QColor hiTop = hiBase;
-        hiTop.setAlpha(28);          // was 45, softer
-        QColor hiBot = hiBase;
-        hiBot.setAlpha(0);
-
-        p.save();
-        p.setClipPath(path);
-        QLinearGradient topHi(r.topLeft() + QPoint(0, 1),
-                              r.topLeft() + QPoint(0, 10));
-        topHi.setColorAt(0.0, hiTop);
-        topHi.setColorAt(1.0, hiBot);
-        p.setPen(Qt::NoPen);
-        p.fillRect(r.adjusted(1, 1, -1, -10), topHi);
-
-        // ---- Inner bottom shadow: soft, theme-aware ----
-        QColor shBase = m_theme.textPrimary;
-        QColor shInnerTop = shBase;
-        shInnerTop.setAlpha(0);
-        QColor shInnerBot = shBase;
-        shInnerBot.setAlpha(30);     // was black 60, softer
-        QLinearGradient botSh(r.bottomLeft() - QPoint(0, 1),
-                              r.bottomLeft() - QPoint(0, 14));
-        botSh.setColorAt(0.0, shInnerTop);
-        botSh.setColorAt(1.0, shInnerBot);
-        p.fillRect(r.adjusted(1, 14, -1, -1), botSh);
-        p.restore();
     }
 
     void drawRing(QPainter &p, const QPoint &c, int r,
