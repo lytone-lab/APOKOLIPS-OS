@@ -119,6 +119,192 @@ public:
 };
 
 // =========================================================
+// VisualStyle — glass / neu / skeuo / clay morphism
+// =========================================================
+enum class VisualStyle {
+    Glass        = 0,
+    Neumorphism  = 1,
+    Skeuomorphism= 2,
+    Claymorphism = 3
+};
+
+namespace StyleManager {
+
+inline VisualStyle &current() {
+    static VisualStyle s = VisualStyle::Glass;
+    return s;
+}
+
+inline QList<std::function<void(VisualStyle)>> &callbacks() {
+    static QList<std::function<void(VisualStyle)>> cbs;
+    return cbs;
+}
+
+inline QString path() {
+    QString dir = QStandardPaths::writableLocation(
+                      QStandardPaths::ConfigLocation);
+    if (dir.isEmpty()) dir = QDir::homePath() + "/.config";
+    return dir + "/apokolips/style.json";
+}
+
+inline void load() {
+    QFile f(path());
+    if (!f.open(QIODevice::ReadOnly)) return;
+    QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    if (!doc.isObject()) return;
+    int n = doc.object().value("style").toInt(0);
+    if (n < 0 || n > 3) n = 0;
+    current() = static_cast<VisualStyle>(n);
+}
+
+inline void save() {
+    QDir().mkpath(QFileInfo(path()).absolutePath());
+    QJsonObject o;
+    o["style"] = static_cast<int>(current());
+    QFile f(path());
+    if (f.open(QIODevice::WriteOnly))
+        f.write(QJsonDocument(o).toJson());
+}
+
+inline void set(VisualStyle s) {
+    current() = s;
+    save();
+    for (auto &cb : callbacks()) cb(s);
+}
+
+inline void subscribe(std::function<void(VisualStyle)> cb) {
+    callbacks().append(cb);
+    cb(current());
+}
+
+inline QString name(VisualStyle s) {
+    switch (s) {
+        case VisualStyle::Glass:         return "Glass";
+        case VisualStyle::Neumorphism:   return "Neumorphism";
+        case VisualStyle::Skeuomorphism: return "Skeuomorphism";
+        case VisualStyle::Claymorphism:  return "Claymorphism";
+    }
+    return "Glass";
+}
+
+} // namespace StyleManager
+
+// =========================================================
+// StyleRenderer — one place that knows how each style paints
+// =========================================================
+namespace StyleRenderer {
+
+// Draw the background of a card / panel / window.
+// 'alphaHint' is the widget opacity preference; each style interprets it.
+inline void drawPanel(QPainter &p, const QRectF &r, qreal radius,
+                      const Theme &t, int alphaHint)
+{
+    VisualStyle s = StyleManager::current();
+    QPainterPath path;
+    path.addRoundedRect(r, radius, radius);
+
+    switch (s) {
+    case VisualStyle::Glass: {
+        // Translucent + faint border
+        QColor top = t.panelBg.lighter(118);
+        QColor bot = t.panelBg.darker(135);
+        top.setAlpha(alphaHint);
+        bot.setAlpha(alphaHint);
+        QLinearGradient g(r.topLeft(), r.bottomRight());
+        g.setColorAt(0.0, top);
+        g.setColorAt(1.0, bot);
+        p.fillPath(path, g);
+
+        QColor edge = t.chromeBorder;
+        p.setPen(QPen(edge, 1));
+        p.drawPath(path);
+        break;
+    }
+
+    case VisualStyle::Neumorphism: {
+        // Same surface color as background, extruded via paired shadows.
+        QColor base(50, 50, 60, alphaHint);
+        p.fillPath(path, base);
+
+        // Light from top-left, shadow bottom-right
+        p.setPen(Qt::NoPen);
+        for (int i = 4; i >= 1; --i) {
+            QColor light(255, 255, 255, 10);
+            p.setBrush(light);
+            p.drawRoundedRect(r.adjusted(-i, -i, -i + 1, -i + 1),
+                              radius + i, radius + i);
+            QColor dark(0, 0, 0, 14);
+            p.setBrush(dark);
+            p.drawRoundedRect(r.adjusted(i - 1, i - 1, i, i),
+                              radius + i, radius + i);
+        }
+        break;
+    }
+
+    case VisualStyle::Skeuomorphism: {
+        // Vertical gradient that reads as polished metal/plastic.
+        QColor top = t.panelBg.lighter(145);
+        QColor mid = t.panelBg;
+        QColor bot = t.panelBg.darker(160);
+        top.setAlpha(alphaHint);
+        mid.setAlpha(alphaHint);
+        bot.setAlpha(alphaHint);
+        QLinearGradient g(r.topLeft(), r.bottomLeft());
+        g.setColorAt(0.0, top);
+        g.setColorAt(0.5, mid);
+        g.setColorAt(1.0, bot);
+        p.fillPath(path, g);
+
+        // Glossy highlight along top inside edge
+        QColor gloss(255, 255, 255, 70);
+        QPainterPath gl;
+        gl.addRoundedRect(r.adjusted(2, 2, -2, -r.height() * 0.45),
+                          radius - 1, radius - 1);
+        p.fillPath(gl, gloss);
+
+        // Metallic bezel
+        QColor bezel = t.textPrimary;
+        bezel.setAlpha(90);
+        p.setPen(QPen(bezel, 2));
+        p.drawPath(path);
+
+        // Inner thin light line for a beveled look
+        QColor inner(255, 255, 255, 40);
+        p.setPen(QPen(inner, 1));
+        p.drawRoundedRect(r.adjusted(2, 2, -2, -2),
+                          radius - 1, radius - 1);
+        break;
+    }
+
+    case VisualStyle::Claymorphism: {
+        // Puffy pastel surface, big radius, soft everything.
+        QColor top = t.panelBg.lighter(160);
+        QColor bot = t.panelBg.lighter(115);
+        top.setAlpha(alphaHint);
+        bot.setAlpha(alphaHint);
+        QLinearGradient g(r.topLeft(), r.bottomLeft());
+        g.setColorAt(0.0, top);
+        g.setColorAt(1.0, bot);
+        QPainterPath clay;
+        clay.addRoundedRect(r, radius + 6, radius + 6);
+        p.fillPath(clay, g);
+
+        // Double outer shadow — light top-left, dark bottom-right, bigger
+        p.setPen(Qt::NoPen);
+        for (int i = 6; i >= 1; --i) {
+            QColor dark(0, 0, 0, 8);
+            p.setBrush(dark);
+            p.drawRoundedRect(r.adjusted(i, i + 2, i + 2, i + 3),
+                              radius + 6 + i, radius + 6 + i);
+        }
+        break;
+    }
+    }
+}
+
+} // namespace StyleRenderer
+
+// =========================================================
 // VisualConfig — every chrome tuning knob. Settings app targets this.
 // =========================================================
 struct VisualConfig {
@@ -1753,6 +1939,7 @@ public:
             m_theme = t;
             update();
         });
+        StyleManager::subscribe([this](VisualStyle) { update(); });
     }
 
     void setTarget(qreal t)  { m_target = t; }
@@ -1782,30 +1969,26 @@ protected:
 
         int boost = int(qBound(0.0, (m_current - 1.0) / 0.42, 1.0) * 90);
 
-        // Vertical light-to-dark: brighter on top, darker at bottom
-        QColor top = m_theme.accentSoft.lighter(180);
-        QColor mid = m_theme.accentSoft;
-        QColor bot = m_theme.accentSoft.darker(200);
-        top.setAlpha(qMin(255, top.alpha() + boost + 30));
-        mid.setAlpha(qMin(255, mid.alpha() + boost + 5));
-        bot.setAlpha(qMin(255, bot.alpha() + boost - 20));
-
-        QLinearGradient grad(x, y, x, y + visual);
-        grad.setColorAt(0.0, top);
-        grad.setColorAt(0.5, mid);
-        grad.setColorAt(1.0, bot);
-
-        QColor br = m_theme.accent;
-        br.setAlpha(qMin(255, br.alpha() + boost));
-
-        p.setBrush(grad);
-        p.setPen(QPen(br, 1));
-        p.drawRoundedRect(x, y, visual, visual, radius, radius);
+        // Style-aware icon background
+        Theme iconTheme = m_theme;
+        iconTheme.panelBg      = m_theme.accentSoft;
+        iconTheme.chromeBorder = m_theme.accent;
+        if (boost > 0) {
+            QColor a = iconTheme.panelBg;
+            a.setAlpha(qMin(255, a.alpha() + boost + 20));
+            iconTheme.panelBg = a;
+            QColor b = iconTheme.chromeBorder;
+            b.setAlpha(qMin(255, b.alpha() + boost));
+            iconTheme.chromeBorder = b;
+        }
+        QRectF bgRect(x, y, visual, visual);
+        StyleRenderer::drawPanel(p, bgRect, radius, iconTheme,
+                                 iconTheme.panelBg.alpha());
 
         // Vector icon, centered in the rounded rect
-        QRectF iconRect(x + visual * 0.17, y + visual * 0.17,
-                        visual * 0.66, visual * 0.66);
-        Icons::drawFor(m_name, p, iconRect, m_theme.textPrimary);
+        QRectF glyphRect(x + visual * 0.17, y + visual * 0.17,
+                         visual * 0.66, visual * 0.66);
+        Icons::drawFor(m_name, p, glyphRect, m_theme.textPrimary);
 
         // Running indicator dot under the icon
         if (m_running) {
@@ -3737,11 +3920,48 @@ private:
         });
 
         v->addSpacing(24);
+
+        // ---- UI STYLE ----
+        v->addWidget(sectionHeader("UI Style"));
+
+        QGridLayout *styleGrid = new QGridLayout;
+        styleGrid->setSpacing(12);
+
+        struct StyleOpt { VisualStyle s; const char *name; };
+        const StyleOpt styleOpts[] = {
+            { VisualStyle::Glass,         "Glass"         },
+            { VisualStyle::Neumorphism,   "Neumorphism"   },
+            { VisualStyle::Skeuomorphism, "Skeuomorphism" },
+            { VisualStyle::Claymorphism,  "Claymorphism"  }
+        };
+        int col = 0;
+        for (const auto &opt : styleOpts) {
+            QPushButton *btn = new QPushButton(opt.name);
+            btn->setCursor(Qt::PointingHandCursor);
+            btn->setFixedHeight(56);
+            btn->setProperty("styleId", static_cast<int>(opt.s));
+            m_styleButtons.append(btn);
+            QObject::connect(btn, &QPushButton::clicked,
+                             [this, s = opt.s]() {
+                StyleManager::set(s);
+                restyleStyleButtons();
+            });
+            styleGrid->addWidget(btn, 0, col++);
+        }
+        v->addLayout(styleGrid);
+
+        v->addSpacing(24);
         QPushButton *resetBtn = new QPushButton("Reset to Defaults");
         resetBtn->setCursor(Qt::PointingHandCursor);
         resetBtn->setFixedHeight(38);
         QObject::connect(resetBtn, &QPushButton::clicked, [this]() {
+            // Reset visual tunables (opacities, blur, magnify)
             VisualConfigManager::instance().resetToDefaults();
+
+            // Reset UI style back to Glass (default)
+            StyleManager::set(VisualStyle::Glass);
+
+            // Reflect the new values in the sliders
             auto &c = VisualConfigManager::instance().cfg();
             if (m_sliders.size() >= 6) {
                 m_sliders[0]->setValue(int(c.blurStrength * 100));
@@ -3751,6 +3971,9 @@ private:
                 m_sliders[4]->setValue(c.widgetCardAlpha);
                 m_sliders[5]->setValue(c.finderAlpha);
             }
+
+            // Re-highlight the Glass style button
+            restyleStyleButtons();
         });
         v->addWidget(resetBtn);
 
@@ -3969,6 +4192,8 @@ private:
                 .arg(t.textSecondary.name()));
         }
 
+        restyleStyleButtons();
+
         // Force repaint so paintEvent-drawn lines (header, sidebar separator)
         // pick up the new theme colors.
         update();
@@ -3988,11 +4213,36 @@ private:
     QList<QLabel *> m_sectionHeaders;
     QList<QPushButton *> m_wpButtons;
     QList<QLabel *> m_aboutLines;
+    QList<QPushButton *> m_styleButtons;
+
+    void restyleStyleButtons() {
+        if (m_styleButtons.isEmpty()) return;
+        int cur = static_cast<int>(StyleManager::current());
+        const Theme &t = m_theme;
+        for (QPushButton *b : m_styleButtons) {
+            bool sel = (b->property("styleId").toInt() == cur);
+            QColor border = sel ? t.accent : t.chromeBorder;
+            int bw = sel ? 2 : 1;
+            b->setStyleSheet(QString(
+                "QPushButton {"
+                "  background: %1;"
+                "  color: %2;"
+                "  border: %3px solid %4;"
+                "  border-radius: 12px;"
+                "  font-size: 13px;"
+                "  font-weight: %5;"
+                "}"
+                "QPushButton:hover { background: %6; }")
+                .arg(rgba(t.chromeBg.lighter(125)),
+                     t.textPrimary.name())
+                .arg(bw)
+                .arg(rgba(border))
+                .arg(sel ? 600 : 400)
+                .arg(rgba(t.accentSoft)));
+        }
+    }
 };
 
-// =========================================================
-// Desktop Widgets — floating glass cards on the left
-// =========================================================
 // =========================================================
 // Weather — Open-Meteo (free, no API key)
 // =========================================================
@@ -4801,6 +5051,7 @@ static int runShell(int argc, char *argv[])
     window.setWindowTitle("Apokolips OS");
 
     BadgeRegistry::seedDefaults();
+    StyleManager::load();
 
     DesktopBackground *root = new DesktopBackground;
     root->setWallpaper(initialWallpaper);
@@ -5465,6 +5716,32 @@ static int runShell(int argc, char *argv[])
         if (dir.isEmpty()) dir = QDir::homePath() + "/.config";
         return dir + "/apokolips/visual.json";
     }();
+
+    // ---- Watch style.json (UI style selected in Settings) ----
+    QString stylePath = StyleManager::path();
+    QTimer *stylePoll = new QTimer(&window);
+    stylePoll->setInterval(300);
+    int *lastStyle = new int(static_cast<int>(StyleManager::current()));
+
+    QObject::connect(stylePoll, &QTimer::timeout,
+                     [stylePath, lastStyle, root]() {
+        QFile f(stylePath);
+        if (!f.open(QIODevice::ReadOnly)) return;
+        QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+        f.close();
+        if (!doc.isObject()) return;
+        int n = doc.object().value("style").toInt(*lastStyle);
+        if (n < 0 || n > 3) n = 0;
+        if (n == *lastStyle) return;
+        *lastStyle = n;
+        StyleManager::current() = static_cast<VisualStyle>(n);
+        if (root) {
+            root->update();
+            for (QWidget *w : root->findChildren<QWidget *>())
+                w->update();
+        }
+    });
+    stylePoll->start();
 
     // ---- Watch visual.json (opacity / blur sliders) ----
     QTimer *configPoll = new QTimer(&window);
