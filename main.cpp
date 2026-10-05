@@ -2802,6 +2802,7 @@ public:
             restyle();
             update();
         });
+        StyleManager::startPolling(this, [this]() { update(); });
     }
 
     QString text() const { return m_edit->text(); }
@@ -2837,15 +2838,15 @@ protected:
 
         // Soft edge shadow
         p.setPen(Qt::NoPen);
-        for (int i = 14; i >= 1; --i) {
-            QColor sh(0, 0, 0);
-            sh.setAlphaF(0.012);
+        for (int i = 5; i >= 1; --i) {
+            QColor sh = m_theme.textPrimary;
+            sh.setAlphaF(0.02 * (i / 5.0));
             p.setBrush(sh);
-            p.drawRoundedRect(frameRect.adjusted(-i, -i + 3, i, i + 3),
+            p.drawRoundedRect(frameRect.adjusted(-i, -i + 2, i, i + 2),
                               14 + i, 14 + i);
         }
 
-        // Blurred wallpaper glass backdrop
+        // Blurred wallpaper backdrop
         if (!m_blurredBg.isNull()) {
             p.save();
             p.setClipPath(path);
@@ -2854,13 +2855,8 @@ protected:
             p.restore();
         }
 
-        // Tint
-        QColor tint = m_theme.panelBg;
-        tint.setAlpha(130);
-        p.setBrush(tint);
-        QColor edge = m_theme.chromeBorder;
-        p.setPen(QPen(edge, 1));
-        p.drawPath(path);
+        // Style-aware body
+        StyleRenderer::drawPanel(p, QRectF(frameRect), 14, m_theme, 200);
 
         // Header strip
         QPainterPath hdr;
