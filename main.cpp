@@ -7520,6 +7520,65 @@ static int runShell(int argc, char *argv[])
             " background: transparent;").arg(t.textPrimary.name()));
     });
     topLayout->addWidget(brand);
+
+    // ---- Per-app label — top bar shows the focused app's name ----
+    // IMPORTANT: swaymsg runs async. Calling it synchronously would block
+    // the shell's event loop and freeze the UI (including window close).
+    QTimer *focusPoll = new QTimer(&window);
+    focusPoll->setInterval(250);
+    QObject::connect(focusPoll, &QTimer::timeout, [brand]() {
+        QProcess *p = new QProcess;
+        QObject::connect(p,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [p, brand](int, QProcess::ExitStatus) {
+            QByteArray out = p->readAllStandardOutput();
+            p->deleteLater();
+            QJsonDocument doc = QJsonDocument::fromJson(out);
+            if (!doc.isObject()) { brand->setText("Apokolips"); return; }
+
+            // Walk the tree looking for the focused leaf
+            std::function<QString(const QJsonObject &)> findFocused =
+            [&](const QJsonObject &node) -> QString {
+            if (node.value("focused").toBool() &&
+                node.value("type").toString() == "con") {
+                QString app = node.value("app_id").toString();
+                QString nm  = node.value("name").toString();
+                return app.isEmpty() ? nm : app;
+            }
+            for (const QJsonValue &v : node.value("nodes").toArray()) {
+                QString r = findFocused(v.toObject());
+                if (!r.isEmpty()) return r;
+            }
+            for (const QJsonValue &v : node.value("floating_nodes").toArray()) {
+                QString r = findFocused(v.toObject());
+                if (!r.isEmpty()) return r;
+            }
+            return {};
+        };
+
+            QString id = findFocused(doc.object());
+            QString label = "Apokolips";
+            if (id == "org.gnome.Nautilus")      label = "Files";
+        else if (id == "org.gnome.Terminal") label = "Terminal";
+        else if (id == "foot")               label = "Terminal";
+        else if (id == "firefox")            label = "Firefox";
+        else if (id == "thunderbird")        label = "Mail";
+        else if (id == "eog")                label = "Photos";
+        else if (id == "org.gnome.Totem")    label = "Videos";
+        else if (id == "org.gnome.TextEditor" ||
+                 id == "gnome-text-editor")  label = "Text Editor";
+        else if (id == "gnome-control-center") label = "Settings";
+        else if (id == "gnome-calculator")   label = "Calculator";
+        else if (id == "apokolips-calculator") label = "Calculator";
+        else if (id == "apokolips-notes")    label = "Notes";
+        else if (id == "apokolips-shell")    label = "Apokolips";
+        else if (!id.isEmpty())              label = id;
+
+            if (brand->text() != label) brand->setText(label);
+        });
+        p->start("swaymsg", { "-t", "get_tree", "-r" });
+    });
+    focusPoll->start();
     topLayout->addSpacing(10);
 
     // Menu buttons
