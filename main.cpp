@@ -47,6 +47,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QStorageInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
@@ -3396,6 +3397,29 @@ private:
         m_breadcrumb->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         th->addWidget(m_breadcrumb, 1);
 
+        // View toggle buttons
+        m_gridViewBtn = mkNavBtn(QString::fromUtf8("\xE2\x96\xA6"));  // grid
+        m_listViewBtn = mkNavBtn(QString::fromUtf8("\xE2\x98\xB0"));  // list
+        QObject::connect(m_gridViewBtn, &QPushButton::clicked,
+                         [this]() { setViewMode(true); });
+        QObject::connect(m_listViewBtn, &QPushButton::clicked,
+                         [this]() { setViewMode(false); });
+        th->addWidget(m_gridViewBtn);
+        th->addWidget(m_listViewBtn);
+        th->addSpacing(8);
+
+        // Sort button (dropdown)
+        m_sortBtn = new QPushButton("Sort");
+        m_sortBtn->setCursor(Qt::PointingHandCursor);
+        m_sortBtn->setFlat(true);
+        m_sortBtn->setFixedHeight(28);
+        m_sortBtn->setStyleSheet("");
+        m_navButtons.append(m_sortBtn);
+        QObject::connect(m_sortBtn, &QPushButton::clicked,
+                         this, &FileExplorer::showSortMenu);
+        th->addWidget(m_sortBtn);
+        th->addSpacing(10);
+
         m_search = new QLineEdit;
         m_search->setPlaceholderText("Search");
         m_search->setFixedWidth(180);
@@ -3489,13 +3513,31 @@ private:
 
         // Also log single-click for diagnostics
         QObject::connect(m_view, &QListView::clicked,
-                         [this](const QModelIndex &idx) {
-            flog(QString("clicked valid=%1").arg(idx.isValid()));
+                         [this](const QModelIndex &) {
+            updateStatusBar();
+        });
+        QObject::connect(m_view->selectionModel(),
+                         &QItemSelectionModel::selectionChanged,
+                         [this](const QItemSelection &, const QItemSelection &) {
+            updateStatusBar();
         });
 
         body->addWidget(m_sidebar);
         body->addWidget(m_view, 1);
         root->addLayout(body, 1);
+
+        // ---- Status bar at bottom ----
+        m_statusBar = new QWidget;
+        m_statusBar->setFixedHeight(24);
+        m_statusBar->setAttribute(Qt::WA_NoSystemBackground, true);
+        QHBoxLayout *sb2 = new QHBoxLayout(m_statusBar);
+        sb2->setContentsMargins(16, 0, 16, 0);
+        m_statusLeft = new QLabel;
+        m_statusRight = new QLabel;
+        sb2->addWidget(m_statusLeft);
+        sb2->addStretch();
+        sb2->addWidget(m_statusRight);
+        root->addWidget(m_statusBar);
 
         // ---- Floating status toast (bottom-right of window) ----
         m_statusLabel = new QLabel(this);
@@ -3543,6 +3585,7 @@ private:
         m_view->setRootIndex(m_proxy->mapFromSource(m_fs->index(path)));
         m_breadcrumb->setText(shortenPath(path));
         updateNavButtons();
+        updateStatusBar();
     }
 
     void goBack() {
@@ -3858,6 +3901,90 @@ private:
         }
     }
 
+    void setViewMode(bool grid) {
+        if (grid) {
+            m_view->setViewMode(QListView::IconMode);
+            m_view->setIconSize(QSize(56, 56));
+            m_view->setGridSize(QSize(140, 120));
+            m_view->setWordWrap(true);
+            m_view->setSpacing(0);
+        } else {
+            m_view->setViewMode(QListView::ListMode);
+            m_view->setIconSize(QSize(20, 20));
+            m_view->setGridSize(QSize());
+            m_view->setWordWrap(false);
+            m_view->setSpacing(0);
+            m_view->setUniformItemSizes(true);
+        }
+        updateStatusBar();
+    }
+
+    void showSortMenu() {
+        const Theme &t = ThemeManager::instance().current();
+        QMenu m(this);
+        m.setStyleSheet(QString(
+            "QMenu { background: rgb(24, 22, 30);"
+            "  border: 1px solid rgba(255,255,255,30);"
+            "  border-radius: 12px; padding: 6px; color: #f0f0f5;"
+            "  font-size: 13px; }"
+            "QMenu::item { padding: 7px 22px 7px 16px;"
+            "  border-radius: 7px; background: transparent; }"
+            "QMenu::item:selected { background: rgba(255,255,255,45); }"));
+
+        QAction *aName = m.addAction("Sort by Name");
+        QAction *aSize = m.addAction("Sort by Size");
+        QAction *aDate = m.addAction("Sort by Date");
+        QAction *aType = m.addAction("Sort by Type");
+        m.addSeparator();
+        QAction *aAsc  = m.addAction("Ascending");
+        QAction *aDesc = m.addAction("Descending");
+
+        QObject::connect(aName, &QAction::triggered, [this]() {
+            m_proxy->sort(0, m_sortOrder);
+        });
+        QObject::connect(aSize, &QAction::triggered, [this]() {
+            m_proxy->sort(1, m_sortOrder);
+        });
+        QObject::connect(aDate, &QAction::triggered, [this]() {
+            m_proxy->sort(3, m_sortOrder);
+        });
+        QObject::connect(aType, &QAction::triggered, [this]() {
+            m_proxy->sort(2, m_sortOrder);
+        });
+        QObject::connect(aAsc, &QAction::triggered, [this]() {
+            m_sortOrder = Qt::AscendingOrder;
+            m_proxy->sort(m_proxy->sortColumn(), m_sortOrder);
+        });
+        QObject::connect(aDesc, &QAction::triggered, [this]() {
+            m_sortOrder = Qt::DescendingOrder;
+            m_proxy->sort(m_proxy->sortColumn(), m_sortOrder);
+        });
+
+        m.exec(m_sortBtn->mapToGlobal(QPoint(0, m_sortBtn->height() + 4)));
+    }
+
+    void updateStatusBar() {
+        if (!m_statusLeft || !m_statusRight) return;
+        int count = m_view->model() ? m_view->model()->rowCount(m_view->rootIndex()) : 0;
+        int sel = m_view->selectionModel()
+                  ? m_view->selectionModel()->selectedIndexes().size() : 0;
+
+        QString left = QString("%1 item%2")
+            .arg(count).arg(count == 1 ? "" : "s");
+        if (sel > 0) left += QString("  ·  %1 selected").arg(sel);
+        m_statusLeft->setText(left);
+
+        // Free space on current volume
+        QStorageInfo storage(m_currentPath.isEmpty()
+                             ? QDir::homePath() : m_currentPath);
+        QString right;
+        if (storage.isValid()) {
+            double free = storage.bytesAvailable() / (1024.0*1024.0*1024.0);
+            right = QString("%1 GB free").arg(free, 0, 'f', 1);
+        }
+        m_statusRight->setText(right);
+    }
+
     QString shortenPath(const QString &p) const {
         QString home = QDir::homePath();
         if (p.startsWith(home)) return "~" + p.mid(home.size());
@@ -3915,6 +4042,23 @@ private:
                  rgba(t.accentSoft),
                  rgba(t.accent),
                  t.textPrimary.name()));
+
+        if (m_statusLeft && m_statusRight) {
+            QString st = QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(t.textDim.name());
+            m_statusLeft->setStyleSheet(st);
+            m_statusRight->setStyleSheet(st);
+        }
+        if (m_sortBtn) {
+            m_sortBtn->setStyleSheet(QString(
+                "QPushButton { color: %1; background: transparent;"
+                "  border: none; font-size: 12px; padding: 4px 10px;"
+                "  border-radius: 6px; }"
+                "QPushButton:hover { background: %2; }")
+                .arg(t.textPrimary.name(), rgba(t.accentSoft)));
+        }
+        restyleTabs();
     }
 
     Theme m_theme;
@@ -3949,6 +4093,15 @@ private:
     QPushButton *m_newTabBtn    = nullptr;
     QList<Tab>   m_tabs;
     int          m_currentTab   = -1;
+
+    // ---- Views + status bar ----
+    QPushButton   *m_gridViewBtn = nullptr;
+    QPushButton   *m_listViewBtn = nullptr;
+    QPushButton   *m_sortBtn     = nullptr;
+    QWidget       *m_statusBar   = nullptr;
+    QLabel        *m_statusLeft  = nullptr;
+    QLabel        *m_statusRight = nullptr;
+    Qt::SortOrder  m_sortOrder   = Qt::AscendingOrder;
 };
 
 // =========================================================
