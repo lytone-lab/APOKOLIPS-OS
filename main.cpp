@@ -4758,6 +4758,7 @@ public:
     void toggle() { isVisible() ? hideNow() : showNow(); }
 
     void showNow() {
+        if (parentWidget()) setGeometry(parentWidget()->rect());
         raise(); show(); setFocus();
         m_search->clear();
         m_search->setFocus();
@@ -4881,27 +4882,40 @@ private:
             }
         }
 
-        // ---- Apps: scan .desktop files ----
-        QDir appDir("/usr/share/applications");
-        if (appDir.exists()) {
+        // ---- Apps: scan every common .desktop directory ----
+        QStringList appDirs = {
+            "/usr/share/applications",
+            "/usr/local/share/applications",
+            "/var/lib/snapd/desktop/applications",
+            "/var/lib/flatpak/exports/share/applications",
+            QDir::homePath() + "/.local/share/applications"
+        };
+        int shown = 0;
+        for (const QString &dirPath : appDirs) {
+            if (shown > 30) break;
+            QDir appDir(dirPath);
+            if (!appDir.exists()) continue;
             QStringList files = appDir.entryList({"*.desktop"}, QDir::Files);
-            int shown = 0;
             for (const QString &file : files) {
-                if (shown > 25) break;
+                if (shown > 30) break;
                 QFile f(appDir.filePath(file));
                 if (!f.open(QIODevice::ReadOnly)) continue;
                 QString name, exec;
+                bool noDisplay = false;
                 while (!f.atEnd()) {
                     QString line = QString::fromUtf8(f.readLine()).trimmed();
                     if (line.startsWith("Name=") && name.isEmpty())
                         name = line.mid(5);
-                    else if (line.startsWith("Exec="))
-                        exec = line.mid(5).section(' ', 0, 0);
+                    else if (line.startsWith("Exec=") && exec.isEmpty())
+                        exec = line.mid(5);
                     else if (line.startsWith("NoDisplay=true"))
-                        name.clear();
+                        noDisplay = true;
                 }
                 f.close();
-                if (name.isEmpty() || exec.isEmpty()) continue;
+                if (noDisplay || name.isEmpty() || exec.isEmpty()) continue;
+                // Strip %U %F etc. from Exec
+                exec.remove(QRegularExpression(" ?%[a-zA-Z]"));
+                exec = exec.trimmed();
                 if (!q.isEmpty() &&
                     !name.toLower().contains(q.toLower())) continue;
                 addResult({"App", name, exec, exec});
@@ -4979,9 +4993,10 @@ private:
 
     void resizeEvent(QResizeEvent *e) override {
         QWidget::resizeEvent(e);
-        int pw = qMin(640, width() - 80);
-        int ph = qMin(460, height() - 120);
-        m_panel->setGeometry((width() - pw) / 2, height() / 5,
+        int pw = qMin(680, width() - 80);
+        int ph = qMin(480, height() - 120);
+        m_panel->setGeometry((width() - pw) / 2,
+                             (height() - ph) / 2,
                              pw, ph);
     }
 
