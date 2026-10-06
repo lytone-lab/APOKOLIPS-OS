@@ -1167,10 +1167,15 @@ public:
         ThemeManager::instance().subscribe([this](const Theme &t) {
             m_theme = t;
             repaint();
-            // rebuild cards with new colors
+            // Clear history on theme change (simplest)
+            for (QWidget *c : m_history) c->deleteLater();
+            m_history.clear();
+            if (m_historyHeader) m_historyHeader->setVisible(false);
+            // Rebuild cards with new theme colors
             for (QWidget *c : m_cards) c->deleteLater();
             m_cards.clear();
             buildCards();
+            updateThemeOnHeader();
         });
     }
 
@@ -1305,21 +1310,105 @@ private:
         outer->setContentsMargins(14, 44, 14, 14);
         outer->setSpacing(14);
 
+        // Header row: label + Clear All button
+        QHBoxLayout *hdr = new QHBoxLayout;
+        hdr->setContentsMargins(0, 0, 0, 0);
+        hdr->setSpacing(8);
+
         QLabel *title = new QLabel("NOTIFICATIONS");
         title->setStyleSheet(QString(
             "color: %1; font-size: 11px; letter-spacing: 4px;"
             " background: transparent;").arg(m_theme.accent.name()));
-        outer->addWidget(title);
+        hdr->addWidget(title);
+        hdr->addStretch();
 
+        m_clearAllBtn = new QPushButton("Clear All");
+        m_clearAllBtn->setCursor(Qt::PointingHandCursor);
+        m_clearAllBtn->setFlat(true);
+        QObject::connect(m_clearAllBtn, &QPushButton::clicked,
+                         this, &NotificationCenter::clearAll);
+        hdr->addWidget(m_clearAllBtn);
+        outer->addLayout(hdr);
+
+        // Active cards
         QWidget *holder = new QWidget;
         holder->setAttribute(Qt::WA_TranslucentBackground, true);
         m_cardsLayout = new QVBoxLayout(holder);
         m_cardsLayout->setContentsMargins(0, 0, 0, 0);
         m_cardsLayout->setSpacing(14);
         outer->addWidget(holder);
+
+        // Empty state
+        m_emptyLabel = new QLabel("No new notifications");
+        m_emptyLabel->setAlignment(Qt::AlignCenter);
+        m_emptyLabel->setVisible(false);
+        outer->addWidget(m_emptyLabel);
+
+        // History section (hidden when empty)
+        m_historyHeader = new QLabel("RECENT");
+        m_historyHeader->setVisible(false);
+        outer->addWidget(m_historyHeader);
+
+        m_historyHolder = new QWidget;
+        m_historyHolder->setAttribute(Qt::WA_TranslucentBackground, true);
+        m_historyLayout = new QVBoxLayout(m_historyHolder);
+        m_historyLayout->setContentsMargins(0, 0, 0, 0);
+        m_historyLayout->setSpacing(10);
+        outer->addWidget(m_historyHolder);
+
         outer->addStretch();
 
         buildCards();
+    }
+
+    void clearAll() {
+        // Move active cards to history (dim them)
+        for (QWidget *c : m_cards) {
+            m_cardsLayout->removeWidget(c);
+            m_history.prepend(c);
+            m_historyLayout->insertWidget(0, c);
+            c->setStyleSheet(QString(
+                "QWidget {"
+                "  background: %1;"
+                "  border: none;"
+                "  border-left: 3px solid %2;"
+                "  border-radius: 12px;"
+                "}").arg(rgba(m_theme.chromeBg.darker(120)),
+                         rgba(m_theme.textDim)));
+        }
+        m_cards.clear();
+
+        // Limit history to 6
+        while (m_history.size() > 6) {
+            QWidget *old = m_history.takeLast();
+            m_historyLayout->removeWidget(old);
+            old->deleteLater();
+        }
+
+        m_historyHeader->setVisible(!m_history.isEmpty());
+        m_emptyLabel->setVisible(m_cards.isEmpty());
+    }
+
+    void updateThemeOnHeader() {
+        if (!m_clearAllBtn) return;
+        m_clearAllBtn->setStyleSheet(QString(
+            "QPushButton { color: %1; background: transparent;"
+            "  border: none; font-size: 11px; padding: 3px 8px; }"
+            "QPushButton:hover { color: %2;"
+            "  background: rgba(255,255,255,30); border-radius: 6px; }")
+            .arg(m_theme.textSecondary.name(),
+                 m_theme.textPrimary.name()));
+        if (m_historyHeader) {
+            m_historyHeader->setStyleSheet(QString(
+                "color: %1; font-size: 10px; letter-spacing: 4px;"
+                " background: transparent; margin-top: 8px;")
+                .arg(m_theme.textDim.name()));
+        }
+        if (m_emptyLabel) {
+            m_emptyLabel->setStyleSheet(QString(
+                "color: %1; font-size: 12px; background: transparent;"
+                " padding: 20px 0;").arg(m_theme.textDim.name()));
+        }
     }
 
     QTimer *m_animTimer = nullptr;
@@ -1328,6 +1417,13 @@ private:
     Theme m_theme;
     QVBoxLayout *m_cardsLayout = nullptr;
     QList<QWidget *> m_cards;
+
+    QPushButton *m_clearAllBtn = nullptr;
+    QLabel      *m_historyHeader = nullptr;
+    QVBoxLayout *m_historyLayout = nullptr;
+    QWidget     *m_historyHolder = nullptr;
+    QLabel      *m_emptyLabel = nullptr;
+    QList<QWidget *> m_history;
 };
 
 // =========================================================
@@ -3070,6 +3166,13 @@ public:
         sc("Ctrl+X",   [this]() { copySelected(true);  });
         sc("Ctrl+V",   [this]() { pasteInto();         });
         sc("Ctrl+H",   [this]() { toggleHidden();      });
+        sc("Ctrl+T",   [this]() { addTab();            });
+        sc("Ctrl+W",   [this]() { closeCurrentTab();   });
+        sc("Ctrl+Tab", [this]() {
+            if (m_tabs.size() > 1) {
+                switchTab((m_currentTab + 1) % m_tabs.size());
+            }
+        });
         sc("Alt+Left", [this]() { goBack();            });
         sc("Alt+Right",[this]() { goForward();         });
         sc("Ctrl+L",   [this]() {
@@ -3078,6 +3181,9 @@ public:
                 "Path:", m_currentPath, &ok);
             if (ok && !p.isEmpty()) navigateTo(p);
         });
+
+        // First tab
+        addTab();
 
         show();
         update();
@@ -3235,6 +3341,24 @@ private:
         hh->addWidget(m_title);
         hh->addStretch();
         root->addWidget(m_header);
+
+        // ---- Tab bar (below header, above toolbar) ----
+        m_tabBar = new QWidget;
+        m_tabBar->setFixedHeight(34);
+        m_tabBar->setAttribute(Qt::WA_NoSystemBackground, true);
+        m_tabBarLayout = new QHBoxLayout(m_tabBar);
+        m_tabBarLayout->setContentsMargins(10, 4, 10, 4);
+        m_tabBarLayout->setSpacing(4);
+
+        m_newTabBtn = new QPushButton("+");
+        m_newTabBtn->setFixedSize(26, 26);
+        m_newTabBtn->setCursor(Qt::PointingHandCursor);
+        QObject::connect(m_newTabBtn, &QPushButton::clicked,
+                         this, &FileExplorer::addTab);
+        m_tabBarLayout->addWidget(m_newTabBtn);
+        m_tabBarLayout->addStretch();
+
+        root->addWidget(m_tabBar);
 
         // ---- Toolbar: nav + breadcrumb + search ----
         m_toolbar = new QWidget;
@@ -3410,6 +3534,12 @@ private:
         }
 
         m_currentPath = path;
+        if (m_currentTab >= 0 && m_currentTab < m_tabs.size()) {
+            m_tabs[m_currentTab].path = path;
+            m_tabs[m_currentTab].history = m_history;
+            m_tabs[m_currentTab].historyIndex = m_historyIndex;
+            refreshTabBar();
+        }
         m_view->setRootIndex(m_proxy->mapFromSource(m_fs->index(path)));
         m_breadcrumb->setText(shortenPath(path));
         updateNavButtons();
@@ -3619,6 +3749,115 @@ private:
         menu.exec(m_view->mapToGlobal(pos));
     }
 
+    struct Tab {
+        QString path;
+        QStringList history;
+        int historyIndex = -1;
+    };
+
+    void addTab() {
+        Tab t;
+        t.path = QDir::homePath();
+        m_tabs.append(t);
+        m_currentTab = m_tabs.size() - 1;
+        refreshTabBar();
+        // Don't navigate yet if we're still in the ctor; navigateTo
+        // will be called once the model is ready.
+        if (m_fs && !m_currentPath.isEmpty()) navigateTo(t.path);
+    }
+
+    void switchTab(int idx) {
+        if (idx < 0 || idx >= m_tabs.size()) return;
+        if (idx == m_currentTab) return;
+
+        // Save current state into current tab
+        if (m_currentTab >= 0 && m_currentTab < m_tabs.size()) {
+            m_tabs[m_currentTab].path = m_currentPath;
+            m_tabs[m_currentTab].history = m_history;
+            m_tabs[m_currentTab].historyIndex = m_historyIndex;
+        }
+
+        m_currentTab = idx;
+        m_currentPath = m_tabs[idx].path;
+        m_history = m_tabs[idx].history;
+        m_historyIndex = m_tabs[idx].historyIndex;
+        m_view->setRootIndex(m_proxy->mapFromSource(
+            m_fs->index(m_currentPath)));
+        m_breadcrumb->setText(shortenPath(m_currentPath));
+        updateNavButtons();
+        refreshTabBar();
+    }
+
+    void closeCurrentTab() {
+        if (m_tabs.size() <= 1) { close(); deleteLater(); return; }
+        m_tabs.removeAt(m_currentTab);
+        if (m_currentTab >= m_tabs.size()) m_currentTab = m_tabs.size() - 1;
+        m_currentPath = m_tabs[m_currentTab].path;
+        m_history = m_tabs[m_currentTab].history;
+        m_historyIndex = m_tabs[m_currentTab].historyIndex;
+        m_view->setRootIndex(m_proxy->mapFromSource(
+            m_fs->index(m_currentPath)));
+        m_breadcrumb->setText(shortenPath(m_currentPath));
+        updateNavButtons();
+        refreshTabBar();
+    }
+
+    void refreshTabBar() {
+        if (!m_tabBarLayout) return;
+        // Remove old tab buttons (everything except the "+" button and stretch)
+        QLayoutItem *item;
+        while ((item = m_tabBarLayout->takeAt(0))) {
+            if (item->widget() && item->widget() != m_newTabBtn) {
+                item->widget()->deleteLater();
+            }
+            delete item;
+        }
+        // Re-add "+" button
+        m_tabBarLayout->addWidget(m_newTabBtn);
+
+        for (int i = 0; i < m_tabs.size(); ++i) {
+            QString name = QFileInfo(m_tabs[i].path).fileName();
+            if (name.isEmpty()) name = "/";
+            QPushButton *tb = new QPushButton(name);
+            tb->setCursor(Qt::PointingHandCursor);
+            tb->setFixedHeight(26);
+            tb->setCheckable(true);
+            tb->setChecked(i == m_currentTab);
+            int idx = i;
+            QObject::connect(tb, &QPushButton::clicked,
+                             [this, idx]() { switchTab(idx); });
+            m_tabBarLayout->addWidget(tb);
+        }
+        m_tabBarLayout->addStretch();
+        restyleTabs();
+    }
+
+    void restyleTabs() {
+        if (!m_newTabBtn) return;
+        const Theme &t = m_theme;
+        QString common = QString(
+            "QPushButton {"
+            "  background: rgba(255,255,255,18);"
+            "  color: %1;"
+            "  border: 1px solid rgba(255,255,255,25);"
+            "  border-radius: 7px;"
+            "  padding: 2px 12px;"
+            "  font-size: 12px;"
+            "}"
+            "QPushButton:hover { background: rgba(255,255,255,35); }"
+            "QPushButton:checked {"
+            "  background: rgba(255,255,255,50);"
+            "  border-color: rgba(255,255,255,70);"
+            "  font-weight: 600;"
+            "}").arg(t.textPrimary.name());
+        m_newTabBtn->setStyleSheet(common);
+        for (int i = 0; i < m_tabBarLayout->count(); ++i) {
+            QWidget *w = m_tabBarLayout->itemAt(i)->widget();
+            if (w && w != m_newTabBtn && qobject_cast<QPushButton*>(w))
+                w->setStyleSheet(common);
+        }
+    }
+
     QString shortenPath(const QString &p) const {
         QString home = QDir::homePath();
         if (p.startsWith(home)) return "~" + p.mid(home.size());
@@ -3703,6 +3942,13 @@ private:
     bool        m_clipboardCut = false;
     bool        m_showHidden   = false;
     QLabel     *m_statusLabel  = nullptr;
+
+    // ---- Tabs ----
+    QWidget     *m_tabBar       = nullptr;
+    QHBoxLayout *m_tabBarLayout = nullptr;
+    QPushButton *m_newTabBtn    = nullptr;
+    QList<Tab>   m_tabs;
+    int          m_currentTab   = -1;
 };
 
 // =========================================================
