@@ -30,6 +30,10 @@
 #include <unistd.h>
 #include <QShortcut>
 #include <QInputDialog>
+#include <QScrollArea>
+#include <QTextEdit>
+#include <QHeaderView>
+#include <QTreeView>
 #include <QRegularExpression>
 #include <QListWidget>
 #include <csignal>
@@ -3127,6 +3131,155 @@ private:
     Theme m_theme;
 };
 
+class QuickLook : public QWidget {
+public:
+    QuickLook(QWidget *parent = nullptr) : QWidget(parent) {
+        setWindowFlags(Qt::FramelessWindowHint | Qt::Dialog);
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setFocusPolicy(Qt::StrongFocus);
+
+        QVBoxLayout *v = new QVBoxLayout(this);
+        v->setContentsMargins(20, 20, 20, 20);
+
+        m_container = new QWidget(this);
+        m_container->setObjectName("qlContainer");
+        QVBoxLayout *cv = new QVBoxLayout(m_container);
+        cv->setContentsMargins(16, 16, 16, 16);
+        cv->setSpacing(12);
+
+        m_title = new QLabel;
+        m_title->setAlignment(Qt::AlignCenter);
+        cv->addWidget(m_title);
+
+        m_stack = new QStackedWidget;
+        m_image = new QLabel;
+        m_image->setAlignment(Qt::AlignCenter);
+        m_image->setMinimumSize(200, 200);
+        m_text = new QTextEdit;
+        m_text->setReadOnly(true);
+        m_stack->addWidget(m_image);
+        m_stack->addWidget(m_text);
+        cv->addWidget(m_stack, 1);
+
+        m_meta = new QLabel;
+        m_meta->setAlignment(Qt::AlignCenter);
+        cv->addWidget(m_meta);
+
+        v->addWidget(m_container);
+
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_theme = t;
+            restyle();
+        });
+    }
+
+    void show(const QString &path) {
+        m_path = path;
+        QFileInfo fi(path);
+        m_title->setText(fi.fileName());
+        m_meta->setText(QString("%1  ·  %2")
+            .arg(fi.isDir() ? "Folder" : "File")
+            .arg(humanSize(fi.size())));
+
+        QString ext = fi.suffix().toLower();
+        bool isImage = QStringList({"png","jpg","jpeg","gif","bmp",
+            "webp","svg","tiff","ico"}).contains(ext);
+
+        if (isImage) {
+            QPixmap px(path);
+            if (!px.isNull()) {
+                m_stack->setCurrentWidget(m_image);
+                if (px.width() > 900 || px.height() > 600)
+                    px = px.scaled(900, 600, Qt::KeepAspectRatio,
+                                   Qt::SmoothTransformation);
+                m_image->setPixmap(px);
+            } else {
+                m_stack->setCurrentWidget(m_text);
+                m_text->setPlainText("(Unable to load image)");
+            }
+        } else if (fi.size() < 512 * 1024) {
+            QFile f(path);
+            if (f.open(QIODevice::ReadOnly)) {
+                m_text->setPlainText(QString::fromUtf8(f.readAll()));
+                f.close();
+            }
+            m_stack->setCurrentWidget(m_text);
+        } else {
+            m_stack->setCurrentWidget(m_text);
+            m_text->setPlainText("(File too large to preview)");
+        }
+
+        if (parentWidget()) {
+            resize(parentWidget()->size().width() * 3 / 4,
+                   parentWidget()->size().height() * 3 / 4);
+            move(parentWidget()->mapToGlobal(
+                QPoint(parentWidget()->width()/8,
+                       parentWidget()->height()/8)));
+        }
+
+        QWidget::show(); raise(); setFocus();
+    }
+
+    static QString humanSize(qint64 bytes) {
+        if (bytes < 1024) return QString("%1 B").arg(bytes);
+        if (bytes < 1024*1024) return QString("%1 KB").arg(bytes/1024.0, 0, 'f', 1);
+        if (bytes < 1024*1024*1024) return QString("%1 MB").arg(bytes/(1024.0*1024.0), 0, 'f', 1);
+        return QString("%1 GB").arg(bytes/(1024.0*1024.0*1024.0), 0, 'f', 2);
+    }
+
+protected:
+    void keyPressEvent(QKeyEvent *e) override {
+        if (e->key() == Qt::Key_Escape || e->key() == Qt::Key_Space) {
+            hide(); e->accept();
+        } else {
+            QWidget::keyPressEvent(e);
+        }
+    }
+
+    void mousePressEvent(QMouseEvent *e) override {
+        // click outside → close
+        if (!m_container->geometry().contains(e->pos()))
+            hide();
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.fillRect(rect(), QColor(0, 0, 0, 120));
+    }
+
+private:
+    void restyle() {
+        const Theme &t = m_theme;
+        QString panel = QString(
+            "#qlContainer {"
+            "  background: rgba(24, 22, 30, 245);"
+            "  border: 1px solid rgba(255,255,255,30);"
+            "  border-radius: 14px;"
+            "}");
+        m_container->setStyleSheet(panel);
+        m_title->setStyleSheet(QString(
+            "color: %1; font-size: 15px; font-weight: 600;"
+            " background: transparent;").arg(t.textPrimary.name()));
+        m_meta->setStyleSheet(QString(
+            "color: %1; font-size: 11px; background: transparent;")
+            .arg(t.textDim.name()));
+        m_text->setStyleSheet(QString(
+            "QTextEdit { background: rgba(0,0,0,120); color: %1;"
+            "  border: none; border-radius: 8px; padding: 8px;"
+            "  font-family: 'Consolas','Menlo',monospace; font-size: 12px; }")
+            .arg(t.textPrimary.name()));
+    }
+
+    QString        m_path;
+    QWidget       *m_container = nullptr;
+    QLabel        *m_title = nullptr;
+    QLabel        *m_image = nullptr;
+    QTextEdit     *m_text = nullptr;
+    QStackedWidget*m_stack = nullptr;
+    QLabel        *m_meta = nullptr;
+    Theme          m_theme;
+};
+
 class FileExplorer : public QWidget {
 public:
     explicit FileExplorer(QWidget *parent = nullptr) : QWidget(parent) {
@@ -3173,6 +3326,13 @@ public:
             if (m_tabs.size() > 1) {
                 switchTab((m_currentTab + 1) % m_tabs.size());
             }
+        });
+        sc("Space", [this]() {
+            QString p = selectedPath();
+            if (p.isEmpty()) return;
+            if (!m_quickLook)
+                m_quickLook = new QuickLook(this);
+            m_quickLook->show(p);
         });
         sc("Alt+Left", [this]() { goBack();            });
         sc("Alt+Right",[this]() { goForward();         });
@@ -3457,6 +3617,7 @@ private:
             { "\xF0\x9F\x8E\xB5", "Music",     "%HOME%/Music" },
             { "\xF0\x9F\x96\xBC", "Pictures",  "%HOME%/Pictures" },
             { "\xF0\x9F\x8E\xAC", "Videos",    "%HOME%/Videos" },
+            { "\xF0\x9F\x97\x91", "Trash",     "%HOME%/.local/share/Trash/files" },
         };
         for (const auto &p : places) {
             QString path = QString(p.path).replace("%HOME%", home);
@@ -3481,6 +3642,40 @@ private:
         m_proxy = new QSortFilterProxyModel(this);
         m_proxy->setSourceModel(m_fs);
         m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
+
+        m_treeView = new QTreeView;
+        m_treeView->setModel(m_proxy);
+        m_treeView->setRootIndex(m_proxy->mapFromSource(
+            m_fs->index(QDir::homePath())));
+        m_treeView->setSelectionMode(QAbstractItemView::SingleSelection);
+        m_treeView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        m_treeView->setFrameShape(QFrame::NoFrame);
+        m_treeView->setRootIsDecorated(false);
+        m_treeView->setItemsExpandable(false);
+        m_treeView->setIndentation(0);
+        m_treeView->setUniformRowHeights(true);
+        m_treeView->setAlternatingRowColors(false);
+        m_treeView->setSortingEnabled(true);
+        m_treeView->hide();   // grid view shown by default
+        m_treeView->header()->setStretchLastSection(false);
+        m_treeView->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+        m_treeView->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        m_treeView->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+        m_treeView->header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+
+        QObject::connect(m_treeView, &QTreeView::doubleClicked,
+                         [this](const QModelIndex &idx) {
+            QModelIndex srcIdx = m_proxy->mapToSource(idx);
+            QString path = m_fs->filePath(srcIdx);
+            QFileInfo fi(path);
+            if (fi.isDir()) navigateTo(path);
+            else QProcess::startDetached("xdg-open", { path });
+        });
+        QObject::connect(m_treeView, &QTreeView::customContextMenuRequested,
+                         [this](const QPoint &p) {
+            showContextMenu(p);
+        });
+        m_treeView->setContextMenuPolicy(Qt::CustomContextMenu);
 
         m_view = new QListView;
         m_view->setModel(m_proxy);
@@ -3524,6 +3719,7 @@ private:
 
         body->addWidget(m_sidebar);
         body->addWidget(m_view, 1);
+        body->addWidget(m_treeView, 1);
         root->addLayout(body, 1);
 
         // ---- Status bar at bottom ----
@@ -3583,6 +3779,9 @@ private:
             refreshTabBar();
         }
         m_view->setRootIndex(m_proxy->mapFromSource(m_fs->index(path)));
+        if (m_treeView)
+            m_treeView->setRootIndex(m_proxy->mapFromSource(
+                m_fs->index(path)));
         m_breadcrumb->setText(shortenPath(path));
         updateNavButtons();
         updateStatusBar();
@@ -3767,8 +3966,15 @@ private:
         QAction *aCopy  = menu.addAction("Copy");
         QAction *aPaste = menu.addAction("Paste");
         menu.addSeparator();
+        QAction *aOpenWith = menu.addAction("Open With…");
+        menu.addSeparator();
         QAction *aNewFolder = menu.addAction("New Folder");
         QAction *aNewFile   = menu.addAction("New File");
+        menu.addSeparator();
+        QAction *aCompress = menu.addAction("Compress to .tar.gz");
+        QAction *aExtract  = menu.addAction("Extract Here");
+        menu.addSeparator();
+        QAction *aQuickLook = menu.addAction("Quick Look (Space)");
         menu.addSeparator();
         QAction *aDelete = menu.addAction("Move to Trash");
 
@@ -3778,7 +3984,24 @@ private:
         aCut->setEnabled(hasSel);
         aCopy->setEnabled(hasSel);
         aDelete->setEnabled(hasSel);
+        aOpenWith->setEnabled(hasSel);
+        aCompress->setEnabled(hasSel);
+        aQuickLook->setEnabled(hasSel);
+        aExtract->setEnabled(hasSel);
         aPaste->setEnabled(!m_clipboardPaths.isEmpty());
+
+        QObject::connect(aOpenWith, &QAction::triggered, this,
+                         &FileExplorer::openWith);
+        QObject::connect(aCompress, &QAction::triggered, this,
+                         &FileExplorer::compressSelected);
+        QObject::connect(aExtract, &QAction::triggered, this,
+                         &FileExplorer::extractSelected);
+        QObject::connect(aQuickLook, &QAction::triggered, [this]() {
+            QString p = selectedPath();
+            if (p.isEmpty()) return;
+            if (!m_quickLook) m_quickLook = new QuickLook(this);
+            m_quickLook->show(p);
+        });
 
         QObject::connect(aOpen,      &QAction::triggered, this, &FileExplorer::openSelected);
         QObject::connect(aRename,    &QAction::triggered, this, &FileExplorer::renameSelected);
@@ -3903,20 +4126,81 @@ private:
 
     void setViewMode(bool grid) {
         if (grid) {
-            m_view->setViewMode(QListView::IconMode);
-            m_view->setIconSize(QSize(56, 56));
-            m_view->setGridSize(QSize(140, 120));
-            m_view->setWordWrap(true);
-            m_view->setSpacing(0);
+            m_treeView->hide();
+            m_view->show();
         } else {
-            m_view->setViewMode(QListView::ListMode);
-            m_view->setIconSize(QSize(20, 20));
-            m_view->setGridSize(QSize());
-            m_view->setWordWrap(false);
-            m_view->setSpacing(0);
-            m_view->setUniformItemSizes(true);
+            m_view->hide();
+            m_treeView->show();
+            m_treeView->setRootIndex(m_proxy->mapFromSource(
+                m_fs->index(m_currentPath)));
         }
         updateStatusBar();
+    }
+
+    void openWith() {
+        QString p = selectedPath();
+        if (p.isEmpty()) return;
+        const Theme &t = ThemeManager::instance().current();
+        QMenu m(this);
+        m.setStyleSheet(QString(
+            "QMenu { background: rgb(24, 22, 30);"
+            "  border: 1px solid rgba(255,255,255,30);"
+            "  border-radius: 12px; padding: 6px; color: #f0f0f5;"
+            "  font-size: 13px; }"
+            "QMenu::item { padding: 7px 22px 7px 16px;"
+            "  border-radius: 7px; background: transparent; }"
+            "QMenu::item:selected { background: rgba(255,255,255,45); }"));
+
+        QAction *aText = m.addAction("Text Editor");
+        QAction *aImg  = m.addAction("Image Viewer");
+        QAction *aVid  = m.addAction("Video Player");
+        QAction *aWeb  = m.addAction("Web Browser");
+        m.addSeparator();
+        QAction *aDefault = m.addAction("Open Default");
+
+        QObject::connect(aText, &QAction::triggered, [p]() {
+            QProcess::startDetached("gnome-text-editor", { p });
+        });
+        QObject::connect(aImg, &QAction::triggered, [p]() {
+            QProcess::startDetached("eog", { p });
+        });
+        QObject::connect(aVid, &QAction::triggered, [p]() {
+            QProcess::startDetached("totem", { p });
+        });
+        QObject::connect(aWeb, &QAction::triggered, [p]() {
+            QProcess::startDetached("firefox", { p });
+        });
+        QObject::connect(aDefault, &QAction::triggered, [p]() {
+            QProcess::startDetached("xdg-open", { p });
+        });
+
+        m.exec(m_view->mapToGlobal(m_view->rect().center()));
+    }
+
+    void compressSelected() {
+        QString p = selectedPath();
+        if (p.isEmpty()) return;
+        QFileInfo fi(p);
+        QString out = fi.absolutePath() + "/" + fi.fileName() + ".tar.gz";
+        QProcess::startDetached("tar",
+            { "-czf", out, "-C", fi.absolutePath(), fi.fileName() });
+        showStatus("Compressing " + fi.fileName() + "…");
+    }
+
+    void extractSelected() {
+        QString p = selectedPath();
+        if (p.isEmpty()) return;
+        QFileInfo fi(p);
+        QString dir = fi.absolutePath();
+        if (fi.suffix() == "gz" || fi.fileName().endsWith(".tar.gz")) {
+            QProcess::startDetached("tar", { "-xzf", p, "-C", dir });
+        } else if (fi.suffix() == "zip") {
+            QProcess::startDetached("unzip", { "-o", p, "-d", dir });
+        } else {
+            showStatus("Unsupported archive");
+            return;
+        }
+        showStatus("Extracting " + fi.fileName() + "…");
     }
 
     void showSortMenu() {
@@ -4043,6 +4327,24 @@ private:
                  rgba(t.accent),
                  t.textPrimary.name()));
 
+        if (m_treeView) {
+            m_treeView->setStyleSheet(QString(
+                "QTreeView { background: transparent; border: none;"
+                "  color: %1; font-size: 12px; padding: 4px; }"
+                "QTreeView::item { padding: 4px; }"
+                "QTreeView::item:hover { background: %2; }"
+                "QTreeView::item:selected { background: %3; color: %4; }"
+                "QHeaderView::section {"
+                "  background: transparent; color: %5; border: none;"
+                "  padding: 6px 8px; font-size: 11px;"
+                "  border-bottom: 1px solid %6; }")
+                .arg(t.textPrimary.name(),
+                     rgba(t.accentSoft),
+                     rgba(t.accent),
+                     t.textPrimary.name(),
+                     t.textDim.name(),
+                     rgba(t.chromeBorder)));
+        }
         if (m_statusLeft && m_statusRight) {
             QString st = QString(
                 "color: %1; font-size: 11px; background: transparent;")
@@ -4102,6 +4404,9 @@ private:
     QLabel        *m_statusLeft  = nullptr;
     QLabel        *m_statusRight = nullptr;
     Qt::SortOrder  m_sortOrder   = Qt::AscendingOrder;
+
+    QTreeView *m_treeView = nullptr;
+    QuickLook *m_quickLook = nullptr;
 };
 
 // =========================================================
