@@ -1845,6 +1845,27 @@ static void drawSettings(QPainter &p, const QRectF &r, const QColor &c) {
     }
 }
 
+static void drawTerminal(QPainter &p, const QRectF &r, const QColor &c) {
+    QPen pen(c, r.width() * 0.07, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    p.setPen(pen); p.setBrush(Qt::NoBrush);
+    QRectF box(r.center().x() - r.width() * 0.40,
+               r.center().y() - r.height() * 0.32,
+               r.width() * 0.80, r.height() * 0.64);
+    p.drawRoundedRect(box, r.width() * 0.07, r.width() * 0.07);
+    // Chevron >
+    qreal x1 = box.left() + r.width() * 0.14;
+    qreal y1 = box.top() + r.height() * 0.22;
+    qreal x2 = box.left() + r.width() * 0.32;
+    qreal y2 = box.center().y();
+    qreal x3 = box.left() + r.width() * 0.14;
+    qreal y3 = box.bottom() - r.height() * 0.22;
+    p.drawLine(QPointF(x1, y1), QPointF(x2, y2));
+    p.drawLine(QPointF(x2, y2), QPointF(x3, y3));
+    // Cursor underscore
+    p.drawLine(QPointF(box.left() + r.width() * 0.42, box.bottom() - r.height() * 0.24),
+               QPointF(box.right() - r.width() * 0.14, box.bottom() - r.height() * 0.24));
+}
+
 static void drawPower(QPainter &p, const QRectF &r, const QColor &c) {
     QPen pen(c, r.width() * 0.10, Qt::SolidLine, Qt::RoundCap);
     p.setPen(pen); p.setBrush(Qt::NoBrush);
@@ -1866,6 +1887,7 @@ static void drawFor(const QString &name, QPainter &p,
     else if (name == "Mail")      drawMail(p, r, c);
     else if (name == "Settings")  drawSettings(p, r, c);
     else if (name == "Power")     drawPower(p, r, c);
+    else if (name == "Terminal")  drawTerminal(p, r, c);
 }
 
 static void drawWifi(QPainter &p, const QRectF &r, const QColor &c, bool on) {
@@ -2129,7 +2151,8 @@ private:
         pl->addWidget(m_search);
 
         m_tilesLayout = new QGridLayout;
-        m_tilesLayout->setSpacing(14);
+        m_tilesLayout->setSpacing(34);
+        m_tilesLayout->setContentsMargins(14, 14, 14, 14);
 
         struct App { const char *icon; const char *name; };
         const App apps[] = {
@@ -2140,6 +2163,7 @@ private:
             { "\xF0\x9F\x93\x9D",  "Notes"     },
             { "\xE2\x9C\x89",       "Mail"      },
             { "\xE2\x9A\x99",       "Settings"  },
+            { "\xF0\x9F\x92»",   "Terminal"  },
             { "\xE2\x9A\xA1",       "Power"     }
         };
 
@@ -2210,6 +2234,11 @@ private:
                 args = { "--settings" };
             else if (appName == "Finder")
                 args = { "--files" };
+            else if (appName == "Terminal") {
+                QProcess::startDetached("foot");
+                hideLauncher();
+                return;
+            }
             else
                 args = { "--demo", appName, QString::number(offset) };
             QProcess::startDetached(
@@ -2259,6 +2288,31 @@ public:
     void setCurrent(qreal c) {
         if (qAbs(c - m_current) > 0.002) { m_current = c; update(); }
     }
+
+    // Bounce — called when a window minimizes to this app
+    void bounce() {
+        m_bounceFrames = 0;
+        if (!m_bounceTimer) {
+            m_bounceTimer = new QTimer(this);
+            m_bounceTimer->setInterval(16);
+            QObject::connect(m_bounceTimer, &QTimer::timeout,
+                             this, [this]() {
+                m_bounceFrames++;
+                // Spring: up then settle back, 22 frames (~350ms)
+                double t = m_bounceFrames / 22.0;
+                if (t >= 1.0) {
+                    m_bounceOffset = 0;
+                    m_bounceTimer->stop();
+                } else {
+                    // Sine arc that peaks at t=0.3, decays
+                    double arc = std::sin(t * 3.14159) * std::exp(-t * 2.0);
+                    m_bounceOffset = -int(arc * 14);
+                }
+                update();
+            });
+        }
+        m_bounceTimer->start();
+    }
     qreal current() const    { return m_current; }
 
     void setRunning(bool r) {
@@ -2277,7 +2331,7 @@ protected:
         const qreal baseSize = 42.0;
         int visual = int(baseSize * m_current);
         int x = (width()  - visual) / 2;
-        int y = (height() - visual) / 2 - 4;
+        int y = (height() - visual) / 2 - 4 + m_bounceOffset;
         int radius = int(visual * 0.26);
 
         int boost = int(qBound(0.0, (m_current - 1.0) / 0.42, 1.0) * 90);
@@ -2380,6 +2434,8 @@ protected:
             program = "eog";
         } else if (m_name == "Music") {
             program = "totem";
+        } else if (m_name == "Terminal") {
+            program = "foot";
         } else if (m_name == "Notes") {
             program = "gnome-text-editor";
         } else if (m_name == "Mail") {
@@ -2485,6 +2541,11 @@ private:
     Theme   m_theme;
     bool    m_running = false;
     qint64  m_pid = 0;
+
+    // Bounce animation
+    QTimer *m_bounceTimer = nullptr;
+    int     m_bounceFrames = 0;
+    int     m_bounceOffset = 0;
 };
 
 class Dock : public QWidget {
@@ -6000,11 +6061,38 @@ static volatile sig_atomic_t g_spotlightToggle = 0;
 static volatile sig_atomic_t g_calcToggle = 0;
 static volatile sig_atomic_t g_notesToggle = 0;
 static volatile sig_atomic_t g_mcToggle = 0;
+static volatile sig_atomic_t g_minimizeToggle = 0;
+
+static QString g_swaySock;
+static int     g_trackedConId = -1;
+static QString g_trackedAppId;
+
+static QString freshSwaySock() {
+    QString dir = QString::fromUtf8(qgetenv("XDG_RUNTIME_DIR"));
+    if (dir.isEmpty()) dir = "/run/user/1000";
+    QDir d(dir);
+    for (const QString &e : d.entryList({"sway-ipc.*"},
+                                        QDir::AllEntries | QDir::System))
+        if (e.endsWith(".sock")) return d.filePath(e);
+    return {};
+}
+
+static QString discoverSwaySock() {
+    QString dir = QString::fromUtf8(qgetenv("XDG_RUNTIME_DIR"));
+    if (dir.isEmpty()) dir = "/run/user/1000";
+    QDir d(dir);
+    QStringList entries = d.entryList({"sway-ipc.*"},
+                                       QDir::AllEntries | QDir::System);
+    for (const QString &e : entries)
+        if (e.endsWith(".sock")) return d.filePath(e);
+    return {};
+}
 
 extern "C" void spotlightSignalHandler(int sig) {
     if (sig == SIGUSR2)      g_calcToggle = 1;
     else if (sig == SIGCONT) g_notesToggle = 1;
     else if (sig == SIGWINCH) g_mcToggle = 1;
+    else if (sig == SIGRTMIN) g_minimizeToggle = 1;
     else                     g_spotlightToggle = 1;
 }
 
@@ -6782,6 +6870,9 @@ public:
     void refreshWindows() {
         m_wins.clear();
         QProcess p;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert("SWAYSOCK", g_swaySock);
+        p.setProcessEnvironment(env);
         p.start("swaymsg", { "-t", "get_tree", "-r" });
         p.waitForFinished(500);
         QByteArray out = p.readAllStandardOutput();
@@ -7333,6 +7424,9 @@ static int runShell(int argc, char *argv[])
     std::signal(SIGUSR2, spotlightSignalHandler);
     std::signal(SIGCONT, spotlightSignalHandler);
     std::signal(SIGWINCH, spotlightSignalHandler);
+    std::signal(SIGRTMIN, spotlightSignalHandler);
+    g_swaySock = discoverSwaySock();
+    qDebug() << "[sway] sock =" << g_swaySock;
 
     // Load theme BEFORE creating any chrome widget
     Wallpaper *initialWallpaper =
@@ -7433,7 +7527,7 @@ static int runShell(int argc, char *argv[])
     QTimer *signalPoll = new QTimer(&window);
     signalPoll->setInterval(120);
     QObject::connect(signalPoll, &QTimer::timeout,
-                     [spotlight, calcOverlay, notesOverlay, missionControl]() {
+                     [spotlight, calcOverlay, notesOverlay, missionControl, root]() {
         if (g_spotlightToggle) {
             g_spotlightToggle = 0;
             spotlight->toggle();
@@ -7449,6 +7543,98 @@ static int runShell(int argc, char *argv[])
         if (g_mcToggle) {
             g_mcToggle = 0;
             missionControl->toggle();
+        }
+        if (g_minimizeToggle) {
+            g_minimizeToggle = 0;
+            qDebug() << "[minimize] fired";
+
+            QString sock = freshSwaySock();
+            QProcess *q = new QProcess;
+            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+            env.insert("SWAYSOCK", sock);
+            q->setProcessEnvironment(env);
+
+            QObject::connect(q,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                [q, root]() {
+                QByteArray out = q->readAllStandardOutput();
+                q->deleteLater();
+                QJsonDocument doc = QJsonDocument::fromJson(out);
+                if (!doc.isObject()) {
+                    qDebug() << "[minimize] no tree";
+                    return;
+                }
+
+                // Walk tree: collect (conId, appId, focused) for every leaf con
+                struct Win { int conId; QString appId; bool focused; };
+                QList<Win> wins;
+                std::function<void(const QJsonObject &)> walk =
+                    [&](const QJsonObject &n) {
+                    if (n.value("type").toString() == "con") {
+                        QString a = n.value("app_id").toString();
+                        QString nm = n.value("name").toString();
+                        // Include any con with an app_id.
+                        // Exclude the shell window itself (name "Apokolips OS").
+                        if (!a.isEmpty() &&
+                            !(a == "apokolips-shell" && nm == "Apokolips OS")) {
+                            wins.append({ n.value("id").toInt(), a,
+                                          n.value("focused").toBool() });
+                        }
+                    }
+                    for (const QJsonValue &v : n.value("nodes").toArray())
+                        walk(v.toObject());
+                    for (const QJsonValue &v : n.value("floating_nodes").toArray())
+                        walk(v.toObject());
+                };
+                walk(doc.object());
+
+                if (wins.isEmpty()) {
+                    qDebug() << "[minimize] no windows";
+                    return;
+                }
+
+                // Prefer the focused one; else the first non-shell in the list
+                Win target = wins.first();
+                for (const Win &w : wins) if (w.focused) target = w;
+
+                qDebug() << "[minimize] target conId=" << target.conId
+                         << "appId=" << target.appId;
+
+                // Bounce the matching dock icon
+                QString dockName;
+                if (target.appId == "firefox")              dockName = "Finder";
+                else if (target.appId == "eog")             dockName = "Photos";
+                else if (target.appId == "org.gnome.Totem") dockName = "Music";
+                else if (target.appId == "org.gnome.TextEditor" ||
+                         target.appId == "gnome-text-editor") dockName = "Notes";
+                else if (target.appId == "thunderbird")     dockName = "Mail";
+                else if (target.appId == "org.gnome.Terminal" ||
+                         target.appId == "foot")            dockName = "Terminal";
+                else if (target.appId.startsWith("apokolips-"))
+                    dockName = "Settings";
+
+                if (!dockName.isEmpty()) {
+                    for (QWidget *w : root->findChildren<QWidget *>()) {
+                        if (auto *di = dynamic_cast<DockIcon *>(w)) {
+                            if (di->appName() == dockName) di->bounce();
+                        }
+                    }
+                }
+
+                QProcess *mv = new QProcess;
+                QProcessEnvironment env2 =
+                    QProcessEnvironment::systemEnvironment();
+                env2.insert("SWAYSOCK", freshSwaySock());
+                mv->setProcessEnvironment(env2);
+                QObject::connect(mv,
+                    QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                    mv, &QProcess::deleteLater);
+                mv->start("swaymsg",
+                    { QString("[con_id=%1]").arg(target.conId),
+                      "move", "scratchpad" });
+            });
+
+            q->start("swaymsg", { "-t", "get_tree", "-r" });
         }
     });
     signalPoll->start();
@@ -7556,8 +7742,32 @@ static int runShell(int argc, char *argv[])
             return {};
         };
 
-            QString id = findFocused(doc.object());
-            QString label = "Apokolips";
+            // Also capture con_id of the focused window
+        int conId = -1;
+        std::function<bool(const QJsonObject &)> findConId =
+            [&](const QJsonObject &n) -> bool {
+            if (n.value("focused").toBool() &&
+                n.value("type").toString() == "con") {
+                conId = n.value("id").toInt();
+                return true;
+            }
+            for (const QJsonValue &v : n.value("nodes").toArray())
+                if (findConId(v.toObject())) return true;
+            for (const QJsonValue &v : n.value("floating_nodes").toArray())
+                if (findConId(v.toObject())) return true;
+            return false;
+        };
+        findConId(doc.object());
+
+        QString id = findFocused(doc.object());
+
+        // Store for the minimize handler
+        if (!id.isEmpty() && id != "apokolips-shell" && conId > 0) {
+            g_trackedConId = conId;
+            g_trackedAppId = id;
+        }
+
+        QString label = "Apokolips";
             if (id == "org.gnome.Nautilus")      label = "Files";
         else if (id == "org.gnome.Terminal") label = "Terminal";
         else if (id == "foot")               label = "Terminal";
@@ -7576,6 +7786,9 @@ static int runShell(int argc, char *argv[])
 
             if (brand->text() != label) brand->setText(label);
         });
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert("SWAYSOCK", freshSwaySock());
+        p->setProcessEnvironment(env);
         p->start("swaymsg", { "-t", "get_tree", "-r" });
     });
     focusPoll->start();
@@ -8079,6 +8292,7 @@ static int runShell(int argc, char *argv[])
         { "\xF0\x9F\x93\x9D",  "Notes"     },
         { "\xE2\x9C\x89",       "Mail"      },
         { "\xE2\x9A\x99",       "Settings"  },
+        { "\xF0\x9F\x92»",   "Terminal"  },
         { "\xE2\x9A\xA1",       "Power"     }
     };
     int i = 0;
