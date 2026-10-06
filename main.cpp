@@ -2039,6 +2039,7 @@ protected:
     }
 
     void launchApp() {
+        qDebug() << "[dock] launchApp called for" << m_name;
         // Clear this app's notification badge when launched
         BadgeRegistry::clear(m_name);
         update();
@@ -2076,7 +2077,9 @@ protected:
             args = { "--demo", m_name, QString::number(m_index) };
         }
 
-        QProcess::startDetached(program, args, QString(), &m_pid);
+        qDebug() << "[dock] startDetached" << program << args;
+        bool ok = QProcess::startDetached(program, args, QString(), &m_pid);
+        qDebug() << "[dock] result:" << ok << "pid:" << m_pid;
         m_running = true;
         update();
     }
@@ -2116,6 +2119,9 @@ protected:
     }
 
     void mousePressEvent(QMouseEvent *e) override {
+        qDebug() << "[dockicon] mousePress on" << m_name
+                 << "button:" << e->button()
+                 << "pos:" << e->position();
         if (e->button() == Qt::LeftButton) {
             if (m_name == "Power") {
                 showPowerMenu(e->globalPosition().toPoint());
@@ -2189,6 +2195,7 @@ public:
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout, this, [this]() { tick(); });
         m_timer->start();
+        // (dock container swallows clicks — do NOT override mousePressEvent)
 
         // Separate timer to poll running state — cheaper than every frame
         m_pollTimer = new QTimer(this);
@@ -4330,6 +4337,7 @@ private:
 class DesktopWidgets : public QWidget {
 public:
     explicit DesktopWidgets(QWidget *parent = nullptr) : QWidget(parent) {
+        setObjectName("desktopWidgets");
         setAttribute(Qt::WA_NoSystemBackground, true);
         // NOTE: do NOT set WA_TransparentForMouseEvents — we need mouse
         // events for hover magnify. The dock conflict is handled in the
@@ -4381,9 +4389,36 @@ public:
     }
 
 protected:
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton) {
+            m_dragging = true;
+            m_dragOffset = e->position().toPoint();
+            setCursor(Qt::ClosedHandCursor);
+            e->accept();
+        }
+        QWidget::mousePressEvent(e);
+    }
+
     void mouseMoveEvent(QMouseEvent *e) override {
+        if (m_dragging) {
+            QPoint parentPos = mapToParent(
+                e->position().toPoint() - m_dragOffset);
+            move(parentPos);
+            m_userMoved = true;
+            e->accept();
+            return;
+        }
         handleHoverAt(e->position().toPoint());
         QWidget::mouseMoveEvent(e);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (m_dragging) {
+            m_dragging = false;
+            setCursor(Qt::ArrowCursor);
+            e->accept();
+        }
+        QWidget::mouseReleaseEvent(e);
     }
 
     // Public: allow parent to forward hover coords
@@ -4407,11 +4442,22 @@ protected:
 
 public:
 
+    void showEvent(QShowEvent *e) override {
+        qDebug() << "[widgets] SHOW event";
+        QWidget::showEvent(e);
+    }
+    void hideEvent(QHideEvent *e) override {
+        qDebug() << "[widgets] HIDE event";
+        QWidget::hideEvent(e);
+    }
+
     void repositionTo(const QSize &parentSize) {
         const int CARD_W = 240;
         setFixedWidth(CARD_W);
-        move(parentSize.width() - CARD_W - 20, 50);
         setFixedHeight(qMin(parentSize.height() - 130, 560));
+        if (m_userMoved) return;   // honor manual drag position
+        // Right side, offset left by notification panel width (360)
+        move(parentSize.width() - CARD_W - 380, 50);
     }
 
 protected:
@@ -4649,6 +4695,11 @@ private:
     double m_ramVal = 0.0;
     Weather::Fetcher  *m_weather = nullptr;
     Weather::Snapshot  m_wx;
+
+    // Drag state
+    bool   m_dragging   = false;
+    bool   m_userMoved  = false;
+    QPoint m_dragOffset;
 
     // ---- Hover magnify ----
     QTimer *m_hoverTimer = nullptr;
@@ -5051,6 +5102,8 @@ protected:
     }
 
     void mousePressEvent(QMouseEvent *e) override {
+        qDebug() << "[root] mousePress at" << e->position()
+                 << "button:" << e->button();
         if (m_launcher && m_launcher->isVisible()) m_launcher->hideLauncher();
         if (m_notifications && m_notifications->isVisible())
             m_notifications->hideCenter();
@@ -5284,10 +5337,25 @@ private:
     bool m_battCharging = false;
 };
 
+class MouseSpy : public QObject {
+public:
+    bool eventFilter(QObject *obj, QEvent *event) override {
+        if (event->type() == QEvent::MouseButtonPress) {
+            auto *me = static_cast<QMouseEvent*>(event);
+            qDebug() << "[spy] target="
+                     << (obj ? obj->metaObject()->className() : "null")
+                     << "btn=" << me->button()
+                     << "pos=" << me->position();
+        }
+        return QObject::eventFilter(obj, event);
+    }
+};
+
 static int runShell(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     app.setApplicationName("Apokolips Shell");
+    app.installEventFilter(new MouseSpy);
 
     std::signal(SIGUSR1, spotlightSignalHandler);
 
@@ -5590,13 +5658,16 @@ static int runShell(int argc, char *argv[])
     {
         QAction *a = viewMenu->addAction("Toggle Desktop Widgets");
         QObject::connect(a, &QAction::triggered, [root]() {
-            auto &cfg = VisualConfigManager::instance().cfg();
-            cfg.widgetsVisible = !cfg.widgetsVisible;
-            VisualConfigManager::instance().save();
-            for (QObject *child : root->children()) {
-                if (auto *w = dynamic_cast<DesktopWidgets *>(child)) {
-                    w->setVisible(cfg.widgetsVisible);
-                    if (cfg.widgetsVisible) w->raise();
+            for (QWidget *w : root->findChildren<QWidget *>()) {
+                if (w->objectName() == "desktopWidgets") {
+                    bool nowVisible = !w->isVisible();
+                    w->setVisible(nowVisible);
+                    if (nowVisible) w->raise();
+                    auto &cfg = VisualConfigManager::instance().cfg();
+                    cfg.widgetsVisible = nowVisible;
+                    VisualConfigManager::instance().save();
+                    qDebug() << "[toggle] -> " << nowVisible;
+                    return;
                 }
             }
         });
@@ -6042,16 +6113,6 @@ static int runShell(int argc, char *argv[])
             *lastMod = m;
             VisualConfigManager::instance().load();
             if (root) {
-                // Apply widget visibility in case it changed elsewhere
-                auto &cfg = VisualConfigManager::instance().cfg();
-                for (QObject *child : root->children()) {
-                    if (auto *w = dynamic_cast<DesktopWidgets *>(child)) {
-                        if (w->isVisible() != cfg.widgetsVisible) {
-                            w->setVisible(cfg.widgetsVisible);
-                            if (cfg.widgetsVisible) w->raise();
-                        }
-                    }
-                }
                 root->update();
                 for (QWidget *w : root->findChildren<QWidget *>()) w->update();
             }
