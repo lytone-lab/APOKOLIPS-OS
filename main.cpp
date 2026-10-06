@@ -4918,7 +4918,12 @@ private:
                 exec = exec.trimmed();
                 if (!q.isEmpty() &&
                     !name.toLower().contains(q.toLower())) continue;
-                addResult({"App", name, exec, exec});
+                // Use gtk-launch on the desktop file basename — handles
+                // snap wrappers, env prefixes, and %U placeholders.
+                QString desktopId = file;
+                if (desktopId.endsWith(".desktop"))
+                    desktopId.chop(8);
+                addResult({"App", name, exec, "gtk-launch:" + desktopId});
                 ++shown;
             }
         }
@@ -4957,7 +4962,12 @@ private:
         QString payload = it->data(Qt::UserRole + 1).toString();
 
         if (kind == "App") {
-            QProcess::startDetached(payload);
+            if (payload.startsWith("gtk-launch:")) {
+                QProcess::startDetached("gtk-launch",
+                    { payload.mid(11) });
+            } else {
+                QProcess::startDetached(payload);
+            }
         } else if (kind == "Path") {
             QProcess::startDetached("xdg-open", { payload });
         } else if (kind == "Calc") {
