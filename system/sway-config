@@ -68,3 +68,9 @@ bindsym $mod+c exec pkill -USR2 apokolips-shell
 for_window [app_id="apokolips-calculator"] floating enable
 for_window [app_id="apokolips-calculator"] resize set 380 560
 for_window [app_id="apokolips-calculator"] move position center
+
+# Notes
+bindsym $mod+n exec pkill -CONT apokolips-shell
+
+# Mission Control
+bindsym $mod+m exec pkill -WINCH apokolips-shell
