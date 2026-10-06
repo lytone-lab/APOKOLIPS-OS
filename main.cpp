@@ -998,6 +998,62 @@ public:
             f.write(QJsonDocument(obj).toJson());
     }
 
+    static Theme themeForId(const QString &id) {
+        Theme t;
+        if (id == "starfield") {
+            t.chromeBg = QColor(10,14,30,205);
+            t.chromeBorder = QColor(100,150,230,160);
+            t.accent = QColor(120,180,255);
+            t.accentSoft = QColor(120,180,255,90);
+            t.accentStrong = QColor(120,180,255,160);
+            t.textPrimary = QColor(220,230,245);
+            t.textSecondary = QColor(160,184,216);
+            t.textDim = QColor(96,128,168);
+            t.panelBg = QColor(8,12,26,240);
+        } else if (id == "aurora") {
+            t.chromeBg = QColor(8,20,24,205);
+            t.chromeBorder = QColor(80,200,180,160);
+            t.accent = QColor(100,230,200);
+            t.accentSoft = QColor(100,230,200,90);
+            t.accentStrong = QColor(100,230,200,160);
+            t.textPrimary = QColor(216,240,232);
+            t.textSecondary = QColor(150,200,188);
+            t.textDim = QColor(90,136,120);
+            t.panelBg = QColor(6,16,20,240);
+        } else if (id == "goldengate") {
+            t.chromeBg = QColor(28,28,34,90);
+            t.chromeBorder = QColor(255,255,255,55);
+            t.accent = QColor(235,240,250);
+            t.accentSoft = QColor(235,240,250,50);
+            t.accentStrong = QColor(235,240,250,100);
+            t.textPrimary = QColor(248,250,252);
+            t.textSecondary = QColor(200,208,218);
+            t.textDim = QColor(140,148,160);
+            t.panelBg = QColor(14,14,18,165);
+        } else if (id == "everest") {
+            t.chromeBg = QColor(252,250,246,135);
+            t.chromeBorder = QColor(80,84,96,40);
+            t.accent = QColor(60,68,82);
+            t.accentSoft = QColor(60,68,82,55);
+            t.accentStrong = QColor(60,68,82,120);
+            t.textPrimary = QColor(30,34,44);
+            t.textSecondary = QColor(72,80,96);
+            t.textDim = QColor(130,138,152);
+            t.panelBg = QColor(250,248,246);
+        } else {
+            t.chromeBg = QColor(18,6,14,205);
+            t.chromeBorder = QColor(230,70,110,170);
+            t.accent = QColor(255,90,130);
+            t.accentSoft = QColor(255,90,130,90);
+            t.accentStrong = QColor(255,60,110,160);
+            t.textPrimary = QColor(255,225,232);
+            t.textSecondary = QColor(232,180,195);
+            t.textDim = QColor(176,112,128);
+            t.panelBg = QColor(14,6,12,240);
+        }
+        return t;
+    }
+
     static Wallpaper *makeById(const QString &id) {
         if (id == "starfield")  return new StarfieldWallpaper;
         if (id == "aurora")     return new AuroraWallpaper;
@@ -2140,10 +2196,33 @@ protected:
     }
 
     void launchApp() {
-        qDebug() << "[dock] launchApp called for" << m_name;
         // Clear this app's notification badge when launched
         BadgeRegistry::clear(m_name);
         update();
+
+        // If the app is already running, focus its window instead of
+        // spawning a duplicate. Use swaymsg to raise the matching app_id.
+        QString matchId;
+        if (m_name == "Finder")         matchId = "apokolips-shell";
+        else if (m_name == "Settings")  matchId = "apokolips-shell";
+        else if (m_name == "Music")     matchId = "org.gnome.Totem";
+        else if (m_name == "Photos")    matchId = "eog";
+        else if (m_name == "Notes")     matchId = "org.gnome.TextEditor";
+        else if (m_name == "Mail")      matchId = "thunderbird";
+        else if (m_name == "Files")     matchId = "org.gnome.Nautilus";
+
+        if (!matchId.isEmpty()) {
+            // Try to focus an existing window with this app_id
+            QProcess sway;
+            sway.start("swaymsg",
+                { QString("[app_id=%1]").arg(matchId), "focus" });
+            sway.waitForFinished(300);
+            // If it exited 0, a window was focused — bail out
+            if (sway.exitStatus() == QProcess::NormalExit
+                && sway.exitCode() == 0) {
+                return;
+            }
+        }
 
         // Map dock icon -> real program to run
         QString program;
@@ -3467,19 +3546,37 @@ private:
         hh->setContentsMargins(14, 0, 14, 0);
         hh->setSpacing(8);
 
-        auto makeLight = [](const QString &idle, const QString &hover) {
+        auto makeLight = [](const QString &idle, const QString &hover,
+                            const QString &glyph) {
             QPushButton *b = new QPushButton;
             b->setFixedSize(13, 13);
             b->setCursor(Qt::PointingHandCursor);
+            b->setText("");
+            b->setProperty("glyph", glyph);
             b->setStyleSheet(QString(
-                "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60); border-radius: 6px; }"
+                "QPushButton { background: %1; color: rgba(0,0,0,140);"
+                "  border: 1px solid rgba(0,0,0,60); border-radius: 6px;"
+                "  font-size: 8px; font-weight: bold; padding: 0; }"
                 "QPushButton:hover { background: %2; }").arg(idle, hover));
             return b;
         };
-        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
+        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57",
+                                          QString::fromUtf8("\xC3\x97"));
+        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e",
+                                          QString::fromUtf8("\xE2\x88\x92"));
+        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840",
+                                          QString::fromUtf8("+"));
+        // Show glyph on hover via stylesheet trick
+        closeBtn->setStyleSheet(closeBtn->styleSheet() +
+            "QPushButton:hover { color: rgba(0,0,0,180); }");
+        minBtn->setStyleSheet(minBtn->styleSheet() +
+            "QPushButton:hover { color: rgba(0,0,0,180); }");
+        maxBtn->setStyleSheet(maxBtn->styleSheet() +
+            "QPushButton:hover { color: rgba(0,0,0,180); }");
+        // Use a small text on hover
+        closeBtn->setText("");
+        minBtn->setText("");
+        maxBtn->setText("");
         QObject::connect(closeBtn, &QPushButton::clicked,
                          [this]() { close(); deleteLater(); });
         QObject::connect(minBtn, &QPushButton::clicked,
@@ -5433,9 +5530,11 @@ private:
 // Spotlight — global search overlay (macOS-style)
 // =========================================================
 static volatile sig_atomic_t g_spotlightToggle = 0;
+static volatile sig_atomic_t g_calcToggle = 0;
 
-extern "C" void spotlightSignalHandler(int) {
-    g_spotlightToggle = 1;
+extern "C" void spotlightSignalHandler(int sig) {
+    if (sig == SIGUSR2) g_calcToggle = 1;
+    else                g_spotlightToggle = 1;
 }
 
 class SpotlightOverlay : public QWidget {
@@ -5805,6 +5904,12 @@ public:
         s->raise();
     }
 
+    void setCalcOverlay(QWidget *c) {
+        m_calc = c;
+        c->setParent(this);
+        c->raise();
+    }
+
     void setWallpaper(Wallpaper *w) {
         if (m_wallpaper) delete m_wallpaper;
         m_wallpaper = w;
@@ -5896,6 +6001,7 @@ protected:
             }
 
             // ---- System ----
+            QAction *aCalc     = menu.addAction("Calculator");
             QAction *aSettings = menu.addAction("System Settings…");
             QAction *aDisplay  = menu.addAction("Display Settings");
             menu.addSeparator();
@@ -5939,6 +6045,11 @@ protected:
                     { "--files" });
             });
 
+            QObject::connect(aCalc, &QAction::triggered, []() {
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--calc" });
+            });
             QObject::connect(aSettings, &QAction::triggered, []() {
                 QProcess::startDetached(
                     QCoreApplication::applicationFilePath(),
@@ -5988,6 +6099,7 @@ private:
     ControlCenter      *m_controlCenter = nullptr;
     DesktopWidgets     *m_widgets = nullptr;
     SpotlightOverlay   *m_spotlight = nullptr;
+    QWidget            *m_calc = nullptr;
     QTimer             *m_tickTimer = nullptr;
     QTimer             *m_blurTimer = nullptr;
 };
@@ -6080,6 +6192,156 @@ public:
     }
 };
 
+// =========================================================
+// Calculator app
+// =========================================================
+class CalculatorApp : public QWidget {
+public:
+    CalculatorApp(QWidget *parent = nullptr) : QWidget(parent) {
+        if (parent) {
+            // Child overlay — must NOT be a native window, or sway tiles it
+            setWindowFlags(Qt::Widget);
+            setAttribute(Qt::WA_TranslucentBackground, true);
+            setAttribute(Qt::WA_NoSystemBackground, true);
+        } else {
+            setWindowTitle("Calculator");
+            setWindowFlags(Qt::FramelessWindowHint);
+            setAttribute(Qt::WA_TranslucentBackground, true);
+            resize(320, 480);
+            if (QScreen *s = QApplication::primaryScreen())
+                move(s->availableGeometry().center() - QPoint(160, 240));
+        }
+
+        buildUi();
+        if (parent) hide();
+
+        m_theme = ThemeManager::instance().current();
+        restyle();
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_theme = t;
+            restyle();
+            update();
+        });
+    }
+
+    void toggle() { isVisible() ? hide() : show2(); }
+
+    void show2() {
+        if (parentWidget()) {
+            int w = 340, h = 480;
+            resize(w, h);
+            move((parentWidget()->width()  - w) / 2,
+                 (parentWidget()->height() - h) / 2);
+        }
+        raise();
+        QWidget::show();
+        setFocus();
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton) {
+            if (QWindow *wh = window()->windowHandle())
+                if (wh->startSystemMove()) return;
+        }
+        QWidget::mousePressEvent(e);
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QRect r = rect().adjusted(0, 0, -1, -1);
+        QPainterPath path;
+        path.addRoundedRect(r, 16, 16);
+        QColor bg(24, 22, 30, 240);
+        p.fillPath(path, bg);
+        QColor edge(255, 255, 255, 40);
+        p.setPen(QPen(edge, 1));
+        p.drawPath(path);
+    }
+
+private:
+    void buildUi() {
+        QVBoxLayout *v = new QVBoxLayout(this);
+        v->setContentsMargins(16, 48, 16, 16);
+        v->setSpacing(8);
+
+        m_display = new QLabel("0");
+        m_display->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        m_display->setFixedHeight(80);
+        v->addWidget(m_display);
+
+        QGridLayout *g = new QGridLayout;
+        g->setSpacing(8);
+        const char *keys[5][4] = {
+            {"C", "±", "%", "/"},
+            {"7", "8", "9", "*"},
+            {"4", "5", "6", "-"},
+            {"1", "2", "3", "+"},
+            {"0", ".", "", "="}
+        };
+        for (int r = 0; r < 5; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                QString k = keys[r][c];
+                if (k.isEmpty()) continue;
+                QPushButton *b = new QPushButton(k);
+                b->setFixedHeight(56);
+                b->setCursor(Qt::PointingHandCursor);
+                m_buttons.append(b);
+                QObject::connect(b, &QPushButton::clicked,
+                                 [this, k]() { press(k); });
+                g->addWidget(b, r, c);
+            }
+        }
+        v->addLayout(g, 1);
+
+        restyle();
+    }
+
+    void press(const QString &k) {
+        if (k == "C") { m_expr.clear(); m_display->setText("0"); return; }
+        if (k == "=") {
+            QProcess py;
+            py.start("python3", { "-c",
+                QString("print(eval('%1'))").arg(m_expr) });
+            py.waitForFinished(400);
+            QString out = QString::fromUtf8(py.readAllStandardOutput()).trimmed();
+            if (out.isEmpty()) out = "error";
+            m_display->setText(out);
+            m_expr = out;
+            return;
+        }
+        if (k == "±") { m_expr.prepend("-"); m_display->setText(m_expr); return; }
+        if (k == "%") { m_expr += "/100"; m_display->setText(m_expr); return; }
+        m_expr += k;
+        m_display->setText(m_expr);
+    }
+
+    void restyle() {
+        const Theme &t = m_theme;
+        m_display->setStyleSheet(QString(
+            "color: %1; font-size: 42px; font-weight: 200;"
+            " padding: 8px 16px; background: transparent;")
+            .arg(t.textPrimary.name()));
+        for (QPushButton *b : m_buttons) {
+            bool isOp = QString("+-*/=%").contains(b->text());
+            QString bg = isOp ? "rgba(255,140,80,60)" : "rgba(255,255,255,25)";
+            b->setStyleSheet(QString(
+                "QPushButton { background: %1; color: %2; border: none;"
+                "  border-radius: 12px; font-size: 20px; }"
+                "QPushButton:hover { background: rgba(255,255,255,60); }"
+                "QPushButton:pressed { background: rgba(255,255,255,90); }")
+                .arg(bg, t.textPrimary.name()));
+        }
+    }
+
+    QLabel *m_display = nullptr;
+    QList<QPushButton *> m_buttons;
+    QString m_expr;
+    Theme m_theme;
+};
+
+
 static int runShell(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -6087,6 +6349,7 @@ static int runShell(int argc, char *argv[])
     app.installEventFilter(new MouseSpy);
 
     std::signal(SIGUSR1, spotlightSignalHandler);
+    std::signal(SIGUSR2, spotlightSignalHandler);
 
     // Load theme BEFORE creating any chrome widget
     Wallpaper *initialWallpaper =
@@ -6175,12 +6438,20 @@ static int runShell(int argc, char *argv[])
     root->setSpotlight(spotlight);
 
     // Poll SIGUSR1 → toggle Spotlight (sway keybind sends the signal)
+    CalculatorApp *calcOverlay = new CalculatorApp(root);
+    root->setCalcOverlay(calcOverlay);
+
     QTimer *signalPoll = new QTimer(&window);
     signalPoll->setInterval(120);
-    QObject::connect(signalPoll, &QTimer::timeout, [spotlight]() {
+    QObject::connect(signalPoll, &QTimer::timeout,
+                     [spotlight, calcOverlay]() {
         if (g_spotlightToggle) {
             g_spotlightToggle = 0;
             spotlight->toggle();
+        }
+        if (g_calcToggle) {
+            g_calcToggle = 0;
+            calcOverlay->toggle();
         }
     });
     signalPoll->start();
@@ -6885,12 +7156,21 @@ static int runShell(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    if (argc >= 2 && QString(argv[1]) == "--calc") {
+        QApplication app(argc, argv);
+        app.setDesktopFileName("apokolips-calculator");
+        ThemeManager::instance().setTheme(
+            WallpaperConfig::themeForId(WallpaperConfig::loadId()));
+        CalculatorApp w;
+        w.show();
+        return app.exec();
+    }
+
     if (argc >= 2 && QString(argv[1]) == "--files") {
         QApplication app(argc, argv);
         app.setApplicationName("Apokolips Files");
-        Wallpaper *wp = WallpaperConfig::makeById(WallpaperConfig::loadId());
-        ThemeManager::instance().setTheme(wp->theme());
-        delete wp;
+        ThemeManager::instance().setTheme(
+            WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         FileExplorer w;
         w.show();
         return app.exec();
@@ -6901,9 +7181,8 @@ int main(int argc, char *argv[])
         app.setApplicationName("Apokolips Settings");
         // Prime the theme from the active wallpaper so the settings
         // window inherits the same colours as the shell.
-        Wallpaper *wp = WallpaperConfig::makeById(WallpaperConfig::loadId());
-        ThemeManager::instance().setTheme(wp->theme());
-        delete wp;
+        ThemeManager::instance().setTheme(
+            WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         SettingsWindow w;
         w.show();
         return app.exec();
