@@ -49,3 +49,22 @@ bindsym $mod+2 workspace 2
 bindsym $mod+3 workspace 3
 
 # NO bar {} block — the shell has its own top bar.
+
+# Spotlight — Super+Space sends SIGUSR1 to shell
+bindsym $mod+space exec pkill -USR1 apokolips-shell
+
+# ---- Window snapping ----
+bindsym $mod+Left  exec --no-startup-id swaymsg "move left; resize set 50 ppt 100 ppt"
+bindsym $mod+Right exec --no-startup-id swaymsg "move right; resize set 50 ppt 100 ppt"
+bindsym $mod+Up    exec --no-startup-id swaymsg "floating disable; fullscreen toggle"
+bindsym $mod+Down  exec --no-startup-id swaymsg "fullscreen disable"
+bindsym $mod+Shift+Up   move up
+bindsym $mod+Shift+Down move down
+
+# Calculator
+bindsym $mod+c exec pkill -USR2 apokolips-shell
+
+# Calculator floats and centers
+for_window [app_id="apokolips-calculator"] floating enable
+for_window [app_id="apokolips-calculator"] resize set 380 560
+for_window [app_id="apokolips-calculator"] move position center
