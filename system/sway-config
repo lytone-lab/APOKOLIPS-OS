@@ -7,7 +7,7 @@ set $mod Mod4
 
 output * bg #000000 solid_color
 
-default_border none
+default_border pixel 2
 default_floating_border normal 2
 gaps inner 0
 gaps outer 0
