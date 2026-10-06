@@ -3084,20 +3084,29 @@ private:
         hl->setContentsMargins(12, 0, 12, 0);
         hl->setSpacing(8);
 
-        auto makeLight = [](const QString &idle, const QString &hover) {
-            QPushButton *b = new QPushButton;
+        auto makeLight = [](const QString &idle, const QString &hover,
+                             const QString &glyph) {
+            QPushButton *b = new QPushButton(glyph);
             b->setFixedSize(12, 12);
             b->setCursor(Qt::PointingHandCursor);
             b->setStyleSheet(QString(
                 "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60); border-radius: 6px; }"
-                "QPushButton:hover { background: %2; }").arg(idle, hover));
+                "  border: 1px solid rgba(0,0,0,60); border-radius: 6px;"
+                "  color: transparent;"
+                "  font-size: 9px;"
+                "  font-weight: bold;"
+                "  padding: 0; }"
+                "QPushButton:hover { background: %2;"
+                "  color: rgba(0,0,0,180); }").arg(idle, hover));
             return b;
         };
 
-        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
+        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57",
+                                          QString::fromUtf8("\xC3\x97"));
+        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e",
+                                          QString::fromUtf8("\xE2\x88\x92"));
+        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840",
+                                          QString::fromUtf8("+"));
 
         hl->addWidget(closeBtn);
         hl->addWidget(minBtn);
@@ -5531,10 +5540,14 @@ private:
 // =========================================================
 static volatile sig_atomic_t g_spotlightToggle = 0;
 static volatile sig_atomic_t g_calcToggle = 0;
+static volatile sig_atomic_t g_notesToggle = 0;
+static volatile sig_atomic_t g_mcToggle = 0;
 
 extern "C" void spotlightSignalHandler(int sig) {
-    if (sig == SIGUSR2) g_calcToggle = 1;
-    else                g_spotlightToggle = 1;
+    if (sig == SIGUSR2)      g_calcToggle = 1;
+    else if (sig == SIGCONT) g_notesToggle = 1;
+    else if (sig == SIGWINCH) g_mcToggle = 1;
+    else                     g_spotlightToggle = 1;
 }
 
 class SpotlightOverlay : public QWidget {
@@ -5910,6 +5923,19 @@ public:
         c->raise();
     }
 
+    void setNotesOverlay(QWidget *n) {
+        m_notes = n;
+        n->setParent(this);
+        n->raise();
+    }
+
+    void setMissionControl(QWidget *mc) {
+        m_missionControl = mc;
+        mc->setParent(this);
+        mc->setGeometry(rect());
+        mc->raise();
+    }
+
     void setWallpaper(Wallpaper *w) {
         if (m_wallpaper) delete m_wallpaper;
         m_wallpaper = w;
@@ -6100,6 +6126,8 @@ private:
     DesktopWidgets     *m_widgets = nullptr;
     SpotlightOverlay   *m_spotlight = nullptr;
     QWidget            *m_calc = nullptr;
+    QWidget            *m_notes = nullptr;
+    QWidget            *m_missionControl = nullptr;
     QTimer             *m_tickTimer = nullptr;
     QTimer             *m_blurTimer = nullptr;
 };
@@ -6161,12 +6189,57 @@ protected:
         }
     }
     void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton) {
-            QProcess::startDetached("gnome-control-center",
-                { m_kind == Bluetooth ? "bluetooth"
-                  : m_kind == Battery ? "power"
-                  : "wifi" });
+        if (e->button() != Qt::LeftButton) return;
+        const Theme &t = ThemeManager::instance().current();
+
+        QMenu menu(this);
+        menu.setStyleSheet(QString(
+            "QMenu { background: rgb(24, 22, 30);"
+            "  border: 1px solid rgba(255,255,255,30);"
+            "  border-radius: 12px; padding: 8px; color: #f0f0f5;"
+            "  font-size: 13px; }"
+            "QMenu::item { padding: 8px 24px 8px 14px;"
+            "  border-radius: 7px; background: transparent; }"
+            "QMenu::item:selected { background: rgba(255,255,255,45); }"
+            "QMenu::separator { height: 1px;"
+            "  background: rgba(255,255,255,30); margin: 6px 10px; }"));
+
+        if (m_kind == Network) {
+            QAction *hdr = menu.addAction(
+                m_netKind == "wifi"     ? "Wi-Fi — Connected" :
+                m_netKind == "ethernet" ? "Ethernet — Connected" :
+                                          "Offline");
+            hdr->setEnabled(false);
+            menu.addSeparator();
+            QAction *settings = menu.addAction("Open Network Settings");
+            QObject::connect(settings, &QAction::triggered, []() {
+                QProcess::startDetached("gnome-control-center", { "wifi" });
+            });
+        } else if (m_kind == Bluetooth) {
+            QAction *hdr = menu.addAction(
+                m_btOn ? "Bluetooth — On" : "Bluetooth — Off / None");
+            hdr->setEnabled(false);
+            menu.addSeparator();
+            QAction *settings = menu.addAction("Open Bluetooth Settings");
+            QObject::connect(settings, &QAction::triggered, []() {
+                QProcess::startDetached("gnome-control-center",
+                    { "bluetooth" });
+            });
+        } else {
+            QString battStr = m_battPct >= 0
+                ? QString("Battery — %1%").arg(m_battPct)
+                : QString("Battery — AC Power");
+            QAction *hdr = menu.addAction(battStr);
+            hdr->setEnabled(false);
+            menu.addSeparator();
+            QAction *settings = menu.addAction("Open Power Settings");
+            QObject::connect(settings, &QAction::triggered, []() {
+                QProcess::startDetached("gnome-control-center",
+                    { "power" });
+            });
         }
+
+        menu.exec(e->globalPosition().toPoint());
     }
 private:
     Kind m_kind;
@@ -6176,6 +6249,35 @@ private:
     bool m_btOn = false;
     int  m_battPct = -1;
     bool m_battCharging = false;
+};
+
+// =========================================================
+// BatteryPercentLabel — small text next to battery icon
+// =========================================================
+class BatteryPercentLabel : public QLabel {
+public:
+    BatteryPercentLabel(QWidget *parent = nullptr) : QLabel(parent) {
+        setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        setMinimumWidth(38);
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(t.textPrimary.name()));
+        });
+        m_timer = new QTimer(this);
+        m_timer->setInterval(5000);
+        QObject::connect(m_timer, &QTimer::timeout,
+                         this, &BatteryPercentLabel::refresh);
+        m_timer->start();
+        refresh();
+    }
+    void refresh() {
+        int pct = SysState::batteryPercent();
+        if (pct < 0) { setText("AC"); }
+        else         { setText(QString("%1%").arg(pct)); }
+    }
+private:
+    QTimer *m_timer = nullptr;
 };
 
 class MouseSpy : public QObject {
@@ -6195,6 +6297,183 @@ public:
 // =========================================================
 // Calculator app
 // =========================================================
+// =========================================================
+// Mission Control — zoomed-out window overview
+// =========================================================
+class MissionControl : public QWidget {
+public:
+    explicit MissionControl(QWidget *parent = nullptr) : QWidget(parent) {
+        setFocusPolicy(Qt::StrongFocus);
+        setAttribute(Qt::WA_OpaquePaintEvent, true);
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_theme = t;
+            update();
+        });
+        hide();
+    }
+
+    void toggle() { isVisible() ? hide() : show2(); }
+
+    void show2() {
+        refreshWindows();
+        if (parentWidget()) setGeometry(parentWidget()->rect());
+        raise(); show(); setFocus();
+        update();
+    }
+
+    void refreshWindows() {
+        m_wins.clear();
+        QProcess p;
+        p.start("swaymsg", { "-t", "get_tree", "-r" });
+        p.waitForFinished(500);
+        QByteArray out = p.readAllStandardOutput();
+        QJsonDocument doc = QJsonDocument::fromJson(out);
+        if (!doc.isObject()) return;
+        QJsonObject root = doc.object();
+        walk(root, 0, 0);
+    }
+
+    void walk(const QJsonObject &node, int ox, int oy) {
+        QString app = node.value("app_id").toString();
+        QJsonObject r = node.value("rect").toObject();
+        int x = r.value("x").toInt() + ox;
+        int y = r.value("y").toInt() + oy;
+        int w = r.value("width").toInt();
+        int h = r.value("height").toInt();
+        QString name = node.value("name").toString();
+
+        // Only include windows that look like apps (exclude the shell, __i3)
+        if (!app.isEmpty() && app != "apokolips-shell" && w > 100 && h > 100) {
+            Win w1;
+            w1.rect = QRect(x, y, w, h);
+            w1.name = name;
+            w1.appId = app;
+            w1.conId = node.value("id").toInt();
+            m_wins.append(w1);
+        }
+
+        for (const QJsonValue &v : node.value("nodes").toArray())
+            walk(v.toObject(), x, y);
+        for (const QJsonValue &v : node.value("floating_nodes").toArray())
+            walk(v.toObject(), x, y);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        // Dim backdrop
+        p.fillRect(rect(), QColor(0, 0, 0, 180));
+
+        // Title
+        QFont tf = font();
+        tf.setPixelSize(24);
+        tf.setWeight(QFont::Light);
+        p.setFont(tf);
+        p.setPen(m_theme.textPrimary);
+        p.drawText(QRect(0, 24, width(), 40), Qt::AlignCenter,
+                   "Mission Control");
+
+        // Empty hint
+        if (m_wins.isEmpty()) {
+            QFont f = font(); f.setPixelSize(15);
+            p.setFont(f);
+            p.setPen(m_theme.textDim);
+            p.drawText(rect(), Qt::AlignCenter,
+                       "No windows open");
+            return;
+        }
+
+        // Draw each window as a card
+        for (int i = 0; i < m_wins.size(); ++i) {
+            const Win &w = m_wins[i];
+            QRect r = w.rect;
+            // Scale down a bit so they fit nicer
+            r = QRect(r.x() + 40, r.y() + 80,
+                      qMin(r.width(),  width()  - 120),
+                      qMin(r.height(), height() - 160));
+
+            bool hovered = (i == m_hovered);
+            QColor card = m_theme.panelBg;
+            card.setAlpha(hovered ? 235 : 200);
+            QColor border = hovered ? m_theme.textPrimary
+                                    : m_theme.chromeBorder;
+
+            QPainterPath path;
+            path.addRoundedRect(r, 12, 12);
+            p.fillPath(path, card);
+            p.setPen(QPen(border, hovered ? 2 : 1));
+            p.drawPath(path);
+
+            // Title text inside the card
+            QFont f = font();
+            f.setPixelSize(14);
+            f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(m_theme.textPrimary);
+            QRect titleRect = r.adjusted(12, 8, -12, -r.height() + 32);
+            p.drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
+                       w.name.left(40));
+
+            QFont sf = font();
+            sf.setPixelSize(10);
+            p.setFont(sf);
+            p.setPen(m_theme.textDim);
+            QRect subRect = r.adjusted(12, 30, -12, -r.height() + 52);
+            p.drawText(subRect, Qt::AlignLeft | Qt::AlignVCenter,
+                       w.appId);
+        }
+    }
+
+    void keyPressEvent(QKeyEvent *e) override {
+        if (e->key() == Qt::Key_Escape) { hide(); e->accept(); }
+        else QWidget::keyPressEvent(e);
+    }
+
+    void mouseMoveEvent(QMouseEvent *e) override {
+        int h = hitTest(e->position().toPoint());
+        if (h != m_hovered) { m_hovered = h; update(); }
+    }
+
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton) {
+            int h = hitTest(e->position().toPoint());
+            if (h >= 0) {
+                QString id = QString::number(m_wins[h].conId);
+                QProcess::startDetached("swaymsg",
+                    { QString("[con_id=%1]").arg(id), "focus" });
+                hide();
+            } else {
+                hide();
+            }
+        }
+    }
+
+private:
+    struct Win {
+        QRect   rect;
+        QString name;
+        QString appId;
+        int     conId = 0;
+    };
+
+    int hitTest(const QPoint &pos) const {
+        for (int i = m_wins.size() - 1; i >= 0; --i) {
+            QRect r = m_wins[i].rect;
+            r = QRect(r.x() + 40, r.y() + 80,
+                      qMin(r.width(),  width()  - 120),
+                      qMin(r.height(), height() - 160));
+            if (r.contains(pos)) return i;
+        }
+        return -1;
+    }
+
+    QList<Win> m_wins;
+    int        m_hovered = -1;
+    Theme      m_theme;
+};
+
 class CalculatorApp : public QWidget {
 public:
     CalculatorApp(QWidget *parent = nullptr) : QWidget(parent) {
@@ -6342,6 +6621,250 @@ private:
 };
 
 
+// =========================================================
+// Notes app — in-shell overlay + standalone mode
+// =========================================================
+class NotesApp : public QWidget {
+public:
+    NotesApp(QWidget *parent = nullptr) : QWidget(parent) {
+        setObjectName("notesApp");
+        if (parent) {
+            setWindowFlags(Qt::Widget);
+            setAttribute(Qt::WA_TranslucentBackground, true);
+            setAttribute(Qt::WA_NoSystemBackground, true);
+        } else {
+            setWindowTitle("Notes");
+            setWindowFlags(Qt::FramelessWindowHint);
+            setAttribute(Qt::WA_TranslucentBackground, true);
+            resize(720, 520);
+            if (QScreen *s = QApplication::primaryScreen())
+                move(s->availableGeometry().center() - QPoint(360, 260));
+        }
+
+        m_dir = QDir::homePath() + "/.local/share/apokolips/notes";
+        QDir().mkpath(m_dir);
+
+        buildUi();
+        loadNotesList();
+
+        m_theme = ThemeManager::instance().current();
+        restyle();
+        ThemeManager::instance().subscribe([this](const Theme &t) {
+            m_theme = t;
+            restyle();
+            update();
+        });
+        if (parent) hide();
+    }
+
+    void toggle() { isVisible() ? hide() : show2(); }
+
+    void show2() {
+        if (parentWidget()) {
+            int w = 780, h = 560;
+            resize(w, h);
+            move((parentWidget()->width()  - w) / 2,
+                 (parentWidget()->height() - h) / 2);
+        }
+        raise();
+        QWidget::show();
+        setFocus();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QRect r = rect().adjusted(0, 0, -1, -1);
+        QPainterPath path;
+        path.addRoundedRect(r, 14, 14);
+        QColor bg(24, 22, 30, 245);
+        p.fillPath(path, bg);
+        QColor edge(255, 255, 255, 40);
+        p.setPen(QPen(edge, 1));
+        p.drawPath(path);
+    }
+
+    void keyPressEvent(QKeyEvent *e) override {
+        if (e->key() == Qt::Key_Escape) { hide(); e->accept(); }
+        else QWidget::keyPressEvent(e);
+    }
+
+    void mousePressEvent(QMouseEvent *e) override {
+        if (!parentWidget()) {
+            if (e->button() == Qt::LeftButton) {
+                if (QWindow *wh = window()->windowHandle())
+                    if (wh->startSystemMove()) { e->accept(); return; }
+            }
+        }
+        QWidget::mousePressEvent(e);
+    }
+
+private:
+    void buildUi() {
+        QVBoxLayout *outer = new QVBoxLayout(this);
+        outer->setContentsMargins(16, 16, 16, 16);
+        outer->setSpacing(12);
+
+        // Header
+        QHBoxLayout *hdr = new QHBoxLayout;
+        m_title = new QLabel("Notes");
+        hdr->addWidget(m_title);
+        hdr->addStretch();
+
+        m_newBtn = new QPushButton("+ New");
+        m_delBtn = new QPushButton("Delete");
+        m_newBtn->setCursor(Qt::PointingHandCursor);
+        m_delBtn->setCursor(Qt::PointingHandCursor);
+        m_newBtn->setFixedHeight(28);
+        m_delBtn->setFixedHeight(28);
+        hdr->addWidget(m_newBtn);
+        hdr->addWidget(m_delBtn);
+        outer->addLayout(hdr);
+
+        // Body: sidebar + editor
+        QHBoxLayout *body = new QHBoxLayout;
+        body->setSpacing(10);
+
+        m_list = new QListWidget;
+        m_list->setFixedWidth(190);
+        m_list->setFrameShape(QFrame::NoFrame);
+        body->addWidget(m_list);
+
+        m_editor = new QTextEdit;
+        m_editor->setFrameShape(QFrame::NoFrame);
+        m_editor->setPlaceholderText("Start typing…");
+        body->addWidget(m_editor, 1);
+
+        outer->addLayout(body, 1);
+
+        // Auto-save timer
+        m_saveTimer = new QTimer(this);
+        m_saveTimer->setSingleShot(true);
+        m_saveTimer->setInterval(800);
+        QObject::connect(m_saveTimer, &QTimer::timeout,
+                         this, &NotesApp::saveCurrent);
+
+        QObject::connect(m_editor, &QTextEdit::textChanged, [this]() {
+            m_saveTimer->start();
+        });
+        QObject::connect(m_list, &QListWidget::itemSelectionChanged, [this]() {
+            QListWidgetItem *it = m_list->currentItem();
+            if (!it) return;
+            QString path = it->data(Qt::UserRole).toString();
+            if (path == m_currentFile) return;
+            saveCurrent();   // flush previous
+            openNote(path);
+        });
+        QObject::connect(m_newBtn, &QPushButton::clicked,
+                         this, &NotesApp::newNote);
+        QObject::connect(m_delBtn, &QPushButton::clicked,
+                         this, &NotesApp::deleteCurrent);
+    }
+
+    void loadNotesList() {
+        m_list->clear();
+        QDir d(m_dir);
+        QStringList files = d.entryList({"*.txt"}, QDir::Files, QDir::Time);
+        for (const QString &f : files) {
+            QListWidgetItem *it = new QListWidgetItem(
+                QFileInfo(f).completeBaseName());
+            it->setData(Qt::UserRole, d.filePath(f));
+            m_list->addItem(it);
+        }
+        if (m_list->count() > 0) {
+            m_list->setCurrentRow(0);
+        } else {
+            newNote();
+        }
+    }
+
+    void openNote(const QString &path) {
+        m_currentFile = path;
+        QFile f(path);
+        if (f.open(QIODevice::ReadOnly)) {
+            m_editor->blockSignals(true);
+            m_editor->setPlainText(QString::fromUtf8(f.readAll()));
+            m_editor->blockSignals(false);
+            f.close();
+        }
+    }
+
+    void newNote() {
+        saveCurrent();
+        QString base = m_dir + "/Untitled.txt";
+        int n = 1;
+        while (QFile::exists(base)) {
+            base = m_dir + QString("/Untitled %1.txt").arg(++n);
+        }
+        QFile f(base);
+        if (f.open(QIODevice::WriteOnly)) { f.close(); }
+        loadNotesList();
+        for (int i = 0; i < m_list->count(); ++i) {
+            if (m_list->item(i)->data(Qt::UserRole).toString() == base) {
+                m_list->setCurrentRow(i);
+                break;
+            }
+        }
+        m_editor->setFocus();
+    }
+
+    void deleteCurrent() {
+        if (m_currentFile.isEmpty()) return;
+        QFile::remove(m_currentFile);
+        m_currentFile.clear();
+        m_editor->clear();
+        loadNotesList();
+    }
+
+    void saveCurrent() {
+        if (m_currentFile.isEmpty()) return;
+        QFile f(m_currentFile);
+        if (f.open(QIODevice::WriteOnly)) {
+            f.write(m_editor->toPlainText().toUtf8());
+            f.close();
+        }
+    }
+
+    void restyle() {
+        const Theme &t = m_theme;
+        m_title->setStyleSheet(QString(
+            "color: %1; font-size: 15px; font-weight: 600;"
+            " background: transparent;").arg(t.textPrimary.name()));
+        QString btn = QString(
+            "QPushButton { background: rgba(255,255,255,25);"
+            "  color: %1; border: none; border-radius: 8px;"
+            "  padding: 4px 14px; font-size: 12px; }"
+            "QPushButton:hover { background: rgba(255,255,255,55); }")
+            .arg(t.textPrimary.name());
+        m_newBtn->setStyleSheet(btn);
+        m_delBtn->setStyleSheet(btn);
+        m_list->setStyleSheet(QString(
+            "QListWidget { background: rgba(0,0,0,90); border: none;"
+            "  border-radius: 10px; padding: 6px; color: %1;"
+            "  font-size: 13px; }"
+            "QListWidget::item { padding: 8px 10px; border-radius: 6px; }"
+            "QListWidget::item:selected { background: rgba(255,255,255,50); }")
+            .arg(t.textPrimary.name()));
+        m_editor->setStyleSheet(QString(
+            "QTextEdit { background: rgba(0,0,0,90); color: %1;"
+            "  border: none; border-radius: 10px; padding: 12px;"
+            "  font-size: 14px;"
+            "  selection-background-color: rgba(255,255,255,60); }")
+            .arg(t.textPrimary.name()));
+    }
+
+    QString        m_dir;
+    QLabel        *m_title = nullptr;
+    QListWidget   *m_list = nullptr;
+    QTextEdit     *m_editor = nullptr;
+    QPushButton   *m_newBtn = nullptr;
+    QPushButton   *m_delBtn = nullptr;
+    QTimer        *m_saveTimer = nullptr;
+    QString        m_currentFile;
+    Theme          m_theme;
+};
+
 static int runShell(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -6350,6 +6873,8 @@ static int runShell(int argc, char *argv[])
 
     std::signal(SIGUSR1, spotlightSignalHandler);
     std::signal(SIGUSR2, spotlightSignalHandler);
+    std::signal(SIGCONT, spotlightSignalHandler);
+    std::signal(SIGWINCH, spotlightSignalHandler);
 
     // Load theme BEFORE creating any chrome widget
     Wallpaper *initialWallpaper =
@@ -6441,10 +6966,16 @@ static int runShell(int argc, char *argv[])
     CalculatorApp *calcOverlay = new CalculatorApp(root);
     root->setCalcOverlay(calcOverlay);
 
+    NotesApp *notesOverlay = new NotesApp(root);
+    root->setNotesOverlay(notesOverlay);
+
+    MissionControl *missionControl = new MissionControl(root);
+    root->setMissionControl(missionControl);
+
     QTimer *signalPoll = new QTimer(&window);
     signalPoll->setInterval(120);
     QObject::connect(signalPoll, &QTimer::timeout,
-                     [spotlight, calcOverlay]() {
+                     [spotlight, calcOverlay, notesOverlay, missionControl]() {
         if (g_spotlightToggle) {
             g_spotlightToggle = 0;
             spotlight->toggle();
@@ -6452,6 +6983,14 @@ static int runShell(int argc, char *argv[])
         if (g_calcToggle) {
             g_calcToggle = 0;
             calcOverlay->toggle();
+        }
+        if (g_notesToggle) {
+            g_notesToggle = 0;
+            notesOverlay->toggle();
+        }
+        if (g_mcToggle) {
+            g_mcToggle = 0;
+            missionControl->toggle();
         }
     });
     signalPoll->start();
@@ -6784,8 +7323,9 @@ static int runShell(int argc, char *argv[])
     // Live tray icons
     topLayout->addWidget(new TrayIcon(TrayIcon::Network));
     topLayout->addWidget(new TrayIcon(TrayIcon::Bluetooth));
-    if (SysState::batteryPercent() >= 0)
-        topLayout->addWidget(new TrayIcon(TrayIcon::Battery));
+    // Battery always shows; percent label shows "AC" if no battery
+    topLayout->addWidget(new TrayIcon(TrayIcon::Battery));
+    topLayout->addWidget(new BatteryPercentLabel);
 
     // Control-center toggle — custom-painted macOS-style pill icon
     class CCToggle : public QPushButton {
@@ -7156,6 +7696,16 @@ static int runShell(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    if (argc >= 2 && QString(argv[1]) == "--notes") {
+        QApplication app(argc, argv);
+        app.setDesktopFileName("apokolips-notes");
+        ThemeManager::instance().setTheme(
+            WallpaperConfig::themeForId(WallpaperConfig::loadId()));
+        NotesApp w;
+        w.show();
+        return app.exec();
+    }
+
     if (argc >= 2 && QString(argv[1]) == "--calc") {
         QApplication app(argc, argv);
         app.setDesktopFileName("apokolips-calculator");
