@@ -30,6 +30,8 @@
 #include <unistd.h>
 #include <QShortcut>
 #include <QInputDialog>
+#include <QMovie>
+#include <QFileDialog>
 #include <QScrollArea>
 #include <QTextEdit>
 #include <QHeaderView>
@@ -523,6 +525,73 @@ public:
 // =========================================================
 // Ruby
 // =========================================================
+// =========================================================
+// GIF wallpaper — loops an animated GIF
+// =========================================================
+class GifWallpaper : public Wallpaper {
+public:
+    explicit GifWallpaper(const QString &path) : m_path(path) {
+        m_movie = new QMovie(path);
+        m_movie->setCacheMode(QMovie::CacheAll);
+        if (m_movie->isValid()) m_movie->start();
+        QObject::connect(m_movie, &QMovie::frameChanged, [this]() {
+            m_cached = QPixmap();
+            m_cachedSize = QSize();
+        });
+    }
+    ~GifWallpaper() override {
+        if (m_movie) { m_movie->stop(); delete m_movie; }
+    }
+    QString id() const override { return "gif"; }
+    QString displayName() const override { return "GIF"; }
+    bool animated() const override { return true; }
+    Theme theme() const override {
+        Theme t;
+        t.chromeBg      = QColor(14, 14, 18, 90);
+        t.chromeBorder  = QColor(255, 255, 255, 55);
+        t.accent        = QColor(235, 240, 250);
+        t.accentSoft    = QColor(235, 240, 250, 50);
+        t.accentStrong  = QColor(235, 240, 250, 100);
+        t.textPrimary   = QColor(248, 250, 252);
+        t.textSecondary = QColor(200, 208, 218);
+        t.textDim       = QColor(140, 148, 160);
+        t.panelBg       = QColor(14, 14, 18, 165);
+        return t;
+    }
+    void tick() override {
+        // QMovie self-ticks. Nothing extra needed.
+    }
+    void paint(QPainter &p, const QRect &r) override {
+        p.setRenderHint(QPainter::SmoothPixmapTransform);
+        if (!m_movie || !m_movie->isValid()) {
+            p.fillRect(r, QColor(20, 20, 30));
+            return;
+        }
+        QPixmap src = m_movie->currentPixmap();
+        if (src.isNull()) {
+            p.fillRect(r, QColor(20, 20, 30));
+            return;
+        }
+        if (m_cached.isNull() || m_cachedSize != r.size()) {
+            QPixmap scaled = src.scaled(r.size(),
+                Qt::KeepAspectRatioByExpanding,
+                Qt::SmoothTransformation);
+            int sx = (scaled.width()  - r.width())  / 2;
+            int sy = (scaled.height() - r.height()) / 2;
+            m_cached = scaled.copy(sx, sy, r.width(), r.height());
+            m_cachedSize = r.size();
+        }
+        p.drawPixmap(r.topLeft(), m_cached);
+    }
+private:
+    QString  m_path;
+    QMovie  *m_movie = nullptr;
+    QPixmap  m_cached;
+    QSize    m_cachedSize;
+};
+
+// =========================================================
+// GIF wallpaper — loops an animated GIF
 class RubyWallpaper : public Wallpaper {
 public:
     QString id() const override { return "ruby"; }
@@ -988,10 +1057,41 @@ public:
         return doc.object().value("wallpaper").toString("ruby");
     }
 
+    static QString loadGifPath() {
+        QFile f(configPath());
+        if (!f.open(QIODevice::ReadOnly)) return {};
+        QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+        if (!doc.isObject()) return {};
+        return doc.object().value("gifPath").toString();
+    }
+
+    static void saveGifPath(const QString &path) {
+        QString p = configPath();
+        QDir().mkpath(QFileInfo(p).absolutePath());
+        QJsonObject o;
+        QFile f(p);
+        if (f.open(QIODevice::ReadOnly)) {
+            QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+            if (doc.isObject()) o = doc.object();
+            f.close();
+        }
+        o["gifPath"] = path;
+        f.open(QIODevice::WriteOnly);
+        if (f.isOpen()) { f.write(QJsonDocument(o).toJson()); f.close(); }
+    }
+
+    
     static void saveId(const QString &id) {
         QString path = configPath();
         QDir().mkpath(QFileInfo(path).absolutePath());
         QJsonObject obj;
+        // Preserve gifPath if present
+        QFile r(path);
+        if (r.open(QIODevice::ReadOnly)) {
+            QJsonDocument doc = QJsonDocument::fromJson(r.readAll());
+            if (doc.isObject()) obj = doc.object();
+            r.close();
+        }
         obj["wallpaper"] = id;
         QFile f(path);
         if (f.open(QIODevice::WriteOnly))
@@ -1059,6 +1159,11 @@ public:
         if (id == "aurora")     return new AuroraWallpaper;
         if (id == "goldengate") return new GoldenGateWallpaper;
         if (id == "everest")    return new EverestWallpaper;
+        if (id == "gif") {
+            QString p = loadGifPath();
+            if (!p.isEmpty() && QFile::exists(p))
+                return new GifWallpaper(p);
+        }
         return new RubyWallpaper;
     }
 };
@@ -1362,7 +1467,37 @@ private:
             "All modules online. Welcome back.", "just now", a4));
 
         if (m_cardsLayout) {
-            for (QWidget *c : m_cards) m_cardsLayout->addWidget(c);
+            for (QWidget *c : m_cards) {
+                m_cardsLayout->addWidget(c);
+                // Auto-hide after 6 seconds
+                QTimer::singleShot(6000, c, [this, c]() {
+                    if (!m_cards.contains(c)) return;
+                    m_cards.removeAll(c);
+                    if (m_cardsLayout) m_cardsLayout->removeWidget(c);
+                    // Move to history (dim look)
+                    QColor dim = m_theme.textDim;
+                    c->setStyleSheet(QString(
+                        "QWidget {"
+                        "  background: %1;"
+                        "  border: none;"
+                        "  border-left: 3px solid %2;"
+                        "  border-radius: 12px;"
+                        "}").arg(rgba(m_theme.chromeBg.darker(120)),
+                                 rgba(dim)));
+                    if (m_historyLayout) {
+                        m_history.prepend(c);
+                        m_historyLayout->insertWidget(0, c);
+                        while (m_history.size() > 6) {
+                            QWidget *old = m_history.takeLast();
+                            m_historyLayout->removeWidget(old);
+                            old->deleteLater();
+                        }
+                    }
+                    if (m_historyHeader) m_historyHeader->setVisible(true);
+                    if (m_emptyLabel)
+                        m_emptyLabel->setVisible(m_cards.isEmpty());
+                });
+            }
         }
     }
 
@@ -4660,6 +4795,9 @@ private:
         addSection(sb, "Appearance", makeAppearancePage());
         addSection(sb, "Wallpaper",  makeWallpaperPage());
         addSection(sb, "Dock",       makeDockPage());
+        addSection(sb, "Sound",      makeSoundPage());
+        addSection(sb, "Display",    makeDisplayPage());
+        addSection(sb, "Network",    makeNetworkPage());
         addSection(sb, "About",      makeAboutPage());
 
         sb->addStretch();
@@ -4813,7 +4951,8 @@ private:
             { "starfield",  "Starfield"  },
             { "aurora",     "Aurora"     },
             { "goldengate", "Golden Gate" },
-            { "everest",    "Everest"    }
+            { "everest",    "Everest"    },
+            { "gif",        "GIF…"       }
         };
         int col = 0, row = 0;
         for (const auto &wp : wps) {
@@ -4823,6 +4962,19 @@ private:
             btn->setProperty("wpId", wp.id);
             m_wpButtons.append(btn);
             QObject::connect(btn, &QPushButton::clicked, [this, id = QString(wp.id)]() {
+                if (id == "gif") {
+                    bool ok = false;
+                    QString path = ApokolipsInputDialog::getText(
+                        this, "GIF Wallpaper",
+                        "Full path to .gif file:",
+                        QDir::homePath() + "/", &ok);
+                    if (!ok || path.isEmpty()) return;
+                    if (!QFile::exists(path)) {
+                        // Show error and bail
+                        return;
+                    }
+                    WallpaperConfig::saveGifPath(path);
+                }
                 WallpaperConfig::saveId(id);
 
                 // Adopt the new theme immediately, in this process
@@ -4875,6 +5027,268 @@ private:
 
         v->addStretch();
         return page;
+    }
+
+    QWidget *makeSoundPage() {
+        QWidget *page = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 24);
+        v->setSpacing(14);
+
+        v->addWidget(sectionHeader("Sound"));
+
+        // Master volume
+        QLabel *volLabel = new QLabel("Master Volume");
+        volLabel->setProperty("role", "sliderLabel");
+        m_sliderLabels.append(volLabel);
+        v->addWidget(volLabel);
+
+        QSlider *vol = new QSlider(Qt::Horizontal);
+        vol->setRange(0, 150);
+        vol->setValue(SysControl::audioGet());
+        m_sliders.append(vol);
+        v->addWidget(vol);
+        QObject::connect(vol, &QSlider::valueChanged,
+                         [](int val) { SysControl::audioSet(val); });
+
+        // Output devices
+        QLabel *devs = new QLabel("Output Devices");
+        devs->setProperty("role", "sliderLabel");
+        m_sliderLabels.append(devs);
+        v->addWidget(devs);
+
+        m_soundList = new QListWidget;
+        m_soundList->setFixedHeight(160);
+        m_soundList->setFrameShape(QFrame::NoFrame);
+        v->addWidget(m_soundList);
+        refreshSoundDevices();
+
+        QPushButton *refresh = new QPushButton("Refresh Devices");
+        refresh->setCursor(Qt::PointingHandCursor);
+        refresh->setFixedHeight(32);
+        m_dockPageButtons.append(refresh);
+        QObject::connect(refresh, &QPushButton::clicked,
+                         this, &SettingsWindow::refreshSoundDevices);
+        v->addWidget(refresh);
+
+        v->addStretch();
+        return page;
+    }
+
+    QWidget *makeDisplayPage() {
+        QWidget *page = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 24);
+        v->setSpacing(14);
+
+        v->addWidget(sectionHeader("Display"));
+
+        QLabel *info = new QLabel("Connected output");
+        info->setProperty("role", "sliderLabel");
+        m_sliderLabels.append(info);
+        v->addWidget(info);
+
+        m_displayInfo = new QLabel("Querying…");
+        m_displayInfo->setProperty("role", "sliderLabel");
+        m_sliderLabels.append(m_displayInfo);
+        v->addWidget(m_displayInfo);
+
+        // Resolution list
+        QLabel *resLabel = new QLabel("Resolution");
+        resLabel->setProperty("role", "sliderLabel");
+        m_sliderLabels.append(resLabel);
+        v->addWidget(resLabel);
+
+        m_resList = new QListWidget;
+        m_resList->setFixedHeight(200);
+        m_resList->setFrameShape(QFrame::NoFrame);
+        v->addWidget(m_resList);
+
+        QPushButton *apply = new QPushButton("Apply");
+        apply->setCursor(Qt::PointingHandCursor);
+        apply->setFixedHeight(32);
+        m_dockPageButtons.append(apply);
+        QObject::connect(apply, &QPushButton::clicked, [this]() {
+            QListWidgetItem *it = m_resList->currentItem();
+            if (!it) return;
+            QString res = it->data(Qt::UserRole).toString();
+            QString out = it->data(Qt::UserRole + 1).toString();
+            QProcess::startDetached("swaymsg", {
+                "output", out, "mode", res });
+        });
+        v->addWidget(apply);
+
+        QPushButton *refresh = new QPushButton("Refresh");
+        refresh->setCursor(Qt::PointingHandCursor);
+        refresh->setFixedHeight(32);
+        m_dockPageButtons.append(refresh);
+        QObject::connect(refresh, &QPushButton::clicked,
+                         this, &SettingsWindow::refreshDisplayPage);
+        v->addWidget(refresh);
+
+        v->addStretch();
+
+        QTimer::singleShot(100, this, &SettingsWindow::refreshDisplayPage);
+        return page;
+    }
+
+    QWidget *makeNetworkPage() {
+        QWidget *page = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 24);
+        v->setSpacing(14);
+
+        v->addWidget(sectionHeader("Network"));
+
+        m_networkInfo = new QLabel("Querying…");
+        m_networkInfo->setProperty("role", "sliderLabel");
+        m_sliderLabels.append(m_networkInfo);
+        v->addWidget(m_networkInfo);
+
+        QLabel *wl = new QLabel("Wi-Fi Networks");
+        wl->setProperty("role", "sliderLabel");
+        m_sliderLabels.append(wl);
+        v->addWidget(wl);
+
+        m_wifiList = new QListWidget;
+        m_wifiList->setFrameShape(QFrame::NoFrame);
+        v->addWidget(m_wifiList, 1);
+
+        QPushButton *scan = new QPushButton("Scan");
+        scan->setCursor(Qt::PointingHandCursor);
+        scan->setFixedHeight(32);
+        m_dockPageButtons.append(scan);
+        QObject::connect(scan, &QPushButton::clicked,
+                         this, &SettingsWindow::refreshNetworkPage);
+        v->addWidget(scan);
+
+        QPushButton *open = new QPushButton("Open Network Settings");
+        open->setCursor(Qt::PointingHandCursor);
+        open->setFixedHeight(32);
+        m_dockPageButtons.append(open);
+        QObject::connect(open, &QPushButton::clicked, []() {
+            QProcess::startDetached("gnome-control-center", { "wifi" });
+        });
+        v->addWidget(open);
+
+        QTimer::singleShot(100, this, &SettingsWindow::refreshNetworkPage);
+        return page;
+    }
+
+    void refreshSoundDevices() {
+        if (!m_soundList) return;
+        m_soundList->clear();
+
+        QProcess p;
+        p.start("wpctl", { "status" });
+        p.waitForFinished(500);
+        QString out = QString::fromUtf8(p.readAllStandardOutput());
+
+        // Parse "Sinks:" and "Sources:" sections for device lines
+        QStringList lines = out.split('\n');
+        bool inSinks = false;
+        for (const QString &line : lines) {
+            QString trimmed = line.trimmed();
+            if (trimmed.startsWith("Sinks:")) { inSinks = true; continue; }
+            if (trimmed.startsWith("Sources:")) { inSinks = false; continue; }
+            if (!inSinks) continue;
+            // Matches lines like: "48. Built-in Audio [alsa]"
+            if (trimmed.contains('.')) {
+                QString name = trimmed.section('.', 1).trimmed();
+                name.remove(QRegularExpression("\\[[^]]*\\]"));
+                name = name.trimmed();
+                if (name.isEmpty()) continue;
+                QListWidgetItem *it = new QListWidgetItem("  " + name);
+                m_soundList->addItem(it);
+            }
+        }
+        if (m_soundList->count() == 0) {
+            m_soundList->addItem("  (No devices reported)");
+        }
+    }
+
+    void refreshDisplayPage() {
+        if (!m_displayInfo || !m_resList) return;
+
+        QProcess p;
+        p.start("swaymsg", { "-t", "get_outputs", "-r" });
+        p.waitForFinished(500);
+        QJsonDocument doc = QJsonDocument::fromJson(p.readAllStandardOutput());
+        if (!doc.isArray()) {
+            m_displayInfo->setText("(Cannot query display)");
+            return;
+        }
+
+        m_resList->clear();
+        for (const QJsonValue &v : doc.array()) {
+            QJsonObject o = v.toObject();
+            if (!o.value("active").toBool()) continue;
+            QString name = o.value("name").toString();
+            QJsonObject cur = o.value("current_mode").toObject();
+            int curW = cur.value("width").toInt();
+            int curH = cur.value("height").toInt();
+            m_displayInfo->setText(QString("%1 — %2×%3").arg(name).arg(curW).arg(curH));
+
+            for (const QJsonValue &mv : o.value("modes").toArray()) {
+                QJsonObject m = mv.toObject();
+                int w = m.value("width").toInt();
+                int h = m.value("height").toInt();
+                int hz = int(m.value("refresh").toDouble() + 0.5);
+                QString line = QString("  %1×%2  (%3 Hz)").arg(w).arg(h).arg(hz);
+                QListWidgetItem *it = new QListWidgetItem(line);
+                it->setData(Qt::UserRole, QString("%1x%2@%3Hz").arg(w).arg(h).arg(hz));
+                it->setData(Qt::UserRole + 1, name);
+                if (w == curW && h == curH) it->setSelected(true);
+                m_resList->addItem(it);
+            }
+        }
+    }
+
+    void refreshNetworkPage() {
+        if (!m_wifiList || !m_networkInfo) return;
+
+        // Current connection summary
+        QProcess p;
+        p.start("nmcli", { "-t", "-f", "DEVICE,TYPE,STATE", "device" });
+        p.waitForFinished(500);
+        QString devOut = QString::fromUtf8(p.readAllStandardOutput());
+        QString summary;
+        for (const QString &line : devOut.split('\n')) {
+            QStringList parts = line.trimmed().split(':');
+            if (parts.size() < 3) continue;
+            if (parts[1] == "ethernet" && parts[2].startsWith("connected"))
+                summary += "Ethernet: " + parts[0] + "  ";
+            else if (parts[1] == "wifi" && parts[2].startsWith("connected"))
+                summary += "Wi-Fi: " + parts[0] + "  ";
+        }
+        if (summary.isEmpty()) summary = "Offline";
+        m_networkInfo->setText(summary);
+
+        // List of visible Wi-Fi networks
+        m_wifiList->clear();
+        QProcess q;
+        q.start("nmcli", { "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi" });
+        q.waitForFinished(1500);
+        QString wifiOut = QString::fromUtf8(q.readAllStandardOutput());
+        QSet<QString> seen;
+        for (const QString &line : wifiOut.split('\n')) {
+            QString t = line.trimmed();
+            if (t.isEmpty()) continue;
+            QStringList p2 = t.split(':');
+            if (p2.size() < 2) continue;
+            QString ssid = p2[0];
+            if (ssid.isEmpty() || seen.contains(ssid)) continue;
+            seen.insert(ssid);
+            QString sig = p2.size() > 1 ? p2[1] : "?";
+            QString sec = p2.size() > 2 ? p2[2] : "";
+            QListWidgetItem *it = new QListWidgetItem(
+                QString("  %1    %2%%    %3").arg(ssid, -30).arg(sig).arg(sec));
+            it->setData(Qt::UserRole, ssid);
+            m_wifiList->addItem(it);
+        }
+        if (m_wifiList->count() == 0) {
+            m_wifiList->addItem("  (No networks found)");
+        }
     }
 
     QWidget *makeAboutPage() {
@@ -5001,6 +5415,44 @@ private:
                 .arg(rgba(t.accentSoft))
                 .arg(t.accent.name()));
         }
+        auto styleList = [&](QListWidget *lw) {
+            if (!lw) return;
+            lw->setStyleSheet(QString(
+                "QListWidget { background: rgba(255,255,255,12);"
+                "  border: none; border-radius: 10px; padding: 6px;"
+                "  color: %1; font-size: 13px; }"
+                "QListWidget::item { padding: 8px 10px; border-radius: 6px; }"
+                "QListWidget::item:hover { background: rgba(255,255,255,25); }"
+                "QListWidget::item:selected { background: %2; color: %3; }")
+                .arg(t.textPrimary.name(),
+                     rgba(t.accentSoft),
+                     t.textPrimary.name()));
+        };
+        styleList(m_soundList);
+        styleList(m_resList);
+        styleList(m_wifiList);
+
+        for (QPushButton *b : m_dockPageButtons) {
+            b->setStyleSheet(QString(
+                "QPushButton { background: %1; color: %2;"
+                "  border: 1px solid %3; border-radius: 8px;"
+                "  font-size: 12px; padding: 4px 14px; }"
+                "QPushButton:hover { background: %4; }")
+                .arg(rgba(t.chromeBg.lighter(120)),
+                     t.textPrimary.name(),
+                     rgba(t.chromeBorder),
+                     rgba(t.accentSoft)));
+        }
+        if (m_displayInfo) {
+            m_displayInfo->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;"
+                " padding: 4px 0;").arg(t.textSecondary.name()));
+        }
+        if (m_networkInfo) {
+            m_networkInfo->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;"
+                " padding: 4px 0;").arg(t.textSecondary.name()));
+        }
         for (QLabel *l : m_aboutLines) {
             l->setStyleSheet(QString(
                 "color: %1; font-size: 13px; background: transparent;")
@@ -5022,6 +5474,12 @@ private:
     QPushButton *m_maxBtn = nullptr;
     QWidget *m_sidebar = nullptr;
     QStackedWidget *m_stack = nullptr;
+    QListWidget    *m_soundList    = nullptr;
+    QListWidget    *m_resList      = nullptr;
+    QListWidget    *m_wifiList     = nullptr;
+    QLabel         *m_displayInfo  = nullptr;
+    QLabel         *m_networkInfo  = nullptr;
+    QList<QPushButton *> m_dockPageButtons;
     QList<QPushButton *> m_sidebarButtons;
     QList<QSlider *> m_sliders;
     QList<QLabel *> m_sliderLabels;
