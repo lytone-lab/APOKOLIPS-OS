@@ -353,6 +353,8 @@ struct VisualConfig {
     int    widgetCardAlpha    = 140;
     int    finderAlpha        = 190;
     bool   widgetsVisible     = true;
+    bool   dndEnabled         = false;
+    int    notificationBannerMs = 6000;
     int    dockIconSize       = 52;   // base visual size (before magnify)
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -403,6 +405,11 @@ public:
                                    ? o["widgetsVisible"].toBool(true)
                                    : m_cfg.widgetsVisible;
         m_cfg.dockIconSize       = getI("dockIconSize", m_cfg.dockIconSize);
+        m_cfg.dndEnabled         = o.contains("dndEnabled")
+                                   ? o["dndEnabled"].toBool(false)
+                                   : m_cfg.dndEnabled;
+        m_cfg.notificationBannerMs = getI("notificationBannerMs",
+                                          m_cfg.notificationBannerMs);
         m_cfg.blurRefreshMs      = getI("blurRefreshMs",      m_cfg.blurRefreshMs);
         m_cfg.dockMagnifyMax     = getD("dockMagnifyMax",     m_cfg.dockMagnifyMax);
         m_cfg.dockSigma          = getD("dockSigma",          m_cfg.dockSigma);
@@ -418,6 +425,8 @@ public:
         if (m_cfg.finderAlpha        < 30)  m_cfg.finderAlpha        = 30;
         if (m_cfg.dockIconSize       < 32)  m_cfg.dockIconSize       = 32;
         if (m_cfg.dockIconSize       > 90)  m_cfg.dockIconSize       = 90;
+        if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
+        if (m_cfg.notificationBannerMs > 30000) m_cfg.notificationBannerMs = 30000;
         // Note: user's saved 110 will be respected; delete visual.json
         // to pick up the new default.
         if (m_cfg.dockMagnifyMax     < 0.05) m_cfg.dockMagnifyMax    = 0.05;
@@ -441,6 +450,8 @@ public:
         o["finderAlpha"]        = m_cfg.finderAlpha;
         o["widgetsVisible"]     = m_cfg.widgetsVisible;
         o["dockIconSize"]       = m_cfg.dockIconSize;
+        o["dndEnabled"]         = m_cfg.dndEnabled;
+        o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["blurRefreshMs"]      = m_cfg.blurRefreshMs;
         o["dockMagnifyMax"]     = m_cfg.dockMagnifyMax;
         o["dockSigma"]          = m_cfg.dockSigma;
@@ -1476,12 +1487,23 @@ private:
         if (m_cardsLayout) {
             for (QWidget *c : m_cards) {
                 m_cardsLayout->addWidget(c);
-                // Auto-hide after 6 seconds
-                QTimer::singleShot(6000, c, [this, c]() {
+                // Auto-hide after configured banner duration.
+                // A repeating 200ms check picks up live config changes.
+                QTimer *hidetimer = new QTimer(c);
+                hidetimer->setInterval(200);
+                QDateTime *shownAt = new QDateTime(QDateTime::currentDateTime());
+                QObject::connect(hidetimer, &QTimer::timeout,
+                                 [this, c, shownAt, hidetimer]() {
+                    int dur = VisualConfigManager::instance().cfg()
+                              .notificationBannerMs;
+                    if (shownAt->msecsTo(QDateTime::currentDateTime()) < dur)
+                        return;
+                    hidetimer->stop();
+                    delete shownAt;
+                    hidetimer->deleteLater();
                     if (!m_cards.contains(c)) return;
                     m_cards.removeAll(c);
                     if (m_cardsLayout) m_cardsLayout->removeWidget(c);
-                    // Move to history (dim look)
                     QColor dim = m_theme.textDim;
                     c->setStyleSheet(QString(
                         "QWidget {"
@@ -1504,6 +1526,7 @@ private:
                     if (m_emptyLabel)
                         m_emptyLabel->setVisible(m_cards.isEmpty());
                 });
+                hidetimer->start();
             }
         }
     }
@@ -5682,6 +5705,9 @@ private:
                    QColor(74, 122, 122), makeDisplayPage());
         addSection(sb, "Network",    QString::fromUtf8("\xE2\x98\x81"),
                    QColor(74, 122, 90), makeNetworkPage());
+        addSection(sb, "Notifications",
+                   QString::fromUtf8("\xF0\x9F\x94\x94"),
+                   QColor(200, 100, 60), makeNotificationsPage());
         addSection(sb, "About",      QString::fromUtf8("\xE2\x84\xB9"),
                    QColor(106, 106, 112), makeAboutPage());
 
@@ -6615,6 +6641,139 @@ private:
         if (m_wifiList->count() == 0) {
             m_wifiList->addItem("  (No networks found)");
         }
+    }
+
+    QWidget *makeNotificationsPage() {
+        QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 28);
+        v->setSpacing(18);
+
+        v->addWidget(Sigil::sectionTitle("Notifications"));
+
+        auto &vc = VisualConfigManager::instance().cfg();
+
+        // ---- Notifications card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(14);
+
+            cv->addWidget(Sigil::groupLabel("NOTIFICATIONS"));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Do Not Disturb",
+                "Mute banners. Panel shows a Muted badge.",
+                vc.dndEnabled,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.dndEnabled = on; });
+                }));
+
+            // Banner duration slider
+            QWidget *durRow = new QWidget;
+            QVBoxLayout *dl = new QVBoxLayout(durRow);
+            dl->setContentsMargins(0, 8, 0, 8);
+            dl->setSpacing(6);
+
+            QHBoxLayout *top = new QHBoxLayout;
+            QLabel *t = new QLabel("Banner duration");
+            t->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            QLabel *s = new QLabel("How long a banner stays visible");
+            s->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            top->addWidget(t);
+            top->addStretch();
+            top->addWidget(s);
+            dl->addLayout(top);
+
+            QSlider *sl = new QSlider(Qt::Horizontal);
+            sl->setRange(1, 30);   // seconds
+            sl->setValue(vc.notificationBannerMs / 1000);
+            sl->setStyleSheet(QString(
+                "QSlider::groove:horizontal { height: 4px;"
+                "  background: rgba(255,255,255,25);"
+                "  border-radius: 2px; }"
+                "QSlider::handle:horizontal {"
+                "  background: #ffffff; width: 14px; height: 14px;"
+                "  margin: -5px 0; border-radius: 7px; }"
+                "QSlider::sub-page:horizontal {"
+                "  background: rgba(255,255,255,180);"
+                "  border-radius: 2px; }"));
+            m_sliders.append(sl);
+
+            QLabel *durValue = new QLabel(QString("%1 s").arg(sl->value()));
+            durValue->setStyleSheet(QString(
+                "color: %1; font-size: 12px; background: transparent;")
+                .arg(Sigil::textSecondary().name()));
+            durValue->setMinimumWidth(40);
+            durValue->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+            QHBoxLayout *slRow = new QHBoxLayout;
+            slRow->addWidget(sl, 1);
+            slRow->addWidget(durValue);
+            dl->addLayout(slRow);
+
+            QObject::connect(sl, &QSlider::valueChanged,
+                             [durValue](int val) {
+                durValue->setText(QString("%1 s").arg(val));
+                VisualConfigManager::instance().setAndSave(
+                    [val](VisualConfig &c) {
+                        c.notificationBannerMs = val * 1000;
+                    });
+            });
+
+            cv->addWidget(durRow);
+
+            v->addWidget(c);
+        }
+
+        // ---- Coming Soon card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(14);
+
+            cv->addWidget(Sigil::groupLabel("MORE — COMING SOON"));
+
+            auto disabledRow = [&](const QString &title,
+                                   const QString &sub) {
+                QWidget *row = new QWidget;
+                row->setEnabled(false);
+                row->setStyleSheet("QWidget { }");
+                QVBoxLayout *rl = new QVBoxLayout(row);
+                rl->setContentsMargins(0, 6, 0, 6);
+                rl->setSpacing(2);
+                QLabel *t = new QLabel(title);
+                t->setStyleSheet(QString(
+                    "color: %1; font-size: 13px; background: transparent;")
+                    .arg(Sigil::textDim().name()));
+                QLabel *s = new QLabel(sub);
+                s->setStyleSheet(QString(
+                    "color: rgb(90, 88, 84); font-size: 11px;"
+                    " background: transparent;")
+                    .arg(Sigil::textDim().name()));
+                rl->addWidget(t);
+                rl->addWidget(s);
+                cv->addWidget(row);
+            };
+
+            disabledRow("Sound",
+                "ⓘ Coming soon — needs notification audio pipeline");
+            disabledRow("Show on lock screen",
+                "ⓘ Coming soon — needs custom lock screen");
+
+            v->addWidget(c);
+        }
+
+        v->addStretch();
+        return page;
     }
 
     QWidget *makeAboutPage() {
