@@ -5056,16 +5056,19 @@ protected:
         p.save();
         p.setClipPath(full);
         QColor bodyCol = Sigil::contentBg();
+        bodyCol.setAlpha(255);
         p.fillRect(rect(), bodyCol);
 
         // 2) Fill sidebar region
         if (m_sidebar) {
-            p.fillRect(QRect(0, 0, m_sidebar->width(), height()),
-                       Sigil::sidebarBg());
+            QColor sb = Sigil::sidebarBg();
+            sb.setAlpha(255);
+            p.fillRect(QRect(0, 0, m_sidebar->width(), height()), sb);
         }
 
         // 3) Fill header strip
         QColor hdrCol = Sigil::headerBg();
+        hdrCol.setAlpha(255);
         p.fillRect(QRect(0, 0, width(), 42), hdrCol);
 
         // 4) Separators
@@ -5151,9 +5154,12 @@ private:
 
         m_sidebar = new QWidget;
         m_sidebar->setFixedWidth(220);
-        m_sidebar->setAttribute(Qt::WA_TranslucentBackground, true);
         m_sidebar->setAutoFillBackground(false);
-        m_sidebar->setStyleSheet("QWidget { background: transparent; }");
+        m_sidebar->setStyleSheet(QString(
+            "QWidget { background: rgb(%1, %2, %3); }")
+            .arg(Sigil::sidebarBg().red())
+            .arg(Sigil::sidebarBg().green())
+            .arg(Sigil::sidebarBg().blue()));
         QVBoxLayout *sb = new QVBoxLayout(m_sidebar);
         sb->setContentsMargins(10, 12, 10, 12);
         sb->setSpacing(4);
@@ -5181,9 +5187,11 @@ private:
                    QColor(130, 130, 140), makeAboutPage());
 
         sb->addStretch();
-        m_stack->setAttribute(Qt::WA_TranslucentBackground, true);
-        m_stack->setAutoFillBackground(false);
-        m_stack->setStyleSheet("QStackedWidget { background: transparent; }");
+        m_stack->setStyleSheet(QString(
+            "QStackedWidget { background: rgb(%1, %2, %3); }")
+            .arg(Sigil::contentBg().red())
+            .arg(Sigil::contentBg().green())
+            .arg(Sigil::contentBg().blue()));
 
         body->addWidget(m_sidebar);
         body->addWidget(m_stack, 1);
@@ -5206,13 +5214,19 @@ private:
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
         scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        scroll->setAttribute(Qt::WA_TranslucentBackground, true);
-        scroll->setAttribute(Qt::WA_NoSystemBackground, true);
+        // Opaque Sigil content color, no wallpaper bleed-through
+        QString sigilBg = QString("rgb(%1, %2, %3)")
+            .arg(Sigil::contentBg().red())
+            .arg(Sigil::contentBg().green())
+            .arg(Sigil::contentBg().blue());
+        scroll->setStyleSheet(QString(
+            "QScrollArea { background: %1; border: none; }"
+            "QScrollArea > QWidget > QWidget { background: %1; }")
+            .arg(sigilBg));
         scroll->viewport()->setAutoFillBackground(false);
-        scroll->viewport()->setAttribute(Qt::WA_TranslucentBackground, true);
-        page->setAttribute(Qt::WA_TranslucentBackground, true);
-        page->setAttribute(Qt::WA_NoSystemBackground, true);
         page->setAutoFillBackground(false);
+        page->setStyleSheet(QString("QWidget { background: %1; }")
+                            .arg(sigilBg));
         scroll->setStyleSheet(
             "QScrollArea { background: transparent; border: none; }"
             "QScrollBar:vertical {"
@@ -5810,10 +5824,18 @@ private:
         }
 
         if (m_sidebar) {
-            m_sidebar->setStyleSheet("QWidget { background: transparent; }");
+            m_sidebar->setStyleSheet(QString(
+                "QWidget { background: rgb(%1, %2, %3); }")
+                .arg(Sigil::sidebarBg().red())
+                .arg(Sigil::sidebarBg().green())
+                .arg(Sigil::sidebarBg().blue()));
         }
         if (m_stack) {
-            m_stack->setStyleSheet("QStackedWidget { background: transparent; }");
+            m_stack->setStyleSheet(QString(
+                "QStackedWidget { background: rgb(%1, %2, %3); }")
+                .arg(Sigil::contentBg().red())
+                .arg(Sigil::contentBg().green())
+                .arg(Sigil::contentBg().blue()));
         }
 
         for (QLabel *l : m_sectionHeaders) {
