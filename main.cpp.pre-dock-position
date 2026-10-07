@@ -355,7 +355,6 @@ struct VisualConfig {
     bool   widgetsVisible     = true;
     bool   dndEnabled         = false;
     int    notificationBannerMs = 6000;
-    int    dockPosition       = 0;   // 0=Bottom, 1=Left, 2=Right
     bool   clock24Hour       = true;
     bool   clockShowSeconds  = false;
     int    dockIconSize       = 52;   // base visual size (before magnify)
@@ -413,8 +412,6 @@ public:
                                    : m_cfg.dndEnabled;
         m_cfg.notificationBannerMs = getI("notificationBannerMs",
                                           m_cfg.notificationBannerMs);
-        m_cfg.dockPosition       = getI("dockPosition",
-                                        m_cfg.dockPosition);
         m_cfg.clock24Hour        = o.contains("clock24Hour")
                                    ? o["clock24Hour"].toBool(true)
                                    : m_cfg.clock24Hour;
@@ -437,8 +434,6 @@ public:
         if (m_cfg.dockIconSize       < 32)  m_cfg.dockIconSize       = 32;
         if (m_cfg.dockIconSize       > 90)  m_cfg.dockIconSize       = 90;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
-        if (m_cfg.dockPosition < 0)  m_cfg.dockPosition = 0;
-        if (m_cfg.dockPosition > 2)  m_cfg.dockPosition = 2;
         if (m_cfg.notificationBannerMs > 30000) m_cfg.notificationBannerMs = 30000;
         // Note: user's saved 110 will be respected; delete visual.json
         // to pick up the new default.
@@ -465,7 +460,6 @@ public:
         o["dockIconSize"]       = m_cfg.dockIconSize;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
-        o["dockPosition"]       = m_cfg.dockPosition;
         o["clock24Hour"]         = m_cfg.clock24Hour;
         o["clockShowSeconds"]    = m_cfg.clockShowSeconds;
         o["blurRefreshMs"]      = m_cfg.blurRefreshMs;
@@ -2813,24 +2807,6 @@ public:
         m_layout->addWidget(di);
     }
 
-    void setOrientation(bool vertical) {
-        if (m_vertical == vertical) return;
-        m_vertical = vertical;
-        m_layout->setDirection(vertical ? QBoxLayout::TopToBottom
-                                        : QBoxLayout::LeftToRight);
-        if (vertical) {
-            setMinimumHeight(0);
-            setMaximumHeight(QWIDGETSIZE_MAX);
-            setFixedWidth(96);
-        } else {
-            setMinimumWidth(0);
-            setMaximumWidth(QWIDGETSIZE_MAX);
-            setFixedHeight(96);
-        }
-        updateGeometry();
-        update();
-    }
-
 protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
@@ -2911,8 +2887,7 @@ private:
     }
 
     QList<DockIcon *> m_icons;
-    QBoxLayout  *m_layout = nullptr;
-    bool         m_vertical = false;
+    QHBoxLayout *m_layout = nullptr;
     QTimer *m_timer = nullptr;
     QTimer *m_pollTimer = nullptr;
     qreal m_cursorX = 0;
@@ -6228,40 +6203,8 @@ private:
                 cv->addWidget(row);
             };
 
-            // Position on screen — real Dropdown
-            {
-                QWidget *row = new QWidget;
-                QHBoxLayout *h = new QHBoxLayout(row);
-                h->setContentsMargins(0, 6, 0, 6);
-                h->setSpacing(14);
-
-                QVBoxLayout *left = new QVBoxLayout;
-                left->setContentsMargins(0, 0, 0, 0);
-                left->setSpacing(2);
-                QLabel *t = new QLabel("Position on screen");
-                t->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textPrimary().name()));
-                QLabel *s = new QLabel("Where the dock sits");
-                s->setStyleSheet(QString(
-                    "color: %1; font-size: 11px; background: transparent;")
-                    .arg(Sigil::textDim().name()));
-                left->addWidget(t);
-                left->addWidget(s);
-                h->addLayout(left, 1);
-
-                Sigil::Dropdown *dd = new Sigil::Dropdown(
-                    { "Bottom", "Left", "Right" }, vc.dockPosition,
-                    [](int idx) {
-                        VisualConfigManager::instance().setAndSave(
-                            [idx](VisualConfig &c) {
-                                c.dockPosition = idx;
-                            });
-                    });
-                h->addWidget(dd);
-
-                cv->addWidget(row);
-            }
+            addDisabledDropdown("Position on screen", "Bottom",
+                "ⓘ Coming soon");
             addDisabledDropdown("Minimize windows using", "Genie",
                 "ⓘ Coming soon");
             addDisabledDropdown("Double-click a window's title bar to",
@@ -10146,9 +10089,7 @@ static int runShell(int argc, char *argv[])
     rootLayout->addWidget(topBar);
 
     QWidget *desktop = new QWidget;
-
-    QWidget *middle = new QWidget;
-    rootLayout->addWidget(middle, 1);
+    rootLayout->addWidget(desktop, 1);
 
     Dock *dock = new Dock;
     struct DockApp { const char *icon; const char *name; };
@@ -10167,53 +10108,13 @@ static int runShell(int argc, char *argv[])
     for (const auto &a : apps)
         dock->addIcon(QString::fromUtf8(a.icon), a.name, i++);
 
-    auto applyDockPosition = [middle, desktop, dock](int pos) {
-        if (QLayout *old = middle->layout()) {
-            QLayoutItem *item;
-            while ((item = old->takeAt(0)) != nullptr) {
-                if (QWidget *w = item->widget()) w->setParent(middle);
-                delete item;
-            }
-            delete old;
-        }
+    QHBoxLayout *dockRow = new QHBoxLayout;
+    dockRow->setContentsMargins(0, 0, 0, 14);
+    dockRow->addStretch();
+    dockRow->addWidget(dock);
+    dockRow->addStretch();
 
-        if (pos == 0) {
-            // Bottom
-            QVBoxLayout *v = new QVBoxLayout(middle);
-            v->setContentsMargins(0, 0, 0, 0);
-            v->setSpacing(0);
-            v->addWidget(desktop, 1);
-
-            QHBoxLayout *row = new QHBoxLayout;
-            row->setContentsMargins(0, 0, 0, 14);
-            row->addStretch();
-            row->addWidget(dock);
-            row->addStretch();
-            v->addLayout(row);
-        } else if (pos == 1) {
-            // Left
-            QHBoxLayout *h = new QHBoxLayout(middle);
-            h->setContentsMargins(14, 12, 0, 12);
-            h->setSpacing(8);
-            h->addWidget(dock, 0, Qt::AlignVCenter);
-            h->addWidget(desktop, 1);
-        } else {
-            // Right
-            QHBoxLayout *h = new QHBoxLayout(middle);
-            h->setContentsMargins(0, 12, 14, 12);
-            h->setSpacing(8);
-            h->addWidget(desktop, 1);
-            h->addWidget(dock, 0, Qt::AlignVCenter);
-        }
-
-        dock->setOrientation(pos != 0);
-        dock->show();
-        desktop->show();
-    };
-
-    int *lastDockPos = new int(VisualConfigManager::instance()
-                                   .cfg().dockPosition);
-    applyDockPosition(*lastDockPos);
+    rootLayout->addLayout(dockRow);
 
     window.setCentralWidget(root);
 
@@ -10286,20 +10187,11 @@ static int runShell(int argc, char *argv[])
         QFileInfo(configPath).lastModified().toMSecsSinceEpoch());
 
     QObject::connect(configPoll, &QTimer::timeout,
-                     [configPath, lastMod, root, lastDockPos,
-                      applyDockPosition]() {
+                     [configPath, lastMod, root]() {
         qint64 m = QFileInfo(configPath).lastModified().toMSecsSinceEpoch();
         if (m != *lastMod) {
             *lastMod = m;
             VisualConfigManager::instance().load();
-            {
-                int pos = VisualConfigManager::instance()
-                              .cfg().dockPosition;
-                if (pos != *lastDockPos) {
-                    *lastDockPos = pos;
-                    applyDockPosition(pos);
-                }
-            }
             if (root) {
                 // Apply widget visibility — Settings writes visual.json,
                 // shell polls and reacts here.
