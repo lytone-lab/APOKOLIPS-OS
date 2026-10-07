@@ -353,6 +353,7 @@ struct VisualConfig {
     int    widgetCardAlpha    = 140;
     int    finderAlpha        = 190;
     bool   widgetsVisible     = true;
+    int    dockIconSize       = 52;   // base visual size (before magnify)
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
     double dockSigma          = 55.0;
@@ -401,6 +402,7 @@ public:
         m_cfg.widgetsVisible     = o.contains("widgetsVisible")
                                    ? o["widgetsVisible"].toBool(true)
                                    : m_cfg.widgetsVisible;
+        m_cfg.dockIconSize       = getI("dockIconSize", m_cfg.dockIconSize);
         m_cfg.blurRefreshMs      = getI("blurRefreshMs",      m_cfg.blurRefreshMs);
         m_cfg.dockMagnifyMax     = getD("dockMagnifyMax",     m_cfg.dockMagnifyMax);
         m_cfg.dockSigma          = getD("dockSigma",          m_cfg.dockSigma);
@@ -414,6 +416,8 @@ public:
         if (m_cfg.controlCenterAlpha < 60)  m_cfg.controlCenterAlpha = 60;
         if (m_cfg.widgetCardAlpha    < 40)  m_cfg.widgetCardAlpha    = 40;
         if (m_cfg.finderAlpha        < 30)  m_cfg.finderAlpha        = 30;
+        if (m_cfg.dockIconSize       < 32)  m_cfg.dockIconSize       = 32;
+        if (m_cfg.dockIconSize       > 90)  m_cfg.dockIconSize       = 90;
         // Note: user's saved 110 will be respected; delete visual.json
         // to pick up the new default.
         if (m_cfg.dockMagnifyMax     < 0.05) m_cfg.dockMagnifyMax    = 0.05;
@@ -436,6 +440,7 @@ public:
         o["widgetCardAlpha"]    = m_cfg.widgetCardAlpha;
         o["finderAlpha"]        = m_cfg.finderAlpha;
         o["widgetsVisible"]     = m_cfg.widgetsVisible;
+        o["dockIconSize"]       = m_cfg.dockIconSize;
         o["blurRefreshMs"]      = m_cfg.blurRefreshMs;
         o["dockMagnifyMax"]     = m_cfg.dockMagnifyMax;
         o["dockSigma"]          = m_cfg.dockSigma;
@@ -2449,7 +2454,8 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        const qreal baseSize = 42.0;
+        const qreal baseSize =
+            VisualConfigManager::instance().cfg().dockIconSize;
         int visual = int(baseSize * m_current);
         int x = (width()  - visual) / 2;
         int y = (height() - visual) / 2 - 4 + m_bounceOffset;
@@ -5373,6 +5379,132 @@ inline QLabel *groupLabel(const QString &text) {
     return l;
 }
 
+// ---- Dropdown: label + value + chevron, opens themed menu ----
+class Dropdown : public QWidget {
+public:
+    Dropdown(const QStringList &items, int current,
+             std::function<void(int)> onChange,
+             QWidget *parent = nullptr)
+        : QWidget(parent), m_items(items), m_current(current),
+          m_onChange(onChange)
+    {
+        setFixedHeight(34);
+        setCursor(Qt::PointingHandCursor);
+        setMouseTracking(true);
+        setAttribute(Qt::WA_Hover, true);
+
+        QHBoxLayout *h = new QHBoxLayout(this);
+        h->setContentsMargins(12, 0, 12, 0);
+        h->setSpacing(8);
+
+        m_value = new QLabel(items.value(current));
+        m_value->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        m_value->setStyleSheet(QString(
+            "color: %1; font-size: 13px; background: transparent;")
+            .arg(textPrimary().name()));
+        h->addWidget(m_value);
+        h->addStretch();
+
+        m_chevron = new QLabel(QString::fromUtf8("\xE2\x8C\x84"));
+        m_chevron->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        m_chevron->setStyleSheet(QString(
+            "color: %1; font-size: 12px; background: transparent;")
+            .arg(textDim().name()));
+        h->addWidget(m_chevron);
+    }
+
+    int current() const { return m_current; }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QPainterPath path;
+        path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 7, 7);
+        QColor bg(255, 255, 255, m_hover ? 35 : 20);
+        p.fillPath(path, bg);
+    }
+
+    void enterEvent(QEnterEvent *) override { m_hover = true; update(); }
+    void leaveEvent(QEvent *) override { m_hover = false; update(); }
+
+    void mousePressEvent(QMouseEvent *) override {
+        QMenu m(this);
+        m.setStyleSheet(QString(
+            "QMenu {"
+            "  background: rgb(24, 22, 30);"
+            "  border: 1px solid rgba(255,255,255,30);"
+            "  border-radius: 10px;"
+            "  padding: 6px;"
+            "  color: %1;"
+            "  font-size: 13px;"
+            "}"
+            "QMenu::item {"
+            "  padding: 7px 24px 7px 16px;"
+            "  border-radius: 6px;"
+            "  background: transparent;"
+            "}"
+            "QMenu::item:selected { background: rgba(255,255,255,45); }")
+            .arg(textPrimary().name()));
+        for (int i = 0; i < m_items.size(); ++i) {
+            QAction *a = m.addAction(m_items[i]);
+            a->setCheckable(true);
+            a->setChecked(i == m_current);
+            QObject::connect(a, &QAction::triggered, [this, i]() {
+                m_current = i;
+                m_value->setText(m_items[i]);
+                if (m_onChange) m_onChange(i);
+            });
+        }
+        m.exec(mapToGlobal(QPoint(0, height() + 4)));
+    }
+
+private:
+    QStringList               m_items;
+    int                       m_current;
+    std::function<void(int)>  m_onChange;
+    QLabel                   *m_value = nullptr;
+    QLabel                   *m_chevron = nullptr;
+    bool                      m_hover = false;
+};
+
+// ---- Toggle row: label + subtitle left, iOS toggle right ----
+inline QWidget *makeToggleRow(const QString &title, const QString &sub,
+                              bool initial,
+                              std::function<void(bool)> onChange)
+{
+    QWidget *row = new QWidget;
+    row->setAutoFillBackground(false);
+    QHBoxLayout *h = new QHBoxLayout(row);
+    h->setContentsMargins(0, 6, 0, 6);
+    h->setSpacing(14);
+
+    QVBoxLayout *left = new QVBoxLayout;
+    left->setContentsMargins(0, 0, 0, 0);
+    left->setSpacing(2);
+
+    QLabel *t = new QLabel(title);
+    t->setStyleSheet(QString(
+        "color: %1; font-size: 13px; background: transparent;")
+        .arg(textPrimary().name()));
+    left->addWidget(t);
+
+    if (!sub.isEmpty()) {
+        QLabel *s = new QLabel(sub);
+        s->setStyleSheet(QString(
+            "color: %1; font-size: 11px; background: transparent;")
+            .arg(textDim().name()));
+        left->addWidget(s);
+    }
+    h->addLayout(left, 1);
+
+    Toggle *tg = new Toggle(initial);
+    tg->onChanged = onChange;
+    h->addWidget(tg, 0, Qt::AlignVCenter);
+
+    return row;
+}
+
 } // namespace Sigil
 
 class SettingsWindow : public QWidget {
@@ -5905,47 +6037,203 @@ private:
         page->setAutoFillBackground(false);
         QVBoxLayout *v = new QVBoxLayout(page);
         v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(20);
+        v->setSpacing(18);
 
-        v->addWidget(Sigil::sectionTitle("Dock"));
+        v->addWidget(Sigil::sectionTitle("Desktop & Dock"));
 
         auto &vc = VisualConfigManager::instance().cfg();
 
-        Sigil::Card *c = new Sigil::Card;
-        c->setFixedHeight(180);
-        QVBoxLayout *cv = new QVBoxLayout(c);
-        cv->setContentsMargins(20, 16, 20, 16);
-        cv->setSpacing(14);
+        // ============================================================
+        // Card: DOCK
+        // ============================================================
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
 
-        cv->addWidget(Sigil::groupLabel("MAGNIFICATION"));
+            cv->addWidget(Sigil::groupLabel("DOCK"));
 
-        auto addRow = [&](const QString &title, const QString &sub,
-                          int val, int lo, int hi,
-                          std::function<void(int)> onChange) {
-            QWidget *row = new QWidget;
-            row->setAutoFillBackground(false);
-            QVBoxLayout *rv = new QVBoxLayout(row);
-            rv->setContentsMargins(0, 0, 0, 0);
-            rv->setSpacing(4);
+            // Two side-by-side sliders
+            QHBoxLayout *slidersRow = new QHBoxLayout;
+            slidersRow->setSpacing(24);
 
-            QHBoxLayout *tr = new QHBoxLayout;
-            QLabel *t = new QLabel(title);
-            t->setStyleSheet(QString(
+            auto makeSliderCol = [&](const QString &label,
+                                     int val, int lo, int hi,
+                                     std::function<void(int)> onChange)
+            {
+                QWidget *col = new QWidget;
+                QVBoxLayout *cl = new QVBoxLayout(col);
+                cl->setContentsMargins(0, 0, 0, 0);
+                cl->setSpacing(6);
+
+                QLabel *l = new QLabel(label);
+                l->setStyleSheet(QString(
+                    "color: %1; font-size: 13px; background: transparent;")
+                    .arg(Sigil::textPrimary().name()));
+                cl->addWidget(l);
+
+                QSlider *s = new QSlider(Qt::Horizontal);
+                s->setRange(lo, hi);
+                s->setValue(val);
+                s->setStyleSheet(QString(
+                    "QSlider::groove:horizontal { height: 4px;"
+                    "  background: rgba(255,255,255,25);"
+                    "  border-radius: 2px; }"
+                    "QSlider::handle:horizontal {"
+                    "  background: #ffffff; width: 14px; height: 14px;"
+                    "  margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal {"
+                    "  background: rgba(255,255,255,180);"
+                    "  border-radius: 2px; }"));
+                m_sliders.append(s);
+                QObject::connect(s, &QSlider::valueChanged, onChange);
+                cl->addWidget(s);
+
+                QHBoxLayout *ends = new QHBoxLayout;
+                QLabel *loL = new QLabel("Small");
+                QLabel *hiL = new QLabel("Large");
+                QString endCss = QString(
+                    "color: %1; font-size: 11px; background: transparent;")
+                    .arg(Sigil::textDim().name());
+                loL->setStyleSheet(endCss);
+                hiL->setStyleSheet(endCss);
+                ends->addWidget(loL);
+                ends->addStretch();
+                ends->addWidget(hiL);
+                cl->addLayout(ends);
+
+                return col;
+            };
+
+            slidersRow->addWidget(makeSliderCol(
+                "Size", vc.dockIconSize, 32, 90,
+                [](int sz) {
+                    VisualConfigManager::instance().setAndSave(
+                        [sz](VisualConfig &c) { c.dockIconSize = sz; });
+                }), 1);
+
+            slidersRow->addWidget(makeSliderCol(
+                "Magnification", int(vc.dockMagnifyMax * 100), 0, 100,
+                [](int pct) {
+                    VisualConfigManager::instance().setAndSave(
+                        [pct](VisualConfig &c) {
+                            c.dockMagnifyMax = pct / 100.0;
+                        });
+                }), 1);
+
+            cv->addLayout(slidersRow);
+
+            // Disabled dropdown rows — Coming Soon
+            auto addDisabledDropdown = [&](const QString &title,
+                                           const QString &value,
+                                           const QString &subtitle)
+            {
+                QWidget *row = new QWidget;
+                row->setAutoFillBackground(false);
+                row->setEnabled(false);
+                row->setStyleSheet("QWidget { opacity: 130; }");
+                QHBoxLayout *h = new QHBoxLayout(row);
+                h->setContentsMargins(0, 6, 0, 6);
+                h->setSpacing(14);
+
+                QVBoxLayout *left = new QVBoxLayout;
+                left->setContentsMargins(0, 0, 0, 0);
+                left->setSpacing(2);
+                QLabel *t = new QLabel(title);
+                t->setStyleSheet(QString(
+                    "color: %1; font-size: 13px; background: transparent;")
+                    .arg(Sigil::textPrimary().name()));
+                left->addWidget(t);
+                QLabel *s = new QLabel(subtitle);
+                s->setStyleSheet(QString(
+                    "color: %1; font-size: 11px; background: transparent;")
+                    .arg(Sigil::textDim().name()));
+                left->addWidget(s);
+                h->addLayout(left, 1);
+
+                QLabel *val = new QLabel(value);
+                val->setStyleSheet(QString(
+                    "color: %1; font-size: 13px;"
+                    " background: rgba(255,255,255,15);"
+                    " border-radius: 6px;"
+                    " padding: 6px 12px;")
+                    .arg(Sigil::textDim().name()));
+                h->addWidget(val);
+
+                cv->addWidget(row);
+            };
+
+            addDisabledDropdown("Position on screen", "Bottom",
+                "ⓘ Coming soon");
+            addDisabledDropdown("Minimize windows using", "Genie",
+                "ⓘ Coming soon");
+            addDisabledDropdown("Double-click a window's title bar to",
+                "Zoom", "ⓘ Coming soon");
+
+            // Minimize into app icon toggle (disabled for now)
+            QWidget *minRow = Sigil::makeToggleRow(
+                "Minimize windows into application icon",
+                "ⓘ Coming soon", false, nullptr);
+            minRow->setEnabled(false);
+            cv->addWidget(minRow);
+
+            v->addWidget(c);
+        }
+
+        // ============================================================
+        // Card: DESKTOP
+        // ============================================================
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(14);
+
+            cv->addWidget(Sigil::groupLabel("DESKTOP"));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Show desktop widgets",
+                "Clock, CPU / RAM, weather and calendar on the right",
+                vc.widgetsVisible,
+                [root = this](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.widgetsVisible = on; });
+                    // Find the DesktopWidgets in the shell and toggle it
+                    if (QWidget *r = qobject_cast<QWidget *>(root->window())) {
+                        for (QWidget *w : r->findChildren<QWidget *>()) {
+                            if (w->objectName() == "desktopWidgets") {
+                                w->setVisible(on);
+                                if (on) w->raise();
+                            }
+                        }
+                    }
+                }));
+
+            v->addWidget(c);
+        }
+
+        // ============================================================
+        // Card: FINDER OPACITY (moved here from Appearance)
+        // ============================================================
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(14);
+
+            cv->addWidget(Sigil::groupLabel("FINDER"));
+
+            QLabel *l = new QLabel("Finder window opacity");
+            l->setStyleSheet(QString(
                 "color: %1; font-size: 13px; background: transparent;")
                 .arg(Sigil::textPrimary().name()));
-            QLabel *s = new QLabel(sub);
-            s->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            tr->addWidget(t);
-            tr->addStretch();
-            tr->addWidget(s);
-            rv->addLayout(tr);
+            cv->addWidget(l);
 
-            QSlider *sl = new QSlider(Qt::Horizontal);
-            sl->setRange(lo, hi);
-            sl->setValue(val);
-            sl->setStyleSheet(QString(
+            QSlider *s = new QSlider(Qt::Horizontal);
+            s->setRange(0, 255);
+            s->setValue(vc.finderAlpha);
+            s->setStyleSheet(QString(
                 "QSlider::groove:horizontal { height: 4px;"
                 "  background: rgba(255,255,255,25);"
                 "  border-radius: 2px; }"
@@ -5955,28 +6243,16 @@ private:
                 "QSlider::sub-page:horizontal {"
                 "  background: rgba(255,255,255,180);"
                 "  border-radius: 2px; }"));
-            m_sliders.append(sl);
-            QObject::connect(sl, &QSlider::valueChanged, onChange);
-            rv->addWidget(sl);
-            cv->addWidget(row);
-        };
+            m_sliders.append(s);
+            QObject::connect(s, &QSlider::valueChanged, [](int v) {
+                VisualConfigManager::instance().setAndSave(
+                    [v](VisualConfig &c) { c.finderAlpha = v; });
+            });
+            cv->addWidget(s);
 
-        addRow("Magnification strength",
-               "How much icons grow on hover",
-               int(vc.dockMagnifyMax * 100), 0, 100,
-               [](int pct) {
-            VisualConfigManager::instance().setAndSave(
-                [pct](VisualConfig &c) { c.dockMagnifyMax = pct / 100.0; });
-        });
-        addRow("Magnification radius",
-               "How wide the effect reaches",
-               int(vc.dockSigma), 20, 120,
-               [](int pct) {
-            VisualConfigManager::instance().setAndSave(
-                [pct](VisualConfig &c) { c.dockSigma = pct; });
-        });
+            v->addWidget(c);
+        }
 
-        v->addWidget(c);
         v->addStretch();
         return page;
     }
@@ -9561,6 +9837,17 @@ static int runShell(int argc, char *argv[])
             *lastMod = m;
             VisualConfigManager::instance().load();
             if (root) {
+                // Apply widget visibility — Settings writes visual.json,
+                // shell polls and reacts here.
+                auto &cfg = VisualConfigManager::instance().cfg();
+                for (QWidget *w : root->findChildren<QWidget *>()) {
+                    if (w->objectName() == "desktopWidgets") {
+                        if (w->isVisible() != cfg.widgetsVisible) {
+                            w->setVisible(cfg.widgetsVisible);
+                            if (cfg.widgetsVisible) w->raise();
+                        }
+                    }
+                }
                 root->update();
                 for (QWidget *w : root->findChildren<QWidget *>()) w->update();
             }
