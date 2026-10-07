@@ -5466,32 +5466,42 @@ private:
 
     QWidget *makeWallpaperPage() {
         QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
         QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 24);
-        v->setSpacing(18);
+        v->setContentsMargins(28, 24, 28, 28);
+        v->setSpacing(20);
 
-        v->addWidget(sectionHeader("Wallpaper"));
+        v->addWidget(Sigil::sectionTitle("Wallpaper"));
+
+        Sigil::Card *c = new Sigil::Card;
+        c->setMinimumHeight(210);
+        QVBoxLayout *cv = new QVBoxLayout(c);
+        cv->setContentsMargins(20, 16, 20, 18);
+        cv->setSpacing(14);
+
+        cv->addWidget(Sigil::groupLabel("CHOOSE A WALLPAPER"));
 
         QGridLayout *g = new QGridLayout;
-        g->setSpacing(16);
+        g->setSpacing(10);
 
         struct WP { const char *id; const char *name; };
         const WP wps[] = {
-            { "ruby",       "Ruby"       },
-            { "starfield",  "Starfield"  },
-            { "aurora",     "Aurora"     },
+            { "ruby",       "Ruby"        },
+            { "starfield",  "Starfield"   },
+            { "aurora",     "Aurora"      },
             { "goldengate", "Golden Gate" },
-            { "everest",    "Everest"    },
-            { "gif",        "GIF…"       }
+            { "everest",    "Everest"     },
+            { "gif",        "GIF…"        }
         };
         int col = 0, row = 0;
         for (const auto &wp : wps) {
             QPushButton *btn = new QPushButton(wp.name);
-            btn->setFixedSize(140, 90);
             btn->setCursor(Qt::PointingHandCursor);
+            btn->setFixedHeight(46);
             btn->setProperty("wpId", wp.id);
             m_wpButtons.append(btn);
-            QObject::connect(btn, &QPushButton::clicked, [this, id = QString(wp.id)]() {
+            QObject::connect(btn, &QPushButton::clicked,
+                             [this, id = QString(wp.id)]() {
                 if (id == "gif") {
                     bool ok = false;
                     QString path = ApokolipsInputDialog::getText(
@@ -5499,26 +5509,17 @@ private:
                         "Full path to .gif file:",
                         QDir::homePath() + "/", &ok);
                     if (!ok || path.isEmpty()) return;
-                    if (!QFile::exists(path)) {
-                        // Show error and bail
-                        return;
-                    }
+                    if (!QFile::exists(path)) return;
                     WallpaperConfig::saveGifPath(path);
                 }
                 WallpaperConfig::saveId(id);
-
-                // Adopt the new theme immediately, in this process
                 Wallpaper *wp = WallpaperConfig::makeById(id);
                 Theme newT = wp->theme();
                 delete wp;
-
-                m_theme = newT;                              // local copy first
-                ThemeManager::instance().setTheme(newT);     // fires subscribers
-
+                m_theme = newT;
+                ThemeManager::instance().setTheme(newT);
                 updateWallpaperHighlight();
                 restyleAll();
-
-                // Force full repaint — paintEvent draws the border lines
                 update();
                 for (QWidget *child : findChildren<QWidget *>())
                     child->update();
@@ -5526,35 +5527,89 @@ private:
             g->addWidget(btn, row, col);
             if (++col == 3) { col = 0; ++row; }
         }
-        v->addLayout(g);
+        cv->addLayout(g);
+        v->addWidget(c);
         v->addStretch();
         return page;
     }
 
     QWidget *makeDockPage() {
         QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
         QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 24);
-        v->setSpacing(18);
+        v->setContentsMargins(28, 24, 28, 28);
+        v->setSpacing(20);
 
-        v->addWidget(sectionHeader("Dock"));
+        v->addWidget(Sigil::sectionTitle("Dock"));
 
         auto &vc = VisualConfigManager::instance().cfg();
 
-        addSlider(v, "Magnification strength",
-                  int(vc.dockMagnifyMax * 100), 0, 100,
-                  [](int pct) {
+        Sigil::Card *c = new Sigil::Card;
+        c->setFixedHeight(180);
+        QVBoxLayout *cv = new QVBoxLayout(c);
+        cv->setContentsMargins(20, 16, 20, 16);
+        cv->setSpacing(14);
+
+        cv->addWidget(Sigil::groupLabel("MAGNIFICATION"));
+
+        auto addRow = [&](const QString &title, const QString &sub,
+                          int val, int lo, int hi,
+                          std::function<void(int)> onChange) {
+            QWidget *row = new QWidget;
+            row->setAutoFillBackground(false);
+            QVBoxLayout *rv = new QVBoxLayout(row);
+            rv->setContentsMargins(0, 0, 0, 0);
+            rv->setSpacing(4);
+
+            QHBoxLayout *tr = new QHBoxLayout;
+            QLabel *t = new QLabel(title);
+            t->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            QLabel *s = new QLabel(sub);
+            s->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            tr->addWidget(t);
+            tr->addStretch();
+            tr->addWidget(s);
+            rv->addLayout(tr);
+
+            QSlider *sl = new QSlider(Qt::Horizontal);
+            sl->setRange(lo, hi);
+            sl->setValue(val);
+            sl->setStyleSheet(QString(
+                "QSlider::groove:horizontal { height: 4px;"
+                "  background: rgba(255,255,255,25);"
+                "  border-radius: 2px; }"
+                "QSlider::handle:horizontal {"
+                "  background: #ffffff; width: 14px; height: 14px;"
+                "  margin: -5px 0; border-radius: 7px; }"
+                "QSlider::sub-page:horizontal {"
+                "  background: rgba(255,255,255,180);"
+                "  border-radius: 2px; }"));
+            m_sliders.append(sl);
+            QObject::connect(sl, &QSlider::valueChanged, onChange);
+            rv->addWidget(sl);
+            cv->addWidget(row);
+        };
+
+        addRow("Magnification strength",
+               "How much icons grow on hover",
+               int(vc.dockMagnifyMax * 100), 0, 100,
+               [](int pct) {
             VisualConfigManager::instance().setAndSave(
                 [pct](VisualConfig &c) { c.dockMagnifyMax = pct / 100.0; });
         });
-
-        addSlider(v, "Magnification radius",
-                  int(vc.dockSigma), 20, 120,
-                  [](int pct) {
+        addRow("Magnification radius",
+               "How wide the effect reaches",
+               int(vc.dockSigma), 20, 120,
+               [](int pct) {
             VisualConfigManager::instance().setAndSave(
                 [pct](VisualConfig &c) { c.dockSigma = pct; });
         });
 
+        v->addWidget(c);
         v->addStretch();
         return page;
     }
@@ -5823,22 +5878,45 @@ private:
 
     QWidget *makeAboutPage() {
         QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
         QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 24);
-        v->setSpacing(12);
+        v->setContentsMargins(28, 24, 28, 28);
+        v->setSpacing(20);
 
-        v->addWidget(sectionHeader("About"));
+        v->addWidget(Sigil::sectionTitle("About"));
+
+        Sigil::Card *c = new Sigil::Card;
+        c->setFixedHeight(150);
+        QVBoxLayout *cv = new QVBoxLayout(c);
+        cv->setContentsMargins(20, 18, 20, 18);
+        cv->setSpacing(10);
+
+        cv->addWidget(Sigil::groupLabel("SYSTEM"));
 
         m_aboutLines.clear();
-        auto addLine = [&](const QString &s) {
-            QLabel *l = new QLabel(s);
-            m_aboutLines.append(l);
-            v->addWidget(l);
+        auto addRow = [&](const QString &label, const QString &value) {
+            QHBoxLayout *r = new QHBoxLayout;
+            QLabel *l = new QLabel(label);
+            l->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textSecondary().name()));
+            QLabel *val = new QLabel(value);
+            val->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            m_aboutLines.append(val);
+            r->addWidget(l);
+            r->addStretch();
+            r->addWidget(val);
+            cv->addLayout(r);
         };
-        addLine("Apokolips OS");
-        addLine("Version 0.1 — build " __DATE__);
-        addLine("Custom shell — C++17 / Qt6");
-        addLine("github.com/lytone-lab/APOKOLIPS-OS");
+
+        addRow("Name", "Apokolips OS");
+        addRow("Version", "0.1 — build " __DATE__);
+        addRow("Toolkit", "C++17 / Qt6");
+        addRow("Source", "github.com/lytone-lab/APOKOLIPS-OS");
+
+        v->addWidget(c);
         v->addStretch();
         return page;
     }
