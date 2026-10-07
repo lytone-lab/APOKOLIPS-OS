@@ -3631,6 +3631,80 @@ private:
     Theme          m_theme;
 };
 
+// =========================================================
+// Sigil sidebar row for Finder
+// =========================================================
+class FinderPlaceRow : public QWidget {
+public:
+    FinderPlaceRow(const QString &glyph, const QColor &color,
+                   const QString &label, QWidget *parent = nullptr)
+        : QWidget(parent)
+    {
+        setFixedHeight(32);
+        setCursor(Qt::PointingHandCursor);
+        setMouseTracking(true);
+        setAttribute(Qt::WA_Hover, true);
+
+        QHBoxLayout *h = new QHBoxLayout(this);
+        h->setContentsMargins(10, 0, 10, 0);
+        h->setSpacing(10);
+
+        QLabel *badge = new QLabel(glyph);
+        badge->setFixedSize(22, 22);
+        badge->setAlignment(Qt::AlignCenter);
+        badge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        badge->setStyleSheet(QString(
+            "background: rgb(%1,%2,%3);"
+            "color: #ffffff;"
+            "border-radius: 6px;"
+            "font-size: 12px;")
+            .arg(color.red()).arg(color.green()).arg(color.blue()));
+        h->addWidget(badge);
+
+        QLabel *txt = new QLabel(label);
+        txt->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        txt->setStyleSheet(
+            "color: rgb(240, 237, 232);"
+            "font-size: 13px; background: transparent;");
+        h->addWidget(txt);
+        h->addStretch();
+
+        m_selected = false;
+        m_hover = false;
+    }
+
+    void setSelected(bool s) { m_selected = s; update(); }
+
+    std::function<void()> onClick;
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QPainterPath path;
+        path.addRoundedRect(rect().adjusted(2, 1, -2, -1), 7, 7);
+        if (m_selected)
+            p.fillPath(path, QColor(58, 58, 62));
+        else if (m_hover)
+            p.fillPath(path, QColor(255, 255, 255, 18));
+
+        if (m_selected) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(168, 50, 50));   // oxblood
+            QRectF stripe(3, 7, 3, height() - 14);
+            p.drawRoundedRect(stripe, 1.5, 1.5);
+        }
+    }
+    void enterEvent(QEnterEvent *) override { m_hover = true; update(); }
+    void leaveEvent(QEvent *) override { m_hover = false; update(); }
+    void mousePressEvent(QMouseEvent *) override {
+        if (onClick) onClick();
+    }
+private:
+    bool m_selected;
+    bool m_hover;
+};
+
 class FileExplorer : public QWidget {
 public:
     explicit FileExplorer(QWidget *parent = nullptr) : QWidget(parent) {
@@ -3765,22 +3839,37 @@ protected:
         StyleRenderer::drawPanel(p, QRectF(frameRect), 14, m_theme,
                                  vc.finderAlpha);
 
-        // ---- Header strip: slightly stronger tint ----
-        QPainterPath hdrPath;
-        hdrPath.addRoundedRect(QRect(0, 0, width(), 48), 14, 14);
+        // ---- Top strip (header + tab bar + toolbar bg, 30+34+46=110 tall) ----
+        const int TOP_H = 30;
+        const int TAB_H = 34;
+        const int TOOLBAR_H = 46;
+        const int TOP_TOTAL = TOP_H + TAB_H + TOOLBAR_H;
+
+        QPainterPath topPath;
+        topPath.addRoundedRect(QRect(0, 0, width(), TOP_TOTAL), 14, 14);
         QPainterPath squareBottom;
-        squareBottom.addRect(QRect(0, 14, width(), 34));
-        QPainterPath hdrFinal = hdrPath.united(squareBottom);
+        squareBottom.addRect(QRect(0, 14, width(), TOP_TOTAL - 14));
+        QPainterPath topFinal = topPath.united(squareBottom);
 
-        QColor hdrTint = m_theme.chromeBg;
-        hdrTint.setAlpha(160);
-        p.fillPath(hdrFinal, hdrTint);
+        QColor topTint = m_theme.chromeBg;
+        topTint.setAlpha(190);
+        p.fillPath(topFinal, topTint);
 
-        // ---- Separators ----
-        p.setPen(QPen(m_theme.chromeBorder, 1));
-        p.drawLine(0, 48, width(), 48);
+        // ---- Sidebar background fill (below the top strip) ----
+        if (m_sidebar) {
+            QColor sb(24, 24, 26);
+            sb.setAlpha(255);
+            p.fillRect(QRect(0, TOP_TOTAL, m_sidebar->width(),
+                             height() - TOP_TOTAL), sb);
+        }
+
+        // ---- Separators: header / tabbar / toolbar / sidebar-right ----
+        p.setPen(QPen(QColor(255, 255, 255, 22), 1));
+        p.drawLine(0, TOP_H, width(), TOP_H);                    // under header
+        p.drawLine(0, TOP_H + TAB_H, width(), TOP_H + TAB_H);    // under tab bar
+        p.drawLine(0, TOP_TOTAL, width(), TOP_TOTAL);            // under toolbar
         if (m_sidebar)
-            p.drawLine(m_sidebar->width(), 48,
+            p.drawLine(m_sidebar->width(), TOP_TOTAL,
                        m_sidebar->width(), height() - 1);
     }
 
@@ -3970,36 +4059,42 @@ private:
         body->setSpacing(0);
 
         m_sidebar = new QWidget;
-        m_sidebar->setFixedWidth(170);
-        m_sidebar->setAttribute(Qt::WA_NoSystemBackground, true);
+        m_sidebar->setFixedWidth(200);
+        m_sidebar->setAutoFillBackground(false);
+        m_sidebar->setStyleSheet(
+            "QWidget { background: transparent; }");
         QVBoxLayout *sb = new QVBoxLayout(m_sidebar);
-        sb->setContentsMargins(10, 12, 10, 12);
-        sb->setSpacing(3);
+        sb->setContentsMargins(10, 14, 10, 14);
+        sb->setSpacing(2);
 
-        struct Place { const char *icon; const char *name; const char *path; };
+        struct Place {
+            const char *glyph; QColor color; const char *name; const char *path;
+        };
         QString home = QDir::homePath();
         const Place places[] = {
-            { "\xF0\x9F\x8F\xA0", "Home",      "%HOME%"      },
-            { "\xF0\x9F\x96\xA5", "Desktop",   "%HOME%/Desktop" },
-            { "\xF0\x9F\x93\x84", "Documents", "%HOME%/Documents" },
-            { "\xE2\xAC\x87",     "Downloads", "%HOME%/Downloads" },
-            { "\xF0\x9F\x8E\xB5", "Music",     "%HOME%/Music" },
-            { "\xF0\x9F\x96\xBC", "Pictures",  "%HOME%/Pictures" },
-            { "\xF0\x9F\x8E\xAC", "Videos",    "%HOME%/Videos" },
-            { "\xF0\x9F\x97\x91", "Trash",     "%HOME%/.local/share/Trash/files" },
+            { "\xF0\x9F\x8F\xA0", QColor(168, 120,  90), "Home",      "%HOME%"      },
+            { "\xF0\x9F\x96\xA5", QColor( 90, 122, 158), "Desktop",   "%HOME%/Desktop" },
+            { "\xF0\x9F\x93\x84", QColor(122, 106, 159), "Documents", "%HOME%/Documents" },
+            { "\xE2\xAC\x87",     QColor( 74, 122,  90), "Downloads", "%HOME%/Downloads" },
+            { "\xF0\x9F\x8E\xB5", QColor(160,  90, 106), "Music",     "%HOME%/Music" },
+            { "\xF0\x9F\x96\xBC", QColor( 74, 122, 122), "Pictures",  "%HOME%/Pictures" },
+            { "\xF0\x9F\x8E\xAC", QColor(166, 122,  90), "Videos",    "%HOME%/Videos" },
+            { "\xF0\x9F\x97\x91", QColor(106, 106, 112), "Trash",     "%HOME%/.local/share/Trash/files" },
         };
         for (const auto &p : places) {
             QString path = QString(p.path).replace("%HOME%", home);
-            QPushButton *b = new QPushButton(
-                QString("%1  %2").arg(QString::fromUtf8(p.icon), p.name));
-            b->setCursor(Qt::PointingHandCursor);
-            b->setFlat(true);
-            b->setStyleSheet("");  // styled in restyleAll
-            m_placeButtons.append(b);
-            sb->addWidget(b);
-            QObject::connect(b, &QPushButton::clicked,
-                             [this, path]() { navigateTo(path); });
+            FinderPlaceRow *row = new FinderPlaceRow(QString::fromUtf8(p.glyph),
+                                         p.color, p.name);
+            m_placeRows.append(row);
+            sb->addWidget(row);
+            QObject::connect(row, &QWidget::destroyed, []() {});
+            row->onClick = [this, row, path]() {
+                for (FinderPlaceRow *r : m_placeRows) r->setSelected(false);
+                row->setSelected(true);
+                navigateTo(path);
+            };
         }
+        if (!m_placeRows.isEmpty()) m_placeRows[0]->setSelected(true);
         sb->addStretch();
 
         // ---- File view ----
@@ -4674,16 +4769,7 @@ private:
                      t.textDim.name()));
         }
 
-        for (QPushButton *b : m_placeButtons) {
-            b->setStyleSheet(QString(
-                "QPushButton { text-align: left; padding: 6px 10px;"
-                "  color: %1; background: transparent; border: none;"
-                "  border-radius: 8px; font-size: 13px; }"
-                "QPushButton:hover { background: %2; color: %3; }")
-                .arg(t.textSecondary.name(),
-                     rgba(t.accentSoft),
-                     t.textPrimary.name()));
-        }
+        // (sidebar rows handle their own styling now)
 
         m_view->setStyleSheet(QString(
             "QListView { background: transparent; border: none;"
@@ -4716,8 +4802,8 @@ private:
         }
         if (m_statusLeft && m_statusRight) {
             QString st = QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(t.textDim.name());
+                "color: rgb(122, 120, 115); font-size: 11px;"
+                " background: transparent;");
             m_statusLeft->setStyleSheet(st);
             m_statusRight->setStyleSheet(st);
         }
@@ -4747,7 +4833,7 @@ private:
     QFileSystemModel *m_fs = nullptr;
     QSortFilterProxyModel *m_proxy = nullptr;
     QList<QPushButton *> m_navButtons;
-    QList<QPushButton *> m_placeButtons;
+    QList<FinderPlaceRow *> m_placeRows;
     QString m_currentPath;
     QStringList m_history;
     int m_historyIndex = -1;
