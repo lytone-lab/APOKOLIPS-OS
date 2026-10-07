@@ -3078,7 +3078,10 @@ public:
     }
 
     void toggle() { isVisible() && m_slide > 0.5 ? hideCC() : showCC(); }
-    void showCC() { raise(); show(); m_target = 1.0; m_animTimer->start(); }
+    void showCC() {
+        refreshFocusBtn();
+        raise(); show(); m_target = 1.0; m_animTimer->start();
+    }
     void hideCC() { m_target = 0.0; m_animTimer->start(); }
 
     void reposition(int parentW) {
@@ -3307,6 +3310,10 @@ private:
                 .arg(m_theme.textPrimary.name()));
             lb->setAttribute(Qt::WA_TransparentForMouseEvents, true);
             v->addWidget(lb);
+            if (label == "Focus") {
+                m_focusBtn = b;
+                m_focusLbl = lb;
+            }
             return b;
         };
 
@@ -3314,7 +3321,40 @@ private:
         h->addWidget(mk(QString::fromUtf8("\xE2\x98\xBE"), "Focus"));
         h->addWidget(mk(QString::fromUtf8("\xF0\x9F\x94\x94"), "Alerts"));
         h->addWidget(mk(QString::fromUtf8("\xF0\x9F\x96\xA5"), "Display"));
+
+        if (m_focusBtn) {
+            QObject::connect(m_focusBtn, &QPushButton::clicked, [this]() {
+                auto &vc = VisualConfigManager::instance().cfg();
+                bool nowOn = !vc.dndEnabled;
+                VisualConfigManager::instance().setAndSave(
+                    [nowOn](VisualConfig &c) { c.dndEnabled = nowOn; });
+                refreshFocusBtn();
+            });
+        }
+
         return row;
+    }
+
+    void refreshFocusBtn() {
+        if (!m_focusBtn) return;
+        bool on = VisualConfigManager::instance().cfg().dndEnabled;
+        QColor bg = on ? m_theme.accent
+                       : m_theme.chromeBg.lighter(130);
+        m_focusBtn->setStyleSheet(QString(
+            "QPushButton { background: %1; border: none;"
+            "  border-radius: 14px; color: %2;"
+            "  font-size: 10px; padding-top: 4px; }"
+            "QPushButton:hover { background: %3; }")
+            .arg(rgba(bg),
+                 on ? "#ffffff" : m_theme.textPrimary.name(),
+                 rgba(on ? m_theme.accent.lighter(120)
+                         : m_theme.accentSoft)));
+        if (m_focusLbl) {
+            m_focusLbl->setText(on ? "Do Not Disturb" : "Focus");
+            m_focusLbl->setStyleSheet(QString(
+                "font-size: 10px; color: %1; background: transparent;")
+                .arg(on ? "#ffffff" : m_theme.textPrimary.name()));
+        }
     }
 
     QWidget *makeSliderRow(const QString &label, int value,
@@ -3373,6 +3413,8 @@ private:
     qreal m_slide = 0.0;
     qreal m_target = 0.0;
     Theme m_theme;
+    QPushButton *m_focusBtn  = nullptr;
+    QLabel      *m_focusLbl  = nullptr;
 };
 
 // =========================================================
@@ -3874,7 +3916,7 @@ protected:
         // Oxblood accent stripe on selected row
         if (m_selected) {
             p.setPen(Qt::NoPen);
-            p.setBrush(Sigil::accent());
+            p.setBrush(QColor(168, 50, 50));
             p.drawRoundedRect(QRectF(4, 6, 3, height() - 12), 1.5, 1.5);
         }
     }
