@@ -1745,133 +1745,218 @@ inline void seedDefaults() {
 // =========================================================
 namespace Icons {
 
-static void drawFinder(QPainter &p, const QRectF &r, const QColor &c) {
-    QPen pen(c, r.width() * 0.09, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
-    p.setPen(pen); p.setBrush(Qt::NoBrush);
-    QPointF ctr = r.center();
-    qreal s = r.width() * 0.36;
-    QPolygonF d;
-    d << QPointF(ctr.x(), ctr.y() - s)
-      << QPointF(ctr.x() + s, ctr.y())
-      << QPointF(ctr.x(), ctr.y() + s)
-      << QPointF(ctr.x() - s, ctr.y());
-    p.drawPolygon(d);
-    qreal yL = ctr.y() + s * 0.38;
-    qreal xH = s * 0.60;
-    p.drawLine(QPointF(ctr.x() - xH, yL), QPointF(ctr.x() + xH, yL));
+// ---- Shared: painted rounded-square app tile ----
+static void appTile(QPainter &p, const QRectF &r,
+                    const QColor &top, const QColor &bottom)
+{
+    p.setRenderHint(QPainter::Antialiasing);
+    qreal radius = r.width() * 0.22;
+    QLinearGradient g(r.topLeft(), r.bottomRight());
+    g.setColorAt(0.0, top);
+    g.setColorAt(1.0, bottom);
+    QPainterPath path;
+    path.addRoundedRect(r, radius, radius);
+    p.fillPath(path, g);
+
+    // Inner top highlight — subtle macOS-style depth
+    QColor hi(255, 255, 255, 55);
+    p.setPen(QPen(hi, qMax(1.0, r.width() * 0.012)));
+    p.setBrush(Qt::NoBrush);
+    QPainterPath inner;
+    inner.addRoundedRect(r.adjusted(r.width()*0.05, r.height()*0.05,
+                                    -r.width()*0.05, -r.height()*0.05),
+                         radius * 0.82, radius * 0.82);
+    p.drawPath(inner);
 }
 
-static void drawLaunchpad(QPainter &p, const QRectF &r, const QColor &c) {
+// ---- Motif helper: white pen of consistent weight ----
+static QPen whitePen(const QRectF &r, qreal factor = 0.08) {
+    QPen pen(QColor(255, 255, 255, 235),
+             qMax(1.5, r.width() * factor),
+             Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    return pen;
+}
+
+static void drawFinder(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor( 90, 130, 200), QColor( 40,  70, 130));
+    p.setPen(whitePen(r));
+    p.setBrush(Qt::NoBrush);
+    // Folder
+    qreal cx = r.center().x(), cy = r.center().y() + r.height() * 0.02;
+    qreal fw = r.width() * 0.52, fh = r.height() * 0.36;
+    QRectF folder(cx - fw/2, cy - fh/2 + r.height()*0.03, fw, fh);
+    QPainterPath fp;
+    fp.moveTo(folder.left(), folder.top() + fh * 0.20);
+    fp.lineTo(folder.left(), folder.bottom());
+    fp.lineTo(folder.right(), folder.bottom());
+    fp.lineTo(folder.right(), folder.top() + fh * 0.20);
+    fp.lineTo(folder.left() + fw * 0.40, folder.top() + fh * 0.20);
+    fp.lineTo(folder.left() + fw * 0.30, folder.top());
+    fp.lineTo(folder.left(), folder.top());
+    fp.closeSubpath();
+    p.drawPath(fp);
+    // Magnifier bubble top-right
+    qreal mr = r.width() * 0.11;
+    QPointF mc(folder.right() - r.width() * 0.02,
+               folder.top() + r.height() * 0.02);
+    p.setBrush(QColor(255, 255, 255, 235));
+    p.drawEllipse(mc, mr, mr);
+    p.setPen(QPen(QColor( 90, 130, 200), qMax(1.5, r.width() * 0.05)));
+    p.drawLine(mc + QPointF(mr*0.7, mr*0.7),
+               mc + QPointF(mr*1.6, mr*1.6));
+}
+
+static void drawLaunchpad(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor(180,  60,  60), QColor(110,  26,  26));
     QFont f = p.font();
-    f.setPixelSize(int(r.width() * 0.82));
+    f.setPixelSize(int(r.width() * 0.68));
     f.setWeight(QFont::Light);
     p.setFont(f);
-    p.setPen(c);
+    p.setPen(QColor(255, 255, 255, 240));
     p.drawText(r, Qt::AlignCenter, QString::fromUtf8("\xCE\xA9"));
 }
 
-static void drawPhotos(QPainter &p, const QRectF &r, const QColor &c) {
-    QPen pen(c, r.width() * 0.075, Qt::SolidLine, Qt::RoundCap);
-    p.setPen(pen); p.setBrush(Qt::NoBrush);
+static void drawPhotos(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor( 90, 180, 180), QColor( 30, 100, 100));
+    p.setPen(whitePen(r, 0.065));
+    p.setBrush(Qt::NoBrush);
     QPointF ctr = r.center();
-    qreal inner = r.width() * 0.05;
-    qreal outer = r.width() * 0.40;
+    qreal inner = r.width() * 0.06;
+    qreal outer = r.width() * 0.32;
     for (int i = 0; i < 6; ++i) {
         double a = i * 60.0 * 3.14159265 / 180.0;
-        double b = a + 0.88;
+        double b = a + 0.90;
         QPointF p1(ctr.x() + std::cos(a) * inner, ctr.y() + std::sin(a) * inner);
         QPointF p2(ctr.x() + std::cos(b) * outer, ctr.y() + std::sin(b) * outer);
         p.drawLine(p1, p2);
     }
 }
 
-static void drawMusic(QPainter &p, const QRectF &r, const QColor &c) {
-    QPen pen(c, r.width() * 0.095, Qt::SolidLine, Qt::RoundCap);
-    p.setPen(pen);
+static void drawMusic(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor(190, 100, 130), QColor(110,  45,  75));
+    p.setPen(QPen(QColor(255, 255, 255, 235),
+                  qMax(1.5, r.width() * 0.09),
+                  Qt::SolidLine, Qt::RoundCap));
     qreal base = r.center().y();
-    qreal step = r.width() * 0.145;
-    qreal hs[] = { 0.30, 0.55, 0.72, 0.45 };
+    qreal step = r.width() * 0.16;
+    qreal hs[] = { 0.28, 0.52, 0.72, 0.42 };
     for (int i = 0; i < 4; ++i) {
         qreal x = r.center().x() + (i - 1.5) * step;
-        qreal h = r.width() * hs[i] * 0.5;
+        qreal h = r.width() * hs[i] * 0.55;
         p.drawLine(QPointF(x, base - h), QPointF(x, base + h));
     }
 }
 
-static void drawNotes(QPainter &p, const QRectF &r, const QColor &c) {
-    qreal w = r.width() * 0.58;
-    qreal h = r.width() * 0.72;
+static void drawNotes(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor(232, 220, 198), QColor(190, 175, 145));
+    // Page rectangle
+    qreal w = r.width() * 0.52;
+    qreal h = r.height() * 0.66;
     QRectF page(r.center().x() - w/2, r.center().y() - h/2, w, h);
-    QPen out(c, r.width() * 0.075, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
-    p.setPen(out); p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(page, r.width()*0.07, r.width()*0.07);
-    QPen ln(c, r.width() * 0.06, Qt::SolidLine, Qt::RoundCap);
-    p.setPen(ln);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(255, 255, 255, 245));
+    p.drawRoundedRect(page, r.width() * 0.06, r.width() * 0.06);
+
+    // Red corner fold
+    QPolygonF corner;
+    corner << QPointF(page.right() - w * 0.28, page.top())
+           << QPointF(page.right(), page.top())
+           << QPointF(page.right(), page.top() + h * 0.20);
+    p.setBrush(QColor(200, 60, 60));
+    p.drawPolygon(corner);
+
+    // Ruled lines
+    p.setPen(QPen(QColor(160, 150, 130, 200),
+                  qMax(1.0, r.width() * 0.035), Qt::SolidLine, Qt::RoundCap));
     qreal xL = page.left() + w * 0.18;
     qreal xR = page.right() - w * 0.18;
-    qreal y1 = page.top() + h * 0.28;
-    qreal y2 = page.top() + h * 0.50;
-    qreal y3 = page.top() + h * 0.72;
+    qreal y1 = page.top() + h * 0.42;
+    qreal y2 = page.top() + h * 0.62;
+    qreal y3 = page.top() + h * 0.80;
     p.drawLine(QPointF(xL, y1), QPointF(xR, y1));
     p.drawLine(QPointF(xL, y2), QPointF(xR, y2));
     p.drawLine(QPointF(xL, y3), QPointF(xL + (xR - xL) * 0.55, y3));
 }
 
-static void drawMail(QPainter &p, const QRectF &r, const QColor &c) {
-    qreal w = r.width() * 0.74;
-    qreal h = r.width() * 0.52;
+static void drawMail(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor(170, 125, 90), QColor(105,  70,  45));
+    // Envelope body
+    qreal w = r.width() * 0.62;
+    qreal h = r.height() * 0.42;
     QRectF body(r.center().x() - w/2, r.center().y() - h/2, w, h);
-    QPen out(c, r.width() * 0.075, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
-    p.setPen(out); p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(body, r.width()*0.06, r.width()*0.06);
-    QPointF mid(body.center().x(), body.top() + h*0.62);
-    p.drawLine(QPointF(body.left() + w*0.03, body.top() + h*0.12), mid);
-    p.drawLine(QPointF(body.right() - w*0.03, body.top() + h*0.12), mid);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(255, 255, 255, 245));
+    p.drawRoundedRect(body, r.width() * 0.05, r.width() * 0.05);
+
+    // Envelope flap (V shape)
+    p.setPen(QPen(QColor(170, 125, 90), qMax(1.5, r.width() * 0.055),
+                  Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    QPointF mid(body.center().x(), body.top() + h * 0.62);
+    p.drawLine(QPointF(body.left() + w * 0.04, body.top() + h * 0.12), mid);
+    p.drawLine(QPointF(body.right() - w * 0.04, body.top() + h * 0.12), mid);
 }
 
-static void drawSettings(QPainter &p, const QRectF &r, const QColor &c) {
-    qreal w = r.width() * 0.66;
-    qreal left = r.center().x() - w/2;
-    qreal right = r.center().x() + w/2;
-    qreal ys[] = { r.center().y() - r.width()*0.24,
-                   r.center().y(),
-                   r.center().y() + r.width()*0.24 };
-    qreal knobPos[] = { 0.30, 0.72, 0.42 };
-    QPen pen(c, r.width() * 0.065, Qt::SolidLine, Qt::RoundCap);
-    for (int i = 0; i < 3; ++i) {
-        p.setPen(pen); p.setBrush(Qt::NoBrush);
-        p.drawLine(QPointF(left, ys[i]), QPointF(right, ys[i]));
-        qreal kx = left + w * knobPos[i];
-        p.setPen(Qt::NoPen); p.setBrush(c);
-        p.drawEllipse(QPointF(kx, ys[i]), r.width()*0.08, r.width()*0.08);
+static void drawSettings(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor(120, 120, 128), QColor( 55,  55,  62));
+    // Gear: outer circle + teeth + inner ring
+    QPointF ctr = r.center();
+    qreal outer = r.width() * 0.26;
+    qreal inner = r.width() * 0.10;
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(255, 255, 255, 240));
+
+    // 8 teeth
+    for (int i = 0; i < 8; ++i) {
+        double a = i * 3.14159265 / 4.0;
+        QPointF dir(std::cos(a), std::sin(a));
+        QPointF tip = ctr + dir * (outer + r.width() * 0.08);
+        QPointF base = ctr + dir * outer * 0.85;
+        QPolygonF tooth;
+        QPointF perp(-dir.y(), dir.x());
+        tooth << base + perp * r.width() * 0.05
+              << tip + perp * r.width() * 0.035
+              << tip - perp * r.width() * 0.035
+              << base - perp * r.width() * 0.05;
+        p.drawPolygon(tooth);
     }
+    p.drawEllipse(ctr, outer, outer);
+    // Cut inner hole
+    p.setBrush(QColor(120, 120, 128));
+    p.drawEllipse(ctr, inner, inner);
 }
 
-static void drawTerminal(QPainter &p, const QRectF &r, const QColor &c) {
-    QPen pen(c, r.width() * 0.07, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
-    p.setPen(pen); p.setBrush(Qt::NoBrush);
-    QRectF box(r.center().x() - r.width() * 0.40,
-               r.center().y() - r.height() * 0.32,
-               r.width() * 0.80, r.height() * 0.64);
-    p.drawRoundedRect(box, r.width() * 0.07, r.width() * 0.07);
-    // Chevron >
-    qreal x1 = box.left() + r.width() * 0.14;
-    qreal y1 = box.top() + r.height() * 0.22;
-    qreal x2 = box.left() + r.width() * 0.32;
+static void drawTerminal(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor( 55,  55,  62), QColor( 18,  18,  22));
+    // Box outline
+    p.setPen(whitePen(r, 0.065));
+    p.setBrush(Qt::NoBrush);
+    QRectF box(r.center().x() - r.width() * 0.34,
+               r.center().y() - r.height() * 0.26,
+               r.width() * 0.68, r.height() * 0.52);
+    p.drawRoundedRect(box, r.width() * 0.06, r.width() * 0.06);
+
+    // > chevron
+    qreal x1 = box.left() + r.width() * 0.12;
+    qreal y1 = box.top() + r.height() * 0.18;
+    qreal x2 = box.left() + r.width() * 0.28;
     qreal y2 = box.center().y();
-    qreal x3 = box.left() + r.width() * 0.14;
-    qreal y3 = box.bottom() - r.height() * 0.22;
+    qreal x3 = box.left() + r.width() * 0.12;
+    qreal y3 = box.bottom() - r.height() * 0.18;
     p.drawLine(QPointF(x1, y1), QPointF(x2, y2));
     p.drawLine(QPointF(x2, y2), QPointF(x3, y3));
-    // Cursor underscore
-    p.drawLine(QPointF(box.left() + r.width() * 0.42, box.bottom() - r.height() * 0.24),
-               QPointF(box.right() - r.width() * 0.14, box.bottom() - r.height() * 0.24));
+
+    // _ cursor
+    p.drawLine(QPointF(box.left() + r.width() * 0.40,
+                       box.bottom() - r.height() * 0.18),
+               QPointF(box.right() - r.width() * 0.12,
+                       box.bottom() - r.height() * 0.18));
 }
 
-static void drawPower(QPainter &p, const QRectF &r, const QColor &c) {
-    QPen pen(c, r.width() * 0.10, Qt::SolidLine, Qt::RoundCap);
-    p.setPen(pen); p.setBrush(Qt::NoBrush);
-    qreal s = r.width() * 0.34;
+static void drawPower(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor( 90,  90,  98), QColor( 35,  35,  40));
+    p.setPen(whitePen(r, 0.10));
+    p.setBrush(Qt::NoBrush);
+    qreal s = r.width() * 0.30;
     QPointF ctr = r.center();
     QRectF arcR(ctr.x() - s, ctr.y() - s + r.width()*0.04, 2*s, 2*s);
     p.drawArc(arcR, 45 * 16, 270 * 16);
@@ -1892,9 +1977,10 @@ static void drawFor(const QString &name, QPainter &p,
     else if (name == "Terminal")  drawTerminal(p, r, c);
 }
 
+// ---- Tray icon helpers (small, single-color) ----
 static void drawWifi(QPainter &p, const QRectF &r, const QColor &c, bool on) {
-    QPen pen(on ? c : QColor(c.red(), c.green(), c.blue(), 90),
-             r.width() * 0.09, Qt::SolidLine, Qt::RoundCap);
+    QColor col = on ? c : QColor(c.red(), c.green(), c.blue(), 90);
+    QPen pen(col, qMax(1.0, r.width() * 0.09), Qt::SolidLine, Qt::RoundCap);
     p.setPen(pen); p.setBrush(Qt::NoBrush);
     QPointF ctr(r.center().x(), r.center().y() + r.height() * 0.10);
     for (int i = 0; i < 3; ++i) {
@@ -1903,15 +1989,15 @@ static void drawWifi(QPainter &p, const QRectF &r, const QColor &c, bool on) {
         p.drawArc(arc, 45 * 16, 90 * 16);
     }
     p.setPen(Qt::NoPen);
-    p.setBrush(on ? c : QColor(c.red(), c.green(), c.blue(), 90));
+    p.setBrush(col);
     p.drawEllipse(ctr, r.width()*0.055, r.width()*0.055);
 }
 
 static void drawEthernet(QPainter &p, const QRectF &r, const QColor &c, bool on) {
     QColor col = on ? c : QColor(c.red(), c.green(), c.blue(), 90);
-    QPen pen(col, r.width() * 0.085, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    QPen pen(col, qMax(1.0, r.width() * 0.085), Qt::SolidLine,
+             Qt::RoundCap, Qt::RoundJoin);
     p.setPen(pen); p.setBrush(Qt::NoBrush);
-    // A rectangle at bottom with 3 pins above
     qreal w = r.width() * 0.42;
     qreal h = r.height() * 0.30;
     QRectF box(r.center().x() - w/2, r.center().y() + r.height()*0.02, w, h);
@@ -1926,13 +2012,13 @@ static void drawEthernet(QPainter &p, const QRectF &r, const QColor &c, bool on)
 
 static void drawBluetooth(QPainter &p, const QRectF &r, const QColor &c, bool on) {
     QColor col = on ? c : QColor(c.red(), c.green(), c.blue(), 90);
-    QPen pen(col, r.width() * 0.09, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    QPen pen(col, qMax(1.0, r.width() * 0.09), Qt::SolidLine,
+             Qt::RoundCap, Qt::RoundJoin);
     p.setPen(pen); p.setBrush(Qt::NoBrush);
-    // Classic bluetooth rune
     QPointF ctr = r.center();
     qreal s = r.width() * 0.28;
     QPolygonF path;
-    path << QPointF(ctr.x(), ctr.y() - s)         // top
+    path << QPointF(ctr.x(), ctr.y() - s)
          << QPointF(ctr.x() + s*0.7, ctr.y() - s*0.5)
          << QPointF(ctr.x() - s*0.7, ctr.y() + s*0.5)
          << QPointF(ctr.x(), ctr.y() + s)
@@ -1949,16 +2035,15 @@ static void drawBattery(QPainter &p, const QRectF &r, const QColor &c,
     qreal w = r.width() * 0.72;
     qreal h = r.height() * 0.40;
     QRectF body(r.center().x() - w/2, r.center().y() - h/2, w, h);
-    QPen pen(c, r.width() * 0.075, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    QPen pen(c, qMax(1.0, r.width() * 0.075), Qt::SolidLine,
+             Qt::RoundCap, Qt::RoundJoin);
     p.setPen(pen); p.setBrush(Qt::NoBrush);
     p.drawRoundedRect(body, r.width()*0.04, r.width()*0.04);
-    // Nub
     QRectF nub(body.right() + r.width()*0.03,
                body.center().y() - h*0.18,
                r.width()*0.06, h*0.36);
     p.setBrush(c); p.setPen(Qt::NoPen);
     p.drawRoundedRect(nub, 2, 2);
-    // Fill
     if (pct >= 0) {
         qreal inner = w * (pct / 100.0) * 0.88;
         QRectF fill(body.left() + w*0.06, body.top() + h*0.20,
@@ -2048,8 +2133,8 @@ protected:
     }
 
 private:
-    static constexpr int PANEL_W = 640;
-    static constexpr int PANEL_H = 420;
+    static constexpr int PANEL_W = 720;
+    static constexpr int PANEL_H = 480;
 
     void tickFade() {
         if (m_opacity < m_fadeTarget) {
@@ -2093,30 +2178,14 @@ private:
     }
 
     void restyleTiles() {
-        QColor tileBg      = m_theme.textPrimary; tileBg.setAlpha(25);
-        QColor tileHover   = m_theme.textPrimary; tileHover.setAlpha(55);
-        QColor tilePressed = m_theme.textPrimary; tilePressed.setAlpha(90);
-        QString textColor  = m_theme.textPrimary.name();
+        QString textColor = m_theme.textPrimary.name();
 
+        // Keep the app button and hit area, but remove its visible tile.
         QString css = QString(
-            "QPushButton {"
-            "  background: %1;"
-            "  border: none;"
-            "  border-radius: 16px;"
-            "  color: %2;"
-            "  padding-bottom: 10px;"
-            "}"
-            "QPushButton:hover {"
-            "  background: %3;"
-            "  border: none;"
-            "}"
-            "QPushButton:pressed {"
-            "  background: %4;"
-            "}")
-            .arg(rgba(tileBg))
-            .arg(textColor)
-            .arg(rgba(tileHover))
-            .arg(rgba(tilePressed));
+            "QPushButton { background: transparent; border: none; color: %1; }"
+            "QPushButton:hover { background: transparent; border: none; }"
+            "QPushButton:pressed { background: transparent; border: none; }")
+            .arg(textColor);
 
         for (QPushButton *tile : m_tiles) {
             tile->setStyleSheet(css);
@@ -2153,8 +2222,8 @@ private:
         pl->addWidget(m_search);
 
         m_tilesLayout = new QGridLayout;
-        m_tilesLayout->setSpacing(34);
-        m_tilesLayout->setContentsMargins(14, 14, 14, 14);
+        m_tilesLayout->setSpacing(14);
+        m_tilesLayout->setContentsMargins(20, 20, 20, 20);
 
         struct App { const char *icon; const char *name; };
         const App apps[] = {
@@ -2169,53 +2238,103 @@ private:
             { "\xE2\x9A\xA1",       "Power"     }
         };
 
-        int col = 0, row = 0, idx = 0;
-        for (const auto &a : apps) {
-            QWidget *tile = makeTile(QString::fromUtf8(a.icon), a.name, idx);
-            m_tilesLayout->addWidget(tile, row, col);
-            if (++col == 4) { col = 0; ++row; }
-            ++idx;
+        // 4 fixed-width columns, each a vertical stack.
+        QList<QVBoxLayout *> cols;
+        QHBoxLayout *gridRow = new QHBoxLayout;
+        gridRow->setContentsMargins(0, 0, 0, 0);
+        gridRow->setSpacing(14);
+        for (int c = 0; c < 4; ++c) {
+            QVBoxLayout *colLay = new QVBoxLayout;
+            colLay->setContentsMargins(0, 0, 0, 0);
+            colLay->setSpacing(14);
+            colLay->setAlignment(Qt::AlignTop);
+            cols.append(colLay);
+            gridRow->addLayout(colLay);
         }
 
-        pl->addLayout(m_tilesLayout);
+        // Row-major layout: apps 0-3 in row 1, apps 4-7 in row 2.
+        for (int i = 0; i < 8; ++i) {
+            QWidget *tile = makeTile(QString::fromUtf8(apps[i].icon),
+                                     apps[i].name, i);
+            cols[i % 4]->addWidget(tile, 0,
+                                   Qt::AlignTop | Qt::AlignHCenter);
+        }
+
+        // Power sits in the first column on the next row.
+        cols[0]->addWidget(
+            makeTile(QString::fromUtf8(apps[8].icon), apps[8].name, 8),
+            0, Qt::AlignTop | Qt::AlignHCenter);
+
+        pl->addLayout(gridRow);
+        pl->addStretch();
+
         outer->addWidget(panel, 0, Qt::AlignHCenter);
         outer->addStretch();
     }
 
     QWidget *makeTile(const QString &icon, const QString &name, int index) {
         QPushButton *tile = new QPushButton;
-        tile->setFixedSize(136, 116);
+        tile->setFixedSize(140, 110);
+        tile->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         tile->setCursor(Qt::PointingHandCursor);
         tile->setProperty("appName", name);
 
         QVBoxLayout *v = new QVBoxLayout(tile);
-        v->setContentsMargins(8, 14, 8, 10);
-        v->setSpacing(6);
+        v->setContentsMargins(4, 6, 4, 8);
+        v->setSpacing(4);
+        v->setAlignment(Qt::AlignCenter);
 
         // Custom vector icon widget (replaces old emoji label)
         class TileIcon : public QWidget {
         public:
             TileIcon(const QString &iconName, QWidget *parent = nullptr)
                 : QWidget(parent), m_name(iconName) {
-                setFixedSize(52, 52);
+                // Reserve a stable 64px area; idle art is drawn at 52px.
+                setFixedSize(64, 64);
                 setAttribute(Qt::WA_TransparentForMouseEvents, true);
                 ThemeManager::instance().subscribe([this](const Theme &t) {
                     m_color = t.textPrimary;
                     update();
                 });
             }
+            void setHovered(bool hovered) {
+                if (m_hovered == hovered) return;
+                m_hovered = hovered;
+                update();
+            }
         protected:
             void paintEvent(QPaintEvent *) override {
                 QPainter p(this);
                 p.setRenderHint(QPainter::Antialiasing);
-                Icons::drawFor(m_name, p, QRectF(rect()), m_color);
+                QRectF artRect(rect());
+                if (!m_hovered)
+                    artRect.adjust(6, 6, -6, -6); // 52px idle, 64px hovered
+                Icons::drawFor(m_name, p, artRect, m_color);
             }
         private:
             QString m_name;
             QColor  m_color = QColor(230, 230, 240);
+            bool m_hovered = false;
         };
 
         TileIcon *ic = new TileIcon(name);
+
+        // Track hover on the button (the icon itself ignores mouse events).
+        class TileHoverFilter final : public QObject {
+        public:
+            TileHoverFilter(TileIcon *icon, QObject *parent)
+                : QObject(parent), m_icon(icon) {}
+            bool eventFilter(QObject *, QEvent *event) override {
+                if (event->type() == QEvent::Enter)
+                    m_icon->setHovered(true);
+                else if (event->type() == QEvent::Leave)
+                    m_icon->setHovered(false);
+                return false;
+            }
+        private:
+            TileIcon *m_icon;
+        };
+        tile->installEventFilter(new TileHoverFilter(ic, tile));
         v->addWidget(ic, 0, Qt::AlignHCenter);
 
         QLabel *nm = new QLabel(name);
