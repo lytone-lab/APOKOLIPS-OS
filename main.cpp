@@ -5257,127 +5257,208 @@ private:
 
     QWidget *makeAppearancePage() {
         QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
         QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 24);
-        v->setSpacing(18);
+        v->setContentsMargins(28, 24, 28, 28);
+        v->setSpacing(20);
 
-        v->addWidget(sectionHeader("Appearance"));
+        v->addWidget(Sigil::sectionTitle("Appearance"));
 
         auto &vc = VisualConfigManager::instance().cfg();
 
-        addSlider(v, "Blur strength",
-                  int(vc.blurStrength * 100), 0, 100,
-                  [](int pct) {
-            VisualConfigManager::instance().setAndSave(
-                [pct](VisualConfig &c) { c.blurStrength = pct / 100.0; });
-        });
+        // ---- Transparency card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setFixedHeight(64 + 6 * 56);
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(14);
 
-        addSlider(v, "Top bar opacity", vc.topBarAlpha, 0, 255,
-                  [](int pct) {
-            VisualConfigManager::instance().setAndSave(
-                [pct](VisualConfig &c) { c.topBarAlpha = pct; });
-        });
+            cv->addWidget(Sigil::groupLabel("CHROME OPACITY"));
 
-        addSlider(v, "Dock opacity", vc.dockAlpha, 0, 255,
-                  [](int pct) {
-            VisualConfigManager::instance().setAndSave(
-                [pct](VisualConfig &c) { c.dockAlpha = pct; });
-        });
+            auto addRow = [&](const QString &title, const QString &sub,
+                              int val, int lo, int hi,
+                              std::function<void(int)> onChange) {
+                QWidget *row = new QWidget;
+                row->setAutoFillBackground(false);
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(4);
 
-        addSlider(v, "Panel opacity", vc.launcherAlpha, 0, 255,
-                  [](int pct) {
-            VisualConfigManager::instance().setAndSave(
-                [pct](VisualConfig &c) {
-                    c.launcherAlpha = pct;
-                    c.controlCenterAlpha = pct;
+                QHBoxLayout *titleRow = new QHBoxLayout;
+                QLabel *t = new QLabel(title);
+                t->setStyleSheet(QString(
+                    "color: %1; font-size: 13px;"
+                    " background: transparent;")
+                    .arg(Sigil::textPrimary().name()));
+                QLabel *s = new QLabel(sub);
+                s->setStyleSheet(QString(
+                    "color: %1; font-size: 11px;"
+                    " background: transparent;")
+                    .arg(Sigil::textDim().name()));
+                titleRow->addWidget(t);
+                titleRow->addStretch();
+                titleRow->addWidget(s);
+                rv->addLayout(titleRow);
+
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(lo, hi);
+                sl->setValue(val);
+                sl->setStyleSheet(QString(
+                    "QSlider::groove:horizontal { height: 4px;"
+                    "  background: rgba(255,255,255,25);"
+                    "  border-radius: 2px; }"
+                    "QSlider::handle:horizontal {"
+                    "  background: #ffffff; width: 14px; height: 14px;"
+                    "  margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal {"
+                    "  background: rgba(255,255,255,180);"
+                    "  border-radius: 2px; }"));
+                m_sliders.append(sl);
+                QObject::connect(sl, &QSlider::valueChanged, onChange);
+                rv->addWidget(sl);
+
+                cv->addWidget(row);
+            };
+
+            addRow("Blur strength", "Higher = heavier frosted glass",
+                   int(vc.blurStrength * 100), 0, 100,
+                   [](int pct) {
+                VisualConfigManager::instance().setAndSave(
+                    [pct](VisualConfig &c) { c.blurStrength = pct / 100.0; });
+            });
+            addRow("Top bar", "How opaque the top strip looks",
+                   vc.topBarAlpha, 0, 255,
+                   [](int pct) {
+                VisualConfigManager::instance().setAndSave(
+                    [pct](VisualConfig &c) { c.topBarAlpha = pct; });
+            });
+            addRow("Dock", "Dock background opacity",
+                   vc.dockAlpha, 0, 255,
+                   [](int pct) {
+                VisualConfigManager::instance().setAndSave(
+                    [pct](VisualConfig &c) { c.dockAlpha = pct; });
+            });
+            addRow("Panels", "Launcher + Control Center",
+                   vc.launcherAlpha, 0, 255,
+                   [](int pct) {
+                VisualConfigManager::instance().setAndSave(
+                    [pct](VisualConfig &c) {
+                        c.launcherAlpha = pct;
+                        c.controlCenterAlpha = pct;
+                    });
+            });
+            addRow("Widgets", "Desktop widget cards",
+                   vc.widgetCardAlpha, 0, 255,
+                   [](int pct) {
+                VisualConfigManager::instance().setAndSave(
+                    [pct](VisualConfig &c) { c.widgetCardAlpha = pct; });
+            });
+            addRow("Finder", "File browser window",
+                   vc.finderAlpha, 0, 255,
+                   [](int pct) {
+                VisualConfigManager::instance().setAndSave(
+                    [pct](VisualConfig &c) { c.finderAlpha = pct; });
+            });
+
+            v->addWidget(c);
+        }
+
+        // ---- UI Style card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setFixedHeight(110);
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(12);
+
+            cv->addWidget(Sigil::groupLabel("UI STYLE"));
+
+            QGridLayout *g = new QGridLayout;
+            g->setSpacing(10);
+            struct StyleOpt { VisualStyle s; const char *name; };
+            const StyleOpt opts[] = {
+                { VisualStyle::Glass,         "Glass"         },
+                { VisualStyle::Neumorphism,   "Neumorphism"   },
+                { VisualStyle::Skeuomorphism, "Skeuomorphism" },
+                { VisualStyle::Claymorphism,  "Claymorphism"  }
+            };
+            int col = 0;
+            for (const auto &o : opts) {
+                QPushButton *b = new QPushButton(o.name);
+                b->setCursor(Qt::PointingHandCursor);
+                b->setFixedHeight(46);
+                b->setProperty("styleId", static_cast<int>(o.s));
+                m_styleButtons.append(b);
+                QObject::connect(b, &QPushButton::clicked,
+                                 [this, s = o.s]() {
+                    StyleManager::set(s);
+                    restyleStyleButtons();
                 });
-        });
+                g->addWidget(b, 0, col++);
+            }
+            cv->addLayout(g);
+            v->addWidget(c);
+        }
 
-        addSlider(v, "Widget opacity", vc.widgetCardAlpha, 0, 255,
-                  [](int pct) {
-            VisualConfigManager::instance().setAndSave(
-                [pct](VisualConfig &c) { c.widgetCardAlpha = pct; });
-        });
+        // ---- Reset card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setFixedHeight(74);
+            QHBoxLayout *cv = new QHBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(14);
 
-        addSlider(v, "Finder opacity", vc.finderAlpha, 0, 255,
-                  [](int pct) {
-            VisualConfigManager::instance().setAndSave(
-                [pct](VisualConfig &c) { c.finderAlpha = pct; });
-        });
+            QVBoxLayout *left = new QVBoxLayout;
+            left->setContentsMargins(0, 0, 0, 0);
+            left->setSpacing(2);
+            QLabel *t = new QLabel("Reset to defaults");
+            t->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            QLabel *s = new QLabel(
+                "Wipe every visual tweak back to factory");
+            s->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            left->addWidget(t);
+            left->addWidget(s);
+            cv->addLayout(left, 1);
 
-        v->addSpacing(24);
-
-        // ---- UI STYLE ----
-        v->addWidget(sectionHeader("UI Style"));
-
-        QGridLayout *styleGrid = new QGridLayout;
-        styleGrid->setSpacing(12);
-
-        struct StyleOpt { VisualStyle s; const char *name; };
-        const StyleOpt styleOpts[] = {
-            { VisualStyle::Glass,         "Glass"         },
-            { VisualStyle::Neumorphism,   "Neumorphism"   },
-            { VisualStyle::Skeuomorphism, "Skeuomorphism" },
-            { VisualStyle::Claymorphism,  "Claymorphism"  }
-        };
-        int col = 0;
-        for (const auto &opt : styleOpts) {
-            QPushButton *btn = new QPushButton(opt.name);
-            btn->setCursor(Qt::PointingHandCursor);
-            btn->setFixedHeight(56);
-            btn->setProperty("styleId", static_cast<int>(opt.s));
-            m_styleButtons.append(btn);
-            QObject::connect(btn, &QPushButton::clicked,
-                             [this, s = opt.s]() {
-                StyleManager::set(s);
+            QPushButton *reset = new QPushButton("Reset");
+            reset->setCursor(Qt::PointingHandCursor);
+            reset->setFixedHeight(32);
+            reset->setStyleSheet(
+                "QPushButton { background: transparent;"
+                "  color: rgb(220, 70, 80);"
+                "  border: 1px solid rgb(220, 70, 80);"
+                "  border-radius: 8px; padding: 4px 18px;"
+                "  font-size: 12px; }"
+                "QPushButton:hover { background: rgba(220,70,80,60);"
+                "  color: #ffffff; }");
+            QObject::connect(reset, &QPushButton::clicked, [this]() {
+                VisualConfigManager::instance().resetToDefaults();
+                StyleManager::set(VisualStyle::Glass);
+                auto &c = VisualConfigManager::instance().cfg();
+                for (int i = 0; i < m_sliders.size() && i < 6; ++i) {
+                    static const int vals[] = {
+                        -1, 0, 0, 0, 0, 0
+                    };
+                    Q_UNUSED(vals);
+                }
+                if (m_sliders.size() >= 6) {
+                    m_sliders[0]->setValue(int(c.blurStrength * 100));
+                    m_sliders[1]->setValue(c.topBarAlpha);
+                    m_sliders[2]->setValue(c.dockAlpha);
+                    m_sliders[3]->setValue(c.launcherAlpha);
+                    m_sliders[4]->setValue(c.widgetCardAlpha);
+                    m_sliders[5]->setValue(c.finderAlpha);
+                }
                 restyleStyleButtons();
             });
-            styleGrid->addWidget(btn, 0, col++);
+            cv->addWidget(reset);
+            v->addWidget(c);
         }
-        v->addLayout(styleGrid);
-
-        v->addSpacing(24);
-        QPushButton *resetBtn = new QPushButton("Reset to Defaults");
-        resetBtn->setCursor(Qt::PointingHandCursor);
-        resetBtn->setFixedHeight(34);
-        resetBtn->setStyleSheet(
-            "QPushButton {"
-            "  background: transparent;"
-            "  color: rgb(200, 70, 80);"
-            "  border: 1px solid rgb(200, 70, 80);"
-            "  border-radius: 8px;"
-            "  font-size: 13px;"
-            "  padding: 4px 16px;"
-            "}"
-            "QPushButton:hover {"
-            "  background: rgba(200, 70, 80, 70);"
-            "  color: #ffffff;"
-            "}"
-            "QPushButton:pressed {"
-            "  background: rgba(200, 70, 80, 130);"
-            "}");
-        QObject::connect(resetBtn, &QPushButton::clicked, [this]() {
-            // Reset visual tunables (opacities, blur, magnify)
-            VisualConfigManager::instance().resetToDefaults();
-
-            // Reset UI style back to Glass (default)
-            StyleManager::set(VisualStyle::Glass);
-
-            // Reflect the new values in the sliders
-            auto &c = VisualConfigManager::instance().cfg();
-            if (m_sliders.size() >= 6) {
-                m_sliders[0]->setValue(int(c.blurStrength * 100));
-                m_sliders[1]->setValue(c.topBarAlpha);
-                m_sliders[2]->setValue(c.dockAlpha);
-                m_sliders[3]->setValue(c.launcherAlpha);
-                m_sliders[4]->setValue(c.widgetCardAlpha);
-                m_sliders[5]->setValue(c.finderAlpha);
-            }
-
-            // Re-highlight the Glass style button
-            restyleStyleButtons();
-        });
-        v->addWidget(resetBtn);
 
         v->addStretch();
         return page;
