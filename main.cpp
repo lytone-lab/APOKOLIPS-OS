@@ -3871,6 +3871,12 @@ protected:
         else if (m_hover)
             p.fillPath(path, QColor(255, 255, 255, 18));
 
+        // Oxblood accent stripe on selected row
+        if (m_selected) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(Sigil::accent());
+            p.drawRoundedRect(QRectF(4, 6, 3, height() - 12), 1.5, 1.5);
+        }
     }
     void enterEvent(QEnterEvent *) override { m_hover = true; update(); }
     void leaveEvent(QEvent *) override { m_hover = false; update(); }
