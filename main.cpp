@@ -4787,16 +4787,22 @@ private:
 namespace Sigil {
 
 // Palette
+// ---- Sigil: graphite and bone ----
 inline QColor contentBg()   { return QColor(20, 20, 22); }
 inline QColor cardBg()      { return QColor(30, 30, 32); }
 inline QColor sidebarBg()   { return QColor(24, 24, 26); }
 inline QColor headerBg()    { return QColor(28, 28, 30); }
 inline QColor border()      { return QColor(255, 255, 255, 22); }
-inline QColor textPrimary() { return QColor(240, 240, 245); }
-inline QColor textSecondary(){ return QColor(180, 180, 190); }
-inline QColor textDim()     { return QColor(130, 130, 140); }
+// Warm bone text — the ink of the system
+inline QColor textPrimary() { return QColor(240, 237, 232); }
+inline QColor textSecondary(){ return QColor(176, 173, 168); }
+inline QColor textDim()     { return QColor(122, 120, 115); }
 inline QColor rowHover()    { return QColor(255, 255, 255, 18); }
 inline QColor rowSelected() { return QColor(58, 58, 62); }
+// Oxblood accent — the seal
+inline QColor accent()      { return QColor(168,  50,  50); }
+inline QColor accentHover() { return QColor(200,  74,  74); }
+inline QColor accentPress() { return QColor(139,  26,  26); }
 
 // ---- Icon badge: colored rounded square with a glyph ----
 class IconBadge : public QWidget {
@@ -4864,10 +4870,19 @@ protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
+
         QPainterPath path;
         path.addRoundedRect(rect().adjusted(2, 2, -2, -2), 7, 7);
         if (m_selected)      p.fillPath(path, rowSelected());
         else if (m_hover)    p.fillPath(path, rowHover());
+
+        // Oxblood accent stripe on the left of the selected row
+        if (m_selected) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(Sigil::accent());
+            QRectF stripe(4, 8, 3, height() - 16);
+            p.drawRoundedRect(stripe, 1.5, 1.5);
+        }
     }
 
     void enterEvent(QEnterEvent *) override { m_hover = true; update(); }
@@ -5172,19 +5187,19 @@ private:
         m_stack = new QStackedWidget;
 
         addSection(sb, "Appearance", QString::fromUtf8("\xE2\x9C\xA8"),
-                   QColor(120, 90, 220), makeAppearancePage());
+                   QColor(122, 106, 159), makeAppearancePage());
         addSection(sb, "Wallpaper",  QString::fromUtf8("\xE2\x96\xA3"),
-                   QColor(80, 140, 220), makeWallpaperPage());
+                   QColor(90, 122, 158), makeWallpaperPage());
         addSection(sb, "Dock",       QString::fromUtf8("\xE2\x96\xAA"),
-                   QColor(220, 120, 60), makeDockPage());
+                   QColor(166, 122, 90), makeDockPage());
         addSection(sb, "Sound",      QString::fromUtf8("\xE2\x99\xAA"),
-                   QColor(220, 60, 100), makeSoundPage());
+                   QColor(160, 90, 106), makeSoundPage());
         addSection(sb, "Display",    QString::fromUtf8("\xE2\x96\xA3"),
-                   QColor(60, 180, 200), makeDisplayPage());
+                   QColor(74, 122, 122), makeDisplayPage());
         addSection(sb, "Network",    QString::fromUtf8("\xE2\x98\x81"),
-                   QColor(80, 160, 90), makeNetworkPage());
+                   QColor(74, 122, 90), makeNetworkPage());
         addSection(sb, "About",      QString::fromUtf8("\xE2\x84\xB9"),
-                   QColor(130, 130, 140), makeAboutPage());
+                   QColor(106, 106, 112), makeAboutPage());
 
         sb->addStretch();
         m_stack->setStyleSheet(QString(
@@ -5430,11 +5445,11 @@ private:
             reset->setFixedHeight(32);
             reset->setStyleSheet(
                 "QPushButton { background: transparent;"
-                "  color: rgb(220, 70, 80);"
-                "  border: 1px solid rgb(220, 70, 80);"
+                "  color: rgb(168, 50, 50);"
+                "  border: 1px solid rgb(168, 50, 50);"
                 "  border-radius: 8px; padding: 4px 18px;"
                 "  font-size: 12px; }"
-                "QPushButton:hover { background: rgba(220,70,80,60);"
+                "QPushButton:hover { background: rgba(168,50,50,70);"
                 "  color: #ffffff; }");
             QObject::connect(reset, &QPushButton::clicked, [this]() {
                 VisualConfigManager::instance().resetToDefaults();
@@ -5616,45 +5631,82 @@ private:
 
     QWidget *makeSoundPage() {
         QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
         QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 24);
-        v->setSpacing(14);
+        v->setContentsMargins(28, 24, 28, 28);
+        v->setSpacing(20);
 
-        v->addWidget(sectionHeader("Sound"));
+        v->addWidget(Sigil::sectionTitle("Sound"));
 
-        // Master volume
-        QLabel *volLabel = new QLabel("Master Volume");
-        volLabel->setProperty("role", "sliderLabel");
-        m_sliderLabels.append(volLabel);
-        v->addWidget(volLabel);
+        // Volume card
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setFixedHeight(96);
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(10);
+            cv->addWidget(Sigil::groupLabel("MASTER VOLUME"));
 
-        QSlider *vol = new QSlider(Qt::Horizontal);
-        vol->setRange(0, 150);
-        vol->setValue(SysControl::audioGet());
-        m_sliders.append(vol);
-        v->addWidget(vol);
-        QObject::connect(vol, &QSlider::valueChanged,
-                         [](int val) { SysControl::audioSet(val); });
+            QHBoxLayout *row = new QHBoxLayout;
+            QLabel *t = new QLabel("Output level");
+            t->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            row->addWidget(t);
+            row->addStretch();
 
-        // Output devices
-        QLabel *devs = new QLabel("Output Devices");
-        devs->setProperty("role", "sliderLabel");
-        m_sliderLabels.append(devs);
-        v->addWidget(devs);
+            QSlider *vol = new QSlider(Qt::Horizontal);
+            vol->setRange(0, 150);
+            vol->setValue(SysControl::audioGet());
+            vol->setMinimumWidth(280);
+            vol->setStyleSheet(QString(
+                "QSlider::groove:horizontal { height: 4px;"
+                "  background: rgba(255,255,255,25);"
+                "  border-radius: 2px; }"
+                "QSlider::handle:horizontal {"
+                "  background: #ffffff; width: 14px; height: 14px;"
+                "  margin: -5px 0; border-radius: 7px; }"
+                "QSlider::sub-page:horizontal {"
+                "  background: rgba(255,255,255,180);"
+                "  border-radius: 2px; }"));
+            QObject::connect(vol, &QSlider::valueChanged,
+                             [](int val) { SysControl::audioSet(val); });
+            row->addWidget(vol);
+            cv->addLayout(row);
+            v->addWidget(c);
+        }
 
-        m_soundList = new QListWidget;
-        m_soundList->setFixedHeight(160);
-        m_soundList->setFrameShape(QFrame::NoFrame);
-        v->addWidget(m_soundList);
-        refreshSoundDevices();
+        // Devices card
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setMinimumHeight(240);
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(12);
 
-        QPushButton *refresh = new QPushButton("Refresh Devices");
-        refresh->setCursor(Qt::PointingHandCursor);
-        refresh->setFixedHeight(32);
-        m_dockPageButtons.append(refresh);
-        QObject::connect(refresh, &QPushButton::clicked,
-                         this, &SettingsWindow::refreshSoundDevices);
-        v->addWidget(refresh);
+            QHBoxLayout *header = new QHBoxLayout;
+            header->addWidget(Sigil::groupLabel("OUTPUT DEVICES"));
+            header->addStretch();
+            QPushButton *refresh = new QPushButton("Refresh");
+            refresh->setCursor(Qt::PointingHandCursor);
+            refresh->setFixedHeight(26);
+            refresh->setStyleSheet(QString(
+                "QPushButton { background: rgba(255,255,255,20);"
+                "  color: %1; border: none; border-radius: 6px;"
+                "  font-size: 11px; padding: 2px 12px; }"
+                "QPushButton:hover { background: rgba(255,255,255,45); }")
+                .arg(Sigil::textPrimary().name()));
+            QObject::connect(refresh, &QPushButton::clicked,
+                             this, &SettingsWindow::refreshSoundDevices);
+            header->addWidget(refresh);
+            cv->addLayout(header);
+
+            m_soundList = new QListWidget;
+            m_soundList->setFrameShape(QFrame::NoFrame);
+            cv->addWidget(m_soundList, 1);
+            refreshSoundDevices();
+            v->addWidget(c);
+        }
 
         v->addStretch();
         return page;
@@ -5662,100 +5714,161 @@ private:
 
     QWidget *makeDisplayPage() {
         QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
         QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 24);
-        v->setSpacing(14);
+        v->setContentsMargins(28, 24, 28, 28);
+        v->setSpacing(20);
 
-        v->addWidget(sectionHeader("Display"));
+        v->addWidget(Sigil::sectionTitle("Display"));
 
-        QLabel *info = new QLabel("Connected output");
-        info->setProperty("role", "sliderLabel");
-        m_sliderLabels.append(info);
-        v->addWidget(info);
+        // Current output card
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setFixedHeight(86);
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(8);
+            cv->addWidget(Sigil::groupLabel("ACTIVE OUTPUT"));
 
-        m_displayInfo = new QLabel("Querying…");
-        m_displayInfo->setProperty("role", "sliderLabel");
-        m_sliderLabels.append(m_displayInfo);
-        v->addWidget(m_displayInfo);
+            m_displayInfo = new QLabel("Querying…");
+            m_displayInfo->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            cv->addWidget(m_displayInfo);
+            v->addWidget(c);
+        }
 
-        // Resolution list
-        QLabel *resLabel = new QLabel("Resolution");
-        resLabel->setProperty("role", "sliderLabel");
-        m_sliderLabels.append(resLabel);
-        v->addWidget(resLabel);
+        // Resolution list card
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setMinimumHeight(280);
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(12);
 
-        m_resList = new QListWidget;
-        m_resList->setFixedHeight(200);
-        m_resList->setFrameShape(QFrame::NoFrame);
-        v->addWidget(m_resList);
+            QHBoxLayout *header = new QHBoxLayout;
+            header->addWidget(Sigil::groupLabel("RESOLUTION"));
+            header->addStretch();
 
-        QPushButton *apply = new QPushButton("Apply");
-        apply->setCursor(Qt::PointingHandCursor);
-        apply->setFixedHeight(32);
-        m_dockPageButtons.append(apply);
-        QObject::connect(apply, &QPushButton::clicked, [this]() {
-            QListWidgetItem *it = m_resList->currentItem();
-            if (!it) return;
-            QString res = it->data(Qt::UserRole).toString();
-            QString out = it->data(Qt::UserRole + 1).toString();
-            QProcess::startDetached("swaymsg", {
-                "output", out, "mode", res });
-        });
-        v->addWidget(apply);
+            QPushButton *apply = new QPushButton("Apply");
+            apply->setCursor(Qt::PointingHandCursor);
+            apply->setFixedHeight(26);
+            apply->setStyleSheet(QString(
+                "QPushButton { background: rgba(255,255,255,20);"
+                "  color: %1; border: none; border-radius: 6px;"
+                "  font-size: 11px; padding: 2px 12px; }"
+                "QPushButton:hover { background: rgba(255,255,255,45); }")
+                .arg(Sigil::textPrimary().name()));
+            QObject::connect(apply, &QPushButton::clicked, [this]() {
+                QListWidgetItem *it = m_resList->currentItem();
+                if (!it) return;
+                QString res = it->data(Qt::UserRole).toString();
+                QString out = it->data(Qt::UserRole + 1).toString();
+                QProcess::startDetached("swaymsg",
+                    { "output", out, "mode", res });
+            });
+            header->addWidget(apply);
 
-        QPushButton *refresh = new QPushButton("Refresh");
-        refresh->setCursor(Qt::PointingHandCursor);
-        refresh->setFixedHeight(32);
-        m_dockPageButtons.append(refresh);
-        QObject::connect(refresh, &QPushButton::clicked,
-                         this, &SettingsWindow::refreshDisplayPage);
-        v->addWidget(refresh);
+            QPushButton *refresh = new QPushButton("Refresh");
+            refresh->setCursor(Qt::PointingHandCursor);
+            refresh->setFixedHeight(26);
+            refresh->setStyleSheet(QString(
+                "QPushButton { background: rgba(255,255,255,20);"
+                "  color: %1; border: none; border-radius: 6px;"
+                "  font-size: 11px; padding: 2px 12px; }"
+                "QPushButton:hover { background: rgba(255,255,255,45); }")
+                .arg(Sigil::textPrimary().name()));
+            QObject::connect(refresh, &QPushButton::clicked,
+                             this, &SettingsWindow::refreshDisplayPage);
+            header->addWidget(refresh);
+
+            cv->addLayout(header);
+
+            m_resList = new QListWidget;
+            m_resList->setFrameShape(QFrame::NoFrame);
+            cv->addWidget(m_resList, 1);
+            v->addWidget(c);
+        }
 
         v->addStretch();
-
         QTimer::singleShot(100, this, &SettingsWindow::refreshDisplayPage);
         return page;
     }
 
     QWidget *makeNetworkPage() {
         QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
         QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 24);
-        v->setSpacing(14);
+        v->setContentsMargins(28, 24, 28, 28);
+        v->setSpacing(20);
 
-        v->addWidget(sectionHeader("Network"));
+        v->addWidget(Sigil::sectionTitle("Network"));
 
-        m_networkInfo = new QLabel("Querying…");
-        m_networkInfo->setProperty("role", "sliderLabel");
-        m_sliderLabels.append(m_networkInfo);
-        v->addWidget(m_networkInfo);
+        // Status card
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setFixedHeight(86);
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(8);
+            cv->addWidget(Sigil::groupLabel("CURRENT CONNECTION"));
 
-        QLabel *wl = new QLabel("Wi-Fi Networks");
-        wl->setProperty("role", "sliderLabel");
-        m_sliderLabels.append(wl);
-        v->addWidget(wl);
+            m_networkInfo = new QLabel("Querying…");
+            m_networkInfo->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            cv->addWidget(m_networkInfo);
+            v->addWidget(c);
+        }
 
-        m_wifiList = new QListWidget;
-        m_wifiList->setFrameShape(QFrame::NoFrame);
-        v->addWidget(m_wifiList, 1);
+        // Wi-Fi list card
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setMinimumHeight(320);
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(12);
 
-        QPushButton *scan = new QPushButton("Scan");
-        scan->setCursor(Qt::PointingHandCursor);
-        scan->setFixedHeight(32);
-        m_dockPageButtons.append(scan);
-        QObject::connect(scan, &QPushButton::clicked,
-                         this, &SettingsWindow::refreshNetworkPage);
-        v->addWidget(scan);
+            QHBoxLayout *header = new QHBoxLayout;
+            header->addWidget(Sigil::groupLabel("WI-FI NETWORKS"));
+            header->addStretch();
 
-        QPushButton *open = new QPushButton("Open Network Settings");
-        open->setCursor(Qt::PointingHandCursor);
-        open->setFixedHeight(32);
-        m_dockPageButtons.append(open);
-        QObject::connect(open, &QPushButton::clicked, []() {
-            QProcess::startDetached("gnome-control-center", { "wifi" });
-        });
-        v->addWidget(open);
+            QPushButton *scan = new QPushButton("Scan");
+            scan->setCursor(Qt::PointingHandCursor);
+            scan->setFixedHeight(26);
+            scan->setStyleSheet(QString(
+                "QPushButton { background: rgba(255,255,255,20);"
+                "  color: %1; border: none; border-radius: 6px;"
+                "  font-size: 11px; padding: 2px 12px; }"
+                "QPushButton:hover { background: rgba(255,255,255,45); }")
+                .arg(Sigil::textPrimary().name()));
+            QObject::connect(scan, &QPushButton::clicked,
+                             this, &SettingsWindow::refreshNetworkPage);
+            header->addWidget(scan);
 
+            QPushButton *open = new QPushButton("Open Settings");
+            open->setCursor(Qt::PointingHandCursor);
+            open->setFixedHeight(26);
+            open->setStyleSheet(QString(
+                "QPushButton { background: rgba(255,255,255,20);"
+                "  color: %1; border: none; border-radius: 6px;"
+                "  font-size: 11px; padding: 2px 12px; }"
+                "QPushButton:hover { background: rgba(255,255,255,45); }")
+                .arg(Sigil::textPrimary().name()));
+            QObject::connect(open, &QPushButton::clicked, []() {
+                QProcess::startDetached("gnome-control-center", { "wifi" });
+            });
+            header->addWidget(open);
+
+            cv->addLayout(header);
+
+            m_wifiList = new QListWidget;
+            m_wifiList->setFrameShape(QFrame::NoFrame);
+            cv->addWidget(m_wifiList, 1);
+            v->addWidget(c);
+        }
+
+        v->addStretch();
         QTimer::singleShot(100, this, &SettingsWindow::refreshNetworkPage);
         return page;
     }
