@@ -355,6 +355,8 @@ struct VisualConfig {
     bool   widgetsVisible     = true;
     bool   dndEnabled         = false;
     int    notificationBannerMs = 6000;
+    bool   clock24Hour       = true;
+    bool   clockShowSeconds  = false;
     int    dockIconSize       = 52;   // base visual size (before magnify)
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -410,6 +412,12 @@ public:
                                    : m_cfg.dndEnabled;
         m_cfg.notificationBannerMs = getI("notificationBannerMs",
                                           m_cfg.notificationBannerMs);
+        m_cfg.clock24Hour        = o.contains("clock24Hour")
+                                   ? o["clock24Hour"].toBool(true)
+                                   : m_cfg.clock24Hour;
+        m_cfg.clockShowSeconds   = o.contains("clockShowSeconds")
+                                   ? o["clockShowSeconds"].toBool(false)
+                                   : m_cfg.clockShowSeconds;
         m_cfg.blurRefreshMs      = getI("blurRefreshMs",      m_cfg.blurRefreshMs);
         m_cfg.dockMagnifyMax     = getD("dockMagnifyMax",     m_cfg.dockMagnifyMax);
         m_cfg.dockSigma          = getD("dockSigma",          m_cfg.dockSigma);
@@ -452,6 +460,8 @@ public:
         o["dockIconSize"]       = m_cfg.dockIconSize;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
+        o["clock24Hour"]         = m_cfg.clock24Hour;
+        o["clockShowSeconds"]    = m_cfg.clockShowSeconds;
         o["blurRefreshMs"]      = m_cfg.blurRefreshMs;
         o["dockMagnifyMax"]     = m_cfg.dockMagnifyMax;
         o["dockSigma"]          = m_cfg.dockSigma;
@@ -5283,7 +5293,7 @@ private:
 class Toggle : public QWidget {
 public:
     Toggle(bool initial = false, QWidget *parent = nullptr)
-        : QWidget(parent), m_on(initial)
+        : QWidget(parent), m_on(initial), m_slide(initial ? 1.0 : 0.0)
     {
         setFixedSize(40, 22);
         setCursor(Qt::PointingHandCursor);
@@ -5708,6 +5718,9 @@ private:
         addSection(sb, "Notifications",
                    QString::fromUtf8("\xF0\x9F\x94\x94"),
                    QColor(200, 100, 60), makeNotificationsPage());
+        addSection(sb, "Date & Time",
+                   QString::fromUtf8("\xF0\x9F\x95\x90"),
+                   QColor(80, 120, 200), makeDateTimePage());
         addSection(sb, "About",      QString::fromUtf8("\xE2\x84\xB9"),
                    QColor(106, 106, 112), makeAboutPage());
 
@@ -6641,6 +6654,182 @@ private:
         if (m_wifiList->count() == 0) {
             m_wifiList->addItem("  (No networks found)");
         }
+    }
+
+    QWidget *makeDateTimePage() {
+        QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 28);
+        v->setSpacing(18);
+
+        v->addWidget(Sigil::sectionTitle("Date & Time"));
+
+        auto &vc = VisualConfigManager::instance().cfg();
+
+        // ---- Current time card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setFixedHeight(110);
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(8);
+
+            cv->addWidget(Sigil::groupLabel("CURRENT"));
+
+            QLabel *big = new QLabel;
+            big->setStyleSheet(QString(
+                "color: %1; font-size: 32px; font-weight: 300;"
+                " background: transparent; letter-spacing: 1px;")
+                .arg(Sigil::textPrimary().name()));
+
+            QLabel *sub = new QLabel;
+            sub->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textSecondary().name()));
+
+            QTimer *tick = new QTimer(c);
+            tick->setInterval(500);
+            QObject::connect(tick, &QTimer::timeout, [big, sub]() {
+                auto &cfg = VisualConfigManager::instance().cfg();
+                QDateTime now = QDateTime::currentDateTime();
+                QString fmt = cfg.clock24Hour ? "HH:mm" : "hh:mm AP";
+                if (cfg.clockShowSeconds)
+                    fmt = cfg.clock24Hour ? "HH:mm:ss" : "hh:mm:ss AP";
+                big->setText(now.toString(fmt));
+                sub->setText(now.toString("dddd, d MMMM yyyy"));
+            });
+            tick->start();
+            QDateTime now = QDateTime::currentDateTime();
+            big->setText(now.toString(vc.clock24Hour ? "HH:mm" : "hh:mm AP"));
+            sub->setText(now.toString("dddd, d MMMM yyyy"));
+
+            cv->addWidget(big);
+            cv->addWidget(sub);
+            v->addWidget(c);
+        }
+
+        // ---- Format card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(14);
+
+            cv->addWidget(Sigil::groupLabel("FORMAT"));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Use 24-hour clock",
+                "Off uses 12-hour with AM/PM",
+                vc.clock24Hour,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.clock24Hour = on; });
+                }));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Show seconds in clock",
+                "Top bar will display HH:MM:SS",
+                vc.clockShowSeconds,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.clockShowSeconds = on; });
+                }));
+
+            v->addWidget(c);
+        }
+
+        // ---- System card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(14);
+
+            cv->addWidget(Sigil::groupLabel("SYSTEM"));
+
+            QWidget *tzRow = new QWidget;
+            QHBoxLayout *tzH = new QHBoxLayout(tzRow);
+            tzH->setContentsMargins(0, 6, 0, 6);
+            tzH->setSpacing(14);
+
+            QVBoxLayout *tzLeft = new QVBoxLayout;
+            tzLeft->setContentsMargins(0, 0, 0, 0);
+            tzLeft->setSpacing(2);
+            QLabel *tzTitle = new QLabel("Time zone");
+            tzTitle->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            QLabel *tzSub = new QLabel("Read from /etc/timezone");
+            tzSub->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            tzLeft->addWidget(tzTitle);
+            tzLeft->addWidget(tzSub);
+            tzH->addLayout(tzLeft, 1);
+
+            QString tzValue = "Unknown";
+            QFile tzf("/etc/timezone");
+            if (tzf.open(QIODevice::ReadOnly))
+                tzValue = QString::fromUtf8(tzf.readAll()).trimmed();
+            QLabel *tzVal = new QLabel(tzValue);
+            tzVal->setStyleSheet(QString(
+                "color: %1; font-size: 13px;"
+                " background: rgba(255,255,255,15);"
+                " border-radius: 6px;"
+                " padding: 6px 12px;")
+                .arg(Sigil::textPrimary().name()));
+            tzH->addWidget(tzVal);
+
+            QPushButton *setTz = new QPushButton("Change…");
+            setTz->setCursor(Qt::PointingHandCursor);
+            setTz->setFixedHeight(30);
+            setTz->setStyleSheet(QString(
+                "QPushButton { background: rgba(255,255,255,20);"
+                "  color: %1; border: none; border-radius: 6px;"
+                "  padding: 4px 14px; font-size: 12px; }"
+                "QPushButton:hover { background: rgba(255,255,255,40); }")
+                .arg(Sigil::textPrimary().name()));
+            QObject::connect(setTz, &QPushButton::clicked, [this]() {
+                bool ok = false;
+                QString tz = ApokolipsInputDialog::getText(
+                    this, "Time zone",
+                    "Enter time zone (e.g. Africa/Kampala):",
+                    "Africa/Kampala", &ok);
+                if (!ok || tz.isEmpty()) return;
+                if (!QFile::exists("/usr/share/zoneinfo/" + tz)) return;
+                QProcess::execute("ln",
+                    { "-sf", "/usr/share/zoneinfo/" + tz,
+                      "/etc/localtime" });
+                QFile tzf2("/etc/timezone");
+                if (tzf2.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                    tzf2.write(tz.toUtf8());
+            });
+            tzH->addWidget(setTz);
+
+            cv->addWidget(tzRow);
+
+            bool ntpOn = false;
+            QProcess tc;
+            tc.start("timedatectl", { "show", "-p", "NTP", "--value" });
+            tc.waitForFinished(500);
+            ntpOn = QString::fromUtf8(tc.readAllStandardOutput())
+                        .trimmed() == "yes";
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Automatic date & time",
+                "Sync from network time servers (NTP)",
+                ntpOn,
+                [](bool on) {
+                    QProcess::startDetached("timedatectl", {
+                        "set-ntp", on ? "true" : "false" });
+                }));
+
+            v->addWidget(c);
+        }
+
+        v->addStretch();
+        return page;
     }
 
     QWidget *makeNotificationsPage() {
@@ -9882,12 +10071,20 @@ static int runShell(int argc, char *argv[])
 
     topLayout->addWidget(clock);
 
+    auto formatClock = []() {
+        auto &cfg = VisualConfigManager::instance().cfg();
+        QString fmt = cfg.clock24Hour ? "ddd HH:mm" : "ddd hh:mm AP";
+        if (cfg.clockShowSeconds)
+            fmt = cfg.clock24Hour ? "ddd HH:mm:ss" : "ddd hh:mm:ss AP";
+        return QDateTime::currentDateTime().toString(fmt);
+    };
+
     QTimer *ticker = new QTimer(&window);
-    QObject::connect(ticker, &QTimer::timeout, [clock]() {
-        clock->setText(QDateTime::currentDateTime().toString("ddd HH:mm"));
+    QObject::connect(ticker, &QTimer::timeout, [clock, formatClock]() {
+        clock->setText(formatClock());
     });
     ticker->start(1000);
-    clock->setText(QDateTime::currentDateTime().toString("ddd HH:mm"));
+    clock->setText(formatClock());
 
     rootLayout->addWidget(topBar);
 
