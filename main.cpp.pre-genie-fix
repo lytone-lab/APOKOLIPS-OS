@@ -2491,55 +2491,10 @@ protected:
         m.exec(globalPos);
     }
 
-public:
-    void handleClick(Qt::MouseButton btn, QPoint globalPos) {
-        qDebug() << "[dockicon] handleClick" << m_name << "btn=" << btn;
-        if (btn == Qt::LeftButton) {
-            if (m_name == "Power") {
-                showPowerMenu(globalPos);
-            } else {
-                launchApp();
-            }
-        } else if (btn == Qt::RightButton) {
-            // Build right-click menu
-            const Theme &t = ThemeManager::instance().current();
-            QMenu m(this);
-            m.setStyleSheet(QString(
-                "QMenu { background: %1; border: 1px solid %2;"
-                "  border-radius: 8px; padding: 5px; color: %3;"
-                "  font-size: 12px; }"
-                "QMenu::item { padding: 6px 18px; border-radius: 5px; }"
-                "QMenu::item:selected { background: %4; }")
-                .arg(rgba(t.panelBg), rgba(t.chromeBorder),
-                     t.textPrimary.name(), rgba(t.accentSoft)));
-
-            if (m_running) {
-                QAction *quitAct = m.addAction(QString("Quit %1").arg(m_name));
-                QObject::connect(quitAct, &QAction::triggered, [this]() {
-                    if (m_pid > 0)
-                        QProcess::execute("kill",
-                            {"-TERM", QString::number(m_pid)});
-                    m_running = false;
-                    m_pid = 0;
-                    update();
-                });
-            } else {
-                QAction *launchAct = m.addAction(
-                    QString("Open %1").arg(m_name));
-                QObject::connect(launchAct, &QAction::triggered, [this]() {
-                    launchApp();
-                });
-            }
-            m.exec(globalPos);
-        }
-    }
-
     void mousePressEvent(QMouseEvent *e) override {
-        handleClick(e->button(), e->globalPosition().toPoint());
-        e->accept();
-    }
-
-    void __unused_original_mousePress(QMouseEvent *e) {
+        qDebug() << "[dockicon] mousePress on" << m_name
+                 << "button:" << e->button()
+                 << "pos:" << e->position();
         if (e->button() == Qt::LeftButton) {
             if (m_name == "Power") {
                 showPowerMenu(e->globalPosition().toPoint());
@@ -2610,9 +2565,6 @@ public:
         StyleManager::subscribe([this](VisualStyle) { update(); });
         StyleManager::startPolling(this, [this]() { update(); });
 
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setMouseTracking(true);
-
         m_layout = new QHBoxLayout(this);
         m_layout->setContentsMargins(18, 18, 18, 14);
         m_layout->setSpacing(4);
@@ -2672,23 +2624,6 @@ protected:
         const auto &vc = VisualConfigManager::instance().cfg();
         StyleRenderer::drawPanel(p, QRectF(rect().adjusted(1, 1, -1, -1)),
                                  20, m_theme, vc.dockAlpha);
-    }
-
-    void mousePressEvent(QMouseEvent *e) override {
-        qDebug() << "[dock] press at" << e->position()
-                 << "btn" << e->button();
-        for (QWidget *child : findChildren<QWidget *>()) {
-            if (auto *di = dynamic_cast<DockIcon *>(child)) {
-                QPoint local = di->mapFrom(this, e->position().toPoint());
-                if (di->rect().contains(local)) {
-                    di->handleClick(e->button(),
-                                    e->globalPosition().toPoint());
-                    e->accept();
-                    return;
-                }
-            }
-        }
-        QWidget::mousePressEvent(e);
     }
 
     void mouseMoveEvent(QMouseEvent *e) override {
@@ -4841,13 +4776,8 @@ public:
         QHBoxLayout *h = new QHBoxLayout(this);
         h->setContentsMargins(10, 0, 10, 0);
         h->setSpacing(10);
-
-        IconBadge *badge = new IconBadge(glyph, color, 22);
-        badge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        h->addWidget(badge);
-
+        h->addWidget(new IconBadge(glyph, color, 22));
         m_text = new QLabel(label);
-        m_text->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         m_text->setStyleSheet(QString(
             "color: %1; font-size: 13px; background: transparent;")
             .arg(Sigil::textPrimary().name()));
@@ -6447,7 +6377,6 @@ static volatile sig_atomic_t g_minimizeToggle = 0;
 static QString g_swaySock;
 static int     g_trackedConId = -1;
 static QString g_trackedAppId;
-static int g_genieLookupRetries = 0;
 
 static QString discoverSwaySock() {
     QString dir = QString::fromUtf8(qgetenv("XDG_RUNTIME_DIR"));
@@ -7883,7 +7812,7 @@ static int runShell(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     app.setApplicationName("Apokolips Shell");
-
+    app.installEventFilter(new MouseSpy);
 
     std::signal(SIGUSR1, spotlightSignalHandler);
     std::signal(SIGUSR2, spotlightSignalHandler);
@@ -8040,7 +7969,7 @@ static int runShell(int argc, char *argv[])
                     return;
                 }
 
-                struct Win { int conId; QString appId; QRect rect; bool focused; };
+                struct Win { int conId; QString appId; QRect rect; };
                 Win target{-1, "", {}};
                 QList<Win> wins;
 
@@ -8060,7 +7989,6 @@ static int runShell(int argc, char *argv[])
                             win.appId = a;
                             win.rect = QRect(r.value("x").toInt(),
                                              r.value("y").toInt(), w, h);
-                            win.focused = n.value("focused").toBool();
                             wins.append(win);
                         }
                     }
@@ -8071,33 +7999,22 @@ static int runShell(int argc, char *argv[])
                 };
                 collect(doc.object());
 
-                // Choose the focused app window reported by sway.
-                for (const Win &w : wins) {
-                    if (w.focused) {
-                        target = w;
-                        break;
+                // Prefer the focused non-shell; else the one with the
+                // highest conId (most recently created).
+                if (!wins.isEmpty()) {
+                    target = wins.first();
+                    int bestId = -1;
+                    for (const Win &w : wins) {
+                        if (w.conId > bestId) { bestId = w.conId; target = w; }
                     }
                 }
-                // Only use a fallback when exactly one app window matches.
-                if (target.conId < 0 && wins.size() == 1)
-                    target = wins.first();
                 qDebug() << "[genie] target conId=" << target.conId
                          << "rect=" << target.rect
                          << "app=" << target.appId;
                 if (target.conId <= 0 || target.rect.isEmpty()) {
-                    if (++g_genieLookupRetries <= 20) {
-                        qDebug() << "[genie] target not mapped; retry"
-                                 << g_genieLookupRetries << "/20";
-                        QTimer::singleShot(100, root, [] {
-                            g_minimizeToggle = 1;
-                        });
-                    } else {
-                        qDebug() << "[genie] no target after 2 seconds; abort";
-                        g_genieLookupRetries = 0;
-                    }
+                    qDebug() << "[genie] no valid target";
                     return;
                 }
-                g_genieLookupRetries = 0;
 
                 // Find the dock icon position for this app
                 QString dockName;
