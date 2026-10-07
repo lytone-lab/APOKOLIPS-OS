@@ -3650,14 +3650,14 @@ public:
         h->setSpacing(10);
 
         QLabel *badge = new QLabel(glyph);
-        badge->setFixedSize(22, 22);
+        badge->setFixedSize(20, 20);
         badge->setAlignment(Qt::AlignCenter);
         badge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         badge->setStyleSheet(QString(
             "background: rgb(%1,%2,%3);"
             "color: #ffffff;"
-            "border-radius: 6px;"
-            "font-size: 12px;")
+            "border-radius: 10px;"
+            "font-size: 11px;")
             .arg(color.red()).arg(color.green()).arg(color.blue()));
         h->addWidget(badge);
 
@@ -3688,12 +3688,6 @@ protected:
         else if (m_hover)
             p.fillPath(path, QColor(255, 255, 255, 18));
 
-        if (m_selected) {
-            p.setPen(Qt::NoPen);
-            p.setBrush(QColor(168, 50, 50));   // oxblood
-            QRectF stripe(3, 7, 3, height() - 14);
-            p.drawRoundedRect(stripe, 1.5, 1.5);
-        }
     }
     void enterEvent(QEnterEvent *) override { m_hover = true; update(); }
     void leaveEvent(QEvent *) override { m_hover = false; update(); }
@@ -3770,6 +3764,9 @@ public:
 
         // First tab
         addTab();
+
+        // List view by default
+        setViewMode(false);
 
         show();
         update();
@@ -3863,14 +3860,12 @@ protected:
                              height() - TOP_TOTAL), sb);
         }
 
-        // ---- Separators: header / tabbar / toolbar / sidebar-right ----
-        p.setPen(QPen(QColor(255, 255, 255, 22), 1));
-        p.drawLine(0, TOP_H, width(), TOP_H);                    // under header
-        p.drawLine(0, TOP_H + TAB_H, width(), TOP_H + TAB_H);    // under tab bar
-        p.drawLine(0, TOP_TOTAL, width(), TOP_TOTAL);            // under toolbar
-        if (m_sidebar)
-            p.drawLine(m_sidebar->width(), TOP_TOTAL,
+        // ---- Only the sidebar / content divider stays ----
+        if (m_sidebar) {
+            p.setPen(QPen(QColor(255, 255, 255, 22), 1));
+            p.drawLine(m_sidebar->width(), 0,
                        m_sidebar->width(), height() - 1);
+        }
     }
 
 private:
@@ -3979,75 +3974,157 @@ private:
 
         root->addWidget(m_tabBar);
 
-        // ---- Toolbar: nav + breadcrumb + search ----
+        // ---- Toolbar (Ventura-style: left nav · center title · right cluster) ----
         m_toolbar = new QWidget;
-        m_toolbar->setFixedHeight(46);
+        m_toolbar->setFixedHeight(52);
         m_toolbar->setAttribute(Qt::WA_NoSystemBackground, true);
         QHBoxLayout *th = new QHBoxLayout(m_toolbar);
-        th->setContentsMargins(16, 8, 16, 8);
-        th->setSpacing(8);
+        th->setContentsMargins(14, 8, 14, 8);
+        th->setSpacing(6);
 
-        auto mkNavBtn = [this](const QString &glyph) {
+        // -- LEFT: back / forward --
+        auto mkIconBtn = [this](const QString &glyph) {
             QPushButton *b = new QPushButton(glyph);
             b->setFixedSize(28, 28);
             b->setCursor(Qt::PointingHandCursor);
             b->setFlat(true);
+            b->setStyleSheet(
+                "QPushButton {"
+                "  color: rgb(240, 237, 232);"
+                "  background: transparent;"
+                "  border: none;"
+                "  border-radius: 6px;"
+                "  font-size: 15px;"
+                "}"
+                "QPushButton:hover { background: rgba(255,255,255,25); }"
+                "QPushButton:disabled { color: rgba(240,237,232,80); }");
             m_navButtons.append(b);
             return b;
         };
-        m_backBtn = mkNavBtn(QString::fromUtf8("\xE2\x86\x90"));
-        m_fwdBtn  = mkNavBtn(QString::fromUtf8("\xE2\x86\x92"));
-        m_upBtn   = mkNavBtn(QString::fromUtf8("\xE2\x86\x91"));
+
+        // Segmented pill: [ ‹ | › ]
+        QWidget *navPill = new QWidget;
+        navPill->setFixedSize(60, 28);
+        navPill->setStyleSheet(
+            "QWidget {"
+            "  background: rgba(255,255,255,18);"
+            "  border-radius: 7px;"
+            "}");
+        QHBoxLayout *pill = new QHBoxLayout(navPill);
+        pill->setContentsMargins(0, 0, 0, 0);
+        pill->setSpacing(0);
+
+        auto mkArrow = [this](const QString &glyph) {
+            QPushButton *b = new QPushButton(glyph);
+            b->setFixedSize(29, 28);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setFlat(true);
+            b->setStyleSheet(
+                "QPushButton {"
+                "  color: rgb(240, 237, 232);"
+                "  background: transparent;"
+                "  border: none;"
+                "  font-size: 15px;"
+                "}"
+                "QPushButton:hover { background: rgba(255,255,255,22); }"
+                "QPushButton:disabled { color: rgba(240,237,232,70); }");
+            m_navButtons.append(b);
+            return b;
+        };
+        m_backBtn = mkArrow(QString::fromUtf8("\xE2\x80\xB9"));
+        m_fwdBtn  = mkArrow(QString::fromUtf8("\xE2\x80\xBA"));
+        pill->addWidget(m_backBtn);
+
+        // Thin divider between the two arrows
+        QFrame *divider = new QFrame;
+        divider->setFixedSize(1, 14);
+        divider->setStyleSheet(
+            "QFrame { background: rgba(255,255,255,30); border: none; }");
+        pill->addWidget(divider);
+
+        pill->addWidget(m_fwdBtn);
+
+        th->addWidget(navPill);
 
         QObject::connect(m_backBtn, &QPushButton::clicked, [this]() { goBack(); });
         QObject::connect(m_fwdBtn,  &QPushButton::clicked, [this]() { goForward(); });
-        QObject::connect(m_upBtn,   &QPushButton::clicked, [this]() {
-            QDir d(m_currentPath);
-            if (d.cdUp()) navigateTo(d.absolutePath());
-        });
 
-        th->addWidget(m_backBtn);
-        th->addWidget(m_fwdBtn);
-        th->addWidget(m_upBtn);
         th->addSpacing(10);
 
-        m_breadcrumb = new QLabel;
-        m_breadcrumb->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        // -- CENTER: title (bold path name) --
+        m_breadcrumb = new QLabel("Files");
+        m_breadcrumb->setAlignment(Qt::AlignCenter);
+        m_breadcrumb->setStyleSheet(
+            "color: rgb(240, 237, 232);"
+            "font-size: 15px;"
+            "font-weight: 600;"
+            "background: transparent;");
         th->addWidget(m_breadcrumb, 1);
 
-        // View toggle buttons
-        m_gridViewBtn = mkNavBtn(QString::fromUtf8("\xE2\x96\xA6"));  // grid
-        m_listViewBtn = mkNavBtn(QString::fromUtf8("\xE2\x98\xB0"));  // list
-        QObject::connect(m_gridViewBtn, &QPushButton::clicked,
-                         [this]() { setViewMode(true); });
-        QObject::connect(m_listViewBtn, &QPushButton::clicked,
-                         [this]() { setViewMode(false); });
-        th->addWidget(m_gridViewBtn);
-        th->addWidget(m_listViewBtn);
-        th->addSpacing(8);
+        // -- RIGHT: view toggles, then search icon --
+        auto mkIcon = [this](const QString &glyph) {
+            QPushButton *b = new QPushButton(glyph);
+            b->setFixedSize(30, 30);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setFlat(true);
+            b->setStyleSheet(
+                "QPushButton {"
+                "  color: rgb(240, 237, 232);"
+                "  background: transparent;"
+                "  border: none;"
+                "  border-radius: 6px;"
+                "  font-size: 15px;"
+                "}"
+                "QPushButton:hover { background: rgba(255,255,255,25); }"
+                "QPushButton:checked { background: rgba(255,255,255,45); }");
+            m_navButtons.append(b);
+            return b;
+        };
 
-        // Sort button (dropdown)
-        m_sortBtn = new QPushButton("Sort");
-        m_sortBtn->setCursor(Qt::PointingHandCursor);
-        m_sortBtn->setFlat(true);
-        m_sortBtn->setFixedHeight(28);
-        m_sortBtn->setStyleSheet("");
-        m_navButtons.append(m_sortBtn);
+        m_gridViewBtn = mkIcon(QString::fromUtf8("\xE2\x96\xA6"));
+        m_gridViewBtn->setCheckable(true);
+        m_gridViewBtn->setChecked(false);
+        m_listViewBtn = mkIcon(QString::fromUtf8("\xE2\x98\xB0"));
+        m_listViewBtn->setCheckable(true);
+        m_listViewBtn->setChecked(true);
+
+        QObject::connect(m_gridViewBtn, &QPushButton::clicked, [this]() {
+            setViewMode(true);
+            m_gridViewBtn->setChecked(true);
+            m_listViewBtn->setChecked(false);
+        });
+        QObject::connect(m_listViewBtn, &QPushButton::clicked, [this]() {
+            setViewMode(false);
+            m_gridViewBtn->setChecked(false);
+            m_listViewBtn->setChecked(true);
+        });
+
+        m_sortBtn = mkIcon(QString::fromUtf8("\xE2\x87\x85\xE2\x87\x86"));
         QObject::connect(m_sortBtn, &QPushButton::clicked,
                          this, &FileExplorer::showSortMenu);
+
+        th->addWidget(m_gridViewBtn);
+        th->addWidget(m_listViewBtn);
         th->addWidget(m_sortBtn);
-        th->addSpacing(10);
+        th->addSpacing(6);
+
+        // -- search: hidden behind a magnifier icon --
+        m_searchBtn = mkIcon(QString::fromUtf8("\xF0\x9F\x94\x8D"));
+        QObject::connect(m_searchBtn, &QPushButton::clicked, [this]() {
+            m_search->setVisible(!m_search->isVisible());
+            if (m_search->isVisible()) m_search->setFocus();
+        });
+        th->addWidget(m_searchBtn);
 
         m_search = new QLineEdit;
         m_search->setPlaceholderText("Search");
         m_search->setFixedWidth(180);
         m_search->setAttribute(Qt::WA_MacShowFocusRect, false);
-        QObject::connect(m_search, &QLineEdit::textChanged, [this](const QString &s) {
-            if (s.isEmpty()) {
-                m_proxy->setFilterFixedString("");
-            } else {
-                m_proxy->setFilterFixedString(s);
-            }
+        m_search->setVisible(false);
+        QObject::connect(m_search, &QLineEdit::textChanged,
+                         [this](const QString &s) {
+            if (s.isEmpty()) m_proxy->setFilterFixedString("");
+            else             m_proxy->setFilterFixedString(s);
         });
         th->addWidget(m_search);
 
@@ -4064,36 +4141,49 @@ private:
         m_sidebar->setStyleSheet(
             "QWidget { background: transparent; }");
         QVBoxLayout *sb = new QVBoxLayout(m_sidebar);
-        sb->setContentsMargins(10, 14, 10, 14);
+        sb->setContentsMargins(10, 8, 10, 14);
         sb->setSpacing(2);
 
-        struct Place {
-            const char *glyph; QColor color; const char *name; const char *path;
+        auto addGroupHeader = [&](const QString &text) {
+            QLabel *h = new QLabel(text);
+            h->setStyleSheet(
+                "color: rgb(122, 120, 115);"
+                "font-size: 10px;"
+                "font-weight: 600;"
+                "letter-spacing: 1.2px;"
+                "background: transparent;"
+                "padding: 10px 10px 6px 10px;");
+            sb->addWidget(h);
         };
-        QString home = QDir::homePath();
-        const Place places[] = {
-            { "\xF0\x9F\x8F\xA0", QColor(168, 120,  90), "Home",      "%HOME%"      },
-            { "\xF0\x9F\x96\xA5", QColor( 90, 122, 158), "Desktop",   "%HOME%/Desktop" },
-            { "\xF0\x9F\x93\x84", QColor(122, 106, 159), "Documents", "%HOME%/Documents" },
-            { "\xE2\xAC\x87",     QColor( 74, 122,  90), "Downloads", "%HOME%/Downloads" },
-            { "\xF0\x9F\x8E\xB5", QColor(160,  90, 106), "Music",     "%HOME%/Music" },
-            { "\xF0\x9F\x96\xBC", QColor( 74, 122, 122), "Pictures",  "%HOME%/Pictures" },
-            { "\xF0\x9F\x8E\xAC", QColor(166, 122,  90), "Videos",    "%HOME%/Videos" },
-            { "\xF0\x9F\x97\x91", QColor(106, 106, 112), "Trash",     "%HOME%/.local/share/Trash/files" },
-        };
-        for (const auto &p : places) {
-            QString path = QString(p.path).replace("%HOME%", home);
-            FinderPlaceRow *row = new FinderPlaceRow(QString::fromUtf8(p.glyph),
-                                         p.color, p.name);
+
+        auto addRow = [&](const char *glyph, const QColor &color,
+                          const QString &name, const QString &relPath)
+        {
+            QString path = QString(relPath).replace("%HOME%", QDir::homePath());
+            FinderPlaceRow *row = new FinderPlaceRow(
+                QString::fromUtf8(glyph), color, name);
             m_placeRows.append(row);
             sb->addWidget(row);
-            QObject::connect(row, &QWidget::destroyed, []() {});
             row->onClick = [this, row, path]() {
                 for (FinderPlaceRow *r : m_placeRows) r->setSelected(false);
                 row->setSelected(true);
                 navigateTo(path);
             };
-        }
+        };
+
+        addGroupHeader("FAVORITES");
+        addRow("\xF0\x9F\x8F\xA0", QColor(168, 120,  90), "Home",      "%HOME%");
+        addRow("\xF0\x9F\x96\xA5", QColor( 90, 122, 158), "Desktop",   "%HOME%/Desktop");
+        addRow("\xF0\x9F\x93\x84", QColor(122, 106, 159), "Documents", "%HOME%/Documents");
+        addRow("\xE2\xAC\x87",     QColor( 74, 122,  90), "Downloads", "%HOME%/Downloads");
+        addRow("\xF0\x9F\x8E\xB5", QColor(160,  90, 106), "Music",     "%HOME%/Music");
+        addRow("\xF0\x9F\x96\xBC", QColor( 74, 122, 122), "Pictures",  "%HOME%/Pictures");
+        addRow("\xF0\x9F\x8E\xAC", QColor(166, 122,  90), "Videos",    "%HOME%/Videos");
+
+        addGroupHeader("LOCATIONS");
+        addRow("\xF0\x9F\x97\x91", QColor(106, 106, 112), "Trash",
+               "%HOME%/.local/share/Trash/files");
+
         if (!m_placeRows.isEmpty()) m_placeRows[0]->setSelected(true);
         sb->addStretch();
 
@@ -4186,17 +4276,43 @@ private:
         body->addWidget(m_treeView, 1);
         root->addLayout(body, 1);
 
-        // ---- Status bar at bottom ----
+        // ---- Bottom bar: breadcrumb left · centered status ----
         m_statusBar = new QWidget;
-        m_statusBar->setFixedHeight(24);
+        m_statusBar->setFixedHeight(26);
         m_statusBar->setAttribute(Qt::WA_NoSystemBackground, true);
         QHBoxLayout *sb2 = new QHBoxLayout(m_statusBar);
-        sb2->setContentsMargins(16, 0, 16, 0);
-        m_statusLeft = new QLabel;
-        m_statusRight = new QLabel;
-        sb2->addWidget(m_statusLeft);
+        sb2->setContentsMargins(14, 0, 14, 0);
+        sb2->setSpacing(8);
+
+        // Breadcrumb path (right-truncated if long)
+        m_pathCrumb = new QLabel;
+        m_pathCrumb->setStyleSheet(
+            "color: rgb(122, 120, 115);"
+            "font-size: 11px;"
+            "background: transparent;");
+        sb2->addWidget(m_pathCrumb);
+
         sb2->addStretch();
+
+        // Centered status
+        m_statusLeft = new QLabel;
+        m_statusLeft->setAlignment(Qt::AlignCenter);
+        m_statusLeft->setStyleSheet(
+            "color: rgb(122, 120, 115);"
+            "font-size: 11px;"
+            "background: transparent;");
+        sb2->addWidget(m_statusLeft);
+
+        sb2->addStretch();
+
+        // Right slot (kept empty for now; could show free space)
+        m_statusRight = new QLabel;
+        m_statusRight->setStyleSheet(
+            "color: rgb(122, 120, 115);"
+            "font-size: 11px;"
+            "background: transparent;");
         sb2->addWidget(m_statusRight);
+
         root->addWidget(m_statusBar);
 
         // ---- Floating status toast (bottom-right of window) ----
@@ -4542,6 +4658,15 @@ private:
             }
             delete item;
         }
+
+        // Hide the entire tab bar when only one tab is open.
+        // It reappears as soon as the user opens a second tab (Ctrl+T).
+        if (m_tabs.size() <= 1) {
+            if (m_tabBar) m_tabBar->setVisible(false);
+            return;
+        }
+        if (m_tabBar) m_tabBar->setVisible(true);
+
         // Re-add "+" button
         m_tabBarLayout->addWidget(m_newTabBtn);
 
@@ -4713,30 +4838,50 @@ private:
 
     void updateStatusBar() {
         if (!m_statusLeft || !m_statusRight) return;
-        int count = m_view->model() ? m_view->model()->rowCount(m_view->rootIndex()) : 0;
-        int sel = m_view->selectionModel()
-                  ? m_view->selectionModel()->selectedIndexes().size() : 0;
 
-        QString left = QString("%1 item%2")
+        // Count items in current root (works for both view modes)
+        int count = 0;
+        if (m_fs) {
+            QModelIndex root = m_fs->index(m_currentPath.isEmpty()
+                                           ? QDir::homePath()
+                                           : m_currentPath);
+            if (root.isValid()) count = m_fs->rowCount(root);
+        }
+        int sel = 0;
+        if (m_view && m_view->selectionModel())
+            sel = m_view->selectionModel()->selectedIndexes().size();
+
+        QString st = QString("%1 item%2")
             .arg(count).arg(count == 1 ? "" : "s");
-        if (sel > 0) left += QString("  ·  %1 selected").arg(sel);
-        m_statusLeft->setText(left);
+        if (sel > 0) st += QString(", %1 selected").arg(sel);
 
-        // Free space on current volume
+        // Append free space
         QStorageInfo storage(m_currentPath.isEmpty()
                              ? QDir::homePath() : m_currentPath);
-        QString right;
         if (storage.isValid()) {
             double free = storage.bytesAvailable() / (1024.0*1024.0*1024.0);
-            right = QString("%1 GB free").arg(free, 0, 'f', 1);
+            st += QString(", %1 GB available").arg(free, 0, 'f', 2);
         }
-        m_statusRight->setText(right);
+        m_statusLeft->setText(st);
+
+        // Breadcrumb at left
+        if (m_pathCrumb) {
+            QString home = QDir::homePath();
+            QString p = m_currentPath;
+            if (p.startsWith(home)) p = "~" + p.mid(home.size());
+            m_pathCrumb->setText(p);
+        }
+
+        // Right slot empty for now
+        m_statusRight->setText("");
     }
 
     QString shortenPath(const QString &p) const {
-        QString home = QDir::homePath();
-        if (p.startsWith(home)) return "~" + p.mid(home.size());
-        return p;
+        // Center title shows just the current folder's name.
+        QFileInfo fi(p);
+        QString name = fi.fileName();
+        if (name.isEmpty()) name = p;             // root
+        return name;
     }
 
     void restyleAll() {
@@ -4855,6 +5000,8 @@ private:
     QPushButton   *m_gridViewBtn = nullptr;
     QPushButton   *m_listViewBtn = nullptr;
     QPushButton   *m_sortBtn     = nullptr;
+    QPushButton   *m_searchBtn   = nullptr;
+    QLabel        *m_pathCrumb   = nullptr;
     QWidget       *m_statusBar   = nullptr;
     QLabel        *m_statusLeft  = nullptr;
     QLabel        *m_statusRight = nullptr;
