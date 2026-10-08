@@ -3106,8 +3106,10 @@ protected:
         } else if (m_name == "Photos") {
             program = "eog";
         } else if (m_name == "BoomTube") {
-            program = QCoreApplication::applicationFilePath();
-            args = { "--boomtube" };
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                { "--boomtube" });
+            return;
         } else if (m_name == "Terminal") {
             program = "foot";
         } else if (m_name == "Notes") {
