@@ -5636,22 +5636,12 @@ public:
     {
         setFixedSize(size, size);
         setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAttribute(Qt::WA_OpaquePaintEvent, false);
-        setAutoFillBackground(false);
     }
 protected:
     void paintEvent(QPaintEvent *) override {
         if (!m_paint) return;
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
-
-        // Clip to a smooth circle so badge edges never show corners
-        QPainterPath clip;
-        clip.addEllipse(QRectF(rect()));
-        p.setClipPath(clip);
-
         m_paint(p, QRectF(rect()));
     }
 private:

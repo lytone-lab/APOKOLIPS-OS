@@ -5627,90 +5627,10 @@ private:
 };
 
 // ---- Sidebar row: badge + label, selectable ----
-// ---- Custom-paint badge (used for the Arc Reactor) ----
-class CustomBadge : public QWidget {
-public:
-    CustomBadge(std::function<void(QPainter&, QRectF)> paint,
-                int size = 22, QWidget *parent = nullptr)
-        : QWidget(parent), m_paint(paint)
-    {
-        setFixedSize(size, size);
-        setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAttribute(Qt::WA_OpaquePaintEvent, false);
-        setAutoFillBackground(false);
-    }
-protected:
-    void paintEvent(QPaintEvent *) override {
-        if (!m_paint) return;
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-
-        // Clip to a smooth circle so badge edges never show corners
-        QPainterPath clip;
-        clip.addEllipse(QRectF(rect()));
-        p.setClipPath(clip);
-
-        m_paint(p, QRectF(rect()));
-    }
-private:
-    std::function<void(QPainter&, QRectF)> m_paint;
-};
-
-// ---- Iron Man 2 style arc reactor mark ----
-inline void drawArcReactor(QPainter &p, const QRectF &r)
-{
-    const QPointF c = r.center();
-    const qreal   d = r.width();
-
-    // Outer ring (cyan)
-    QColor cyan(120, 220, 255);
-    QColor cyanDim(80, 180, 220);
-
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(16, 20, 28));
-    p.drawEllipse(r.adjusted(0.5, 0.5, -0.5, -0.5));
-
-    QPen outerPen(cyanDim, 1.1);
-    p.setPen(outerPen);
-    p.setBrush(Qt::NoBrush);
-    p.drawEllipse(r.adjusted(1.0, 1.0, -1.0, -1.0));
-
-    // Mid ring
-    qreal inset = d * 0.20;
-    QRectF mid = r.adjusted(inset, inset, -inset, -inset);
-    QPen midPen(QColor(cyanDim.red(), cyanDim.green(), cyanDim.blue(), 180), 0.8);
-    p.setPen(midPen);
-    p.drawEllipse(mid);
-
-    // Triangle (pointing down — Iron Man 2 look)
-    qreal s = d * 0.26;
-    QPolygonF tri;
-    tri << QPointF(c.x(),              c.y() - s)
-        << QPointF(c.x() - s * 0.866,  c.y() + s * 0.5)
-        << QPointF(c.x() + s * 0.866,  c.y() + s * 0.5);
-    QPen triPen(cyan, 1.1);
-    triPen.setJoinStyle(Qt::RoundJoin);
-    p.setPen(triPen);
-    p.setBrush(Qt::NoBrush);
-    p.drawPolygon(tri);
-
-    // Inner glow at center
-    QRadialGradient g(c, d * 0.24);
-    g.setColorAt(0.0, QColor(230, 250, 255, 255));
-    g.setColorAt(0.5, QColor(140, 230, 255, 220));
-    g.setColorAt(1.0, QColor(80, 180, 220, 0));
-    p.setPen(Qt::NoPen);
-    p.setBrush(g);
-    p.drawEllipse(c, d * 0.24, d * 0.24);
-}
-
 class SidebarRow : public QWidget {
 public:
     SidebarRow(const QString &label, const QString &glyph,
-               const QColor &color, QWidget *parent = nullptr,
-               std::function<void(QPainter&, QRectF)> customPaint = nullptr)
+               const QColor &color, QWidget *parent = nullptr)
         : QWidget(parent), m_label(label)
     {
         setFixedHeight(34);
@@ -5721,14 +5641,9 @@ public:
         h->setContentsMargins(10, 0, 10, 0);
         h->setSpacing(10);
 
-        if (customPaint) {
-            CustomBadge *badge = new CustomBadge(customPaint, 22);
-            h->addWidget(badge);
-        } else {
-            IconBadge *badge = new IconBadge(glyph, color, 22);
-            badge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-            h->addWidget(badge);
-        }
+        IconBadge *badge = new IconBadge(glyph, color, 22);
+        badge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        h->addWidget(badge);
 
         m_text = new QLabel(label);
         m_text->setAttribute(Qt::WA_TransparentForMouseEvents, true);
@@ -6613,8 +6528,7 @@ private:
         addSection(sb, "Display",    QString::fromUtf8("\xE2\x96\xA3"),
                    QColor(74, 122, 122), makeDisplayPage());
         addSection(sb, "Arc Reactor", QString::fromUtf8("\xE2\x9A\xA1"),
-                   QColor(74, 122, 90), makeArcReactorPage(),
-                   Sigil::drawArcReactor);
+                   QColor(74, 122, 90), makeArcReactorPage());
         addSection(sb, "Bluetooth",  QString::fromUtf8("\xE2\x9C\xA6"),
                    QColor(90, 122, 158), makeBluetoothPage());
         addSection(sb, "Wi-Fi",      QString::fromUtf8("\xE2\x98\x81"),
@@ -6646,11 +6560,9 @@ private:
 
     void addSection(QVBoxLayout *sb, const QString &name,
                     const QString &glyph, const QColor &color,
-                    QWidget *page,
-                    std::function<void(QPainter&, QRectF)> customPaint = nullptr)
+                    QWidget *page)
     {
-        Sigil::SidebarRow *row = new Sigil::SidebarRow(
-            name, glyph, color, nullptr, customPaint);
+        Sigil::SidebarRow *row = new Sigil::SidebarRow(name, glyph, color);
         m_sidebarRows.append(row);
         sb->addWidget(row);
 

@@ -5636,10 +5636,6 @@ public:
     {
         setFixedSize(size, size);
         setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAttribute(Qt::WA_OpaquePaintEvent, false);
-        setAutoFillBackground(false);
     }
 protected:
     void paintEvent(QPaintEvent *) override {

@@ -370,9 +370,6 @@ struct VisualConfig {
     double genieStagger       = 0.35;
     double genieCurve         = 0.65;
     double genieFadeStart     = 0.95;
-    int    screenOffTimeoutMin = 15;   // 0 = never
-    int    sleepTimeoutMin     = 30;   // 0 = never
-    bool   lowPowerMode        = false;
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
     double dockSigma          = 55.0;
@@ -437,13 +434,6 @@ public:
         m_cfg.genieFadeStart     = o.contains("genieFadeStart")
                                    ? o["genieFadeStart"].toDouble(0.95)
                                    : m_cfg.genieFadeStart;
-        m_cfg.screenOffTimeoutMin = getI("screenOffTimeoutMin",
-                                         m_cfg.screenOffTimeoutMin);
-        m_cfg.sleepTimeoutMin     = getI("sleepTimeoutMin",
-                                         m_cfg.sleepTimeoutMin);
-        m_cfg.lowPowerMode        = o.contains("lowPowerMode")
-                                   ? o["lowPowerMode"].toBool(false)
-                                   : m_cfg.lowPowerMode;
         m_cfg.dndEnabled         = o.contains("dndEnabled")
                                    ? o["dndEnabled"].toBool(false)
                                    : m_cfg.dndEnabled;
@@ -482,10 +472,6 @@ public:
         if (m_cfg.genieCurve > 2.0)   m_cfg.genieCurve = 2.0;
         if (m_cfg.genieFadeStart < 0.5) m_cfg.genieFadeStart = 0.5;
         if (m_cfg.genieFadeStart > 1.0) m_cfg.genieFadeStart = 1.0;
-        if (m_cfg.screenOffTimeoutMin < 0)   m_cfg.screenOffTimeoutMin = 0;
-        if (m_cfg.screenOffTimeoutMin > 240) m_cfg.screenOffTimeoutMin = 240;
-        if (m_cfg.sleepTimeoutMin < 0)   m_cfg.sleepTimeoutMin = 0;
-        if (m_cfg.sleepTimeoutMin > 240) m_cfg.sleepTimeoutMin = 240;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
         if (m_cfg.dockPosition < 0)  m_cfg.dockPosition = 0;
         if (m_cfg.dockPosition > 2)  m_cfg.dockPosition = 2;
@@ -519,9 +505,6 @@ public:
         o["genieStagger"]       = m_cfg.genieStagger;
         o["genieCurve"]         = m_cfg.genieCurve;
         o["genieFadeStart"]     = m_cfg.genieFadeStart;
-        o["screenOffTimeoutMin"] = m_cfg.screenOffTimeoutMin;
-        o["sleepTimeoutMin"]     = m_cfg.sleepTimeoutMin;
-        o["lowPowerMode"]        = m_cfg.lowPowerMode;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
@@ -5627,90 +5610,10 @@ private:
 };
 
 // ---- Sidebar row: badge + label, selectable ----
-// ---- Custom-paint badge (used for the Arc Reactor) ----
-class CustomBadge : public QWidget {
-public:
-    CustomBadge(std::function<void(QPainter&, QRectF)> paint,
-                int size = 22, QWidget *parent = nullptr)
-        : QWidget(parent), m_paint(paint)
-    {
-        setFixedSize(size, size);
-        setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAttribute(Qt::WA_OpaquePaintEvent, false);
-        setAutoFillBackground(false);
-    }
-protected:
-    void paintEvent(QPaintEvent *) override {
-        if (!m_paint) return;
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-
-        // Clip to a smooth circle so badge edges never show corners
-        QPainterPath clip;
-        clip.addEllipse(QRectF(rect()));
-        p.setClipPath(clip);
-
-        m_paint(p, QRectF(rect()));
-    }
-private:
-    std::function<void(QPainter&, QRectF)> m_paint;
-};
-
-// ---- Iron Man 2 style arc reactor mark ----
-inline void drawArcReactor(QPainter &p, const QRectF &r)
-{
-    const QPointF c = r.center();
-    const qreal   d = r.width();
-
-    // Outer ring (cyan)
-    QColor cyan(120, 220, 255);
-    QColor cyanDim(80, 180, 220);
-
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(16, 20, 28));
-    p.drawEllipse(r.adjusted(0.5, 0.5, -0.5, -0.5));
-
-    QPen outerPen(cyanDim, 1.1);
-    p.setPen(outerPen);
-    p.setBrush(Qt::NoBrush);
-    p.drawEllipse(r.adjusted(1.0, 1.0, -1.0, -1.0));
-
-    // Mid ring
-    qreal inset = d * 0.20;
-    QRectF mid = r.adjusted(inset, inset, -inset, -inset);
-    QPen midPen(QColor(cyanDim.red(), cyanDim.green(), cyanDim.blue(), 180), 0.8);
-    p.setPen(midPen);
-    p.drawEllipse(mid);
-
-    // Triangle (pointing down — Iron Man 2 look)
-    qreal s = d * 0.26;
-    QPolygonF tri;
-    tri << QPointF(c.x(),              c.y() - s)
-        << QPointF(c.x() - s * 0.866,  c.y() + s * 0.5)
-        << QPointF(c.x() + s * 0.866,  c.y() + s * 0.5);
-    QPen triPen(cyan, 1.1);
-    triPen.setJoinStyle(Qt::RoundJoin);
-    p.setPen(triPen);
-    p.setBrush(Qt::NoBrush);
-    p.drawPolygon(tri);
-
-    // Inner glow at center
-    QRadialGradient g(c, d * 0.24);
-    g.setColorAt(0.0, QColor(230, 250, 255, 255));
-    g.setColorAt(0.5, QColor(140, 230, 255, 220));
-    g.setColorAt(1.0, QColor(80, 180, 220, 0));
-    p.setPen(Qt::NoPen);
-    p.setBrush(g);
-    p.drawEllipse(c, d * 0.24, d * 0.24);
-}
-
 class SidebarRow : public QWidget {
 public:
     SidebarRow(const QString &label, const QString &glyph,
-               const QColor &color, QWidget *parent = nullptr,
-               std::function<void(QPainter&, QRectF)> customPaint = nullptr)
+               const QColor &color, QWidget *parent = nullptr)
         : QWidget(parent), m_label(label)
     {
         setFixedHeight(34);
@@ -5721,14 +5624,9 @@ public:
         h->setContentsMargins(10, 0, 10, 0);
         h->setSpacing(10);
 
-        if (customPaint) {
-            CustomBadge *badge = new CustomBadge(customPaint, 22);
-            h->addWidget(badge);
-        } else {
-            IconBadge *badge = new IconBadge(glyph, color, 22);
-            badge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-            h->addWidget(badge);
-        }
+        IconBadge *badge = new IconBadge(glyph, color, 22);
+        badge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        h->addWidget(badge);
 
         m_text = new QLabel(label);
         m_text->setAttribute(Qt::WA_TransparentForMouseEvents, true);
@@ -6612,9 +6510,6 @@ private:
                    QColor(160, 90, 106), makeSoundPage());
         addSection(sb, "Display",    QString::fromUtf8("\xE2\x96\xA3"),
                    QColor(74, 122, 122), makeDisplayPage());
-        addSection(sb, "Arc Reactor", QString::fromUtf8("\xE2\x9A\xA1"),
-                   QColor(74, 122, 90), makeArcReactorPage(),
-                   Sigil::drawArcReactor);
         addSection(sb, "Bluetooth",  QString::fromUtf8("\xE2\x9C\xA6"),
                    QColor(90, 122, 158), makeBluetoothPage());
         addSection(sb, "Wi-Fi",      QString::fromUtf8("\xE2\x98\x81"),
@@ -6646,11 +6541,9 @@ private:
 
     void addSection(QVBoxLayout *sb, const QString &name,
                     const QString &glyph, const QColor &color,
-                    QWidget *page,
-                    std::function<void(QPainter&, QRectF)> customPaint = nullptr)
+                    QWidget *page)
     {
-        Sigil::SidebarRow *row = new Sigil::SidebarRow(
-            name, glyph, color, nullptr, customPaint);
+        Sigil::SidebarRow *row = new Sigil::SidebarRow(name, glyph, color);
         m_sidebarRows.append(row);
         sb->addWidget(row);
 
@@ -7534,224 +7427,6 @@ private:
 
         v->addStretch();
         QTimer::singleShot(100, this, &SettingsWindow::refreshDisplayPage);
-        return page;
-    }
-
-    QWidget *makeArcReactorPage() {
-        QWidget *page = new QWidget;
-        page->setAutoFillBackground(false);
-        QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
-
-        v->addWidget(Sigil::sectionTitle("Arc Reactor"));
-
-        auto &vc = VisualConfigManager::instance().cfg();
-
-        // ---- Battery status card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("BATTERY"));
-
-            // Query upower
-            QProcess q;
-            q.start("upower", { "-i",
-                "/org/freedesktop/UPower/devices/battery_BAT0" });
-            q.waitForFinished(1200);
-            QString out = QString::fromUtf8(q.readAllStandardOutput());
-
-            bool present = out.contains("present:") &&
-                           !out.contains("present:             no");
-
-            if (!present) {
-                QLabel *head = new QLabel("No battery detected");
-                head->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textPrimary().name()));
-                QLabel *sub = new QLabel(
-                    "This machine has no battery. Plug in a laptop-style "
-                    "power source, or ignore if this is a desktop.");
-                sub->setWordWrap(true);
-                sub->setStyleSheet(QString(
-                    "color: %1; font-size: 11px; background: transparent;")
-                    .arg(Sigil::textDim().name()));
-                cv->addWidget(head);
-                cv->addWidget(sub);
-            } else {
-                // Parse fields
-                auto getField = [&](const QString &key) -> QString {
-                    for (const QString &line : out.split('\n')) {
-                        QString t = line.trimmed();
-                        if (t.startsWith(key + ":")) {
-                            return t.section(':', 1).trimmed();
-                        }
-                    }
-                    return {};
-                };
-
-                QString pct  = getField("percentage");
-                QString st   = getField("state");
-                QString rate = getField("energy-rate");
-                QString full = getField("energy-full");
-                QString cap  = getField("capacity");
-
-                // Big percentage row
-                QHBoxLayout *bigRow = new QHBoxLayout;
-                QLabel *big = new QLabel(pct);
-                big->setStyleSheet(QString(
-                    "color: %1; font-size: 34px; font-weight: 300;"
-                    " background: transparent; letter-spacing: 1px;")
-                    .arg(Sigil::textPrimary().name()));
-                bigRow->addWidget(big);
-                bigRow->addStretch();
-                QLabel *stLbl = new QLabel(st);
-                stLbl->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textSecondary().name()));
-                bigRow->addWidget(stLbl, 0, Qt::AlignVCenter);
-                cv->addLayout(bigRow);
-
-                // Details
-                auto addDetail = [&](const QString &k, const QString &val) {
-                    if (val.isEmpty()) return;
-                    QHBoxLayout *h = new QHBoxLayout;
-                    QLabel *l = new QLabel(k);
-                    l->setStyleSheet(QString(
-                        "color: %1; font-size: 12px; background: transparent;")
-                        .arg(Sigil::textDim().name()));
-                    QLabel *r = new QLabel(val);
-                    r->setStyleSheet(QString(
-                        "color: %1; font-size: 12px; background: transparent;")
-                        .arg(Sigil::textSecondary().name()));
-                    h->addWidget(l);
-                    h->addStretch();
-                    h->addWidget(r);
-                    cv->addLayout(h);
-                };
-                addDetail("Power draw",   rate);
-                addDetail("Total energy", full);
-                addDetail("Health",       cap);
-
-                // Refresh button
-                QPushButton *refresh = new QPushButton("Refresh");
-                refresh->setCursor(Qt::PointingHandCursor);
-                refresh->setFixedHeight(26);
-                refresh->setMinimumWidth(80);
-                refresh->setStyleSheet(QString(
-                    "QPushButton { background: rgba(255,255,255,20);"
-                    "  color: %1; border: none; border-radius: 6px;"
-                    "  font-size: 11px; padding: 2px 12px; }"
-                    "QPushButton:hover { background: rgba(255,255,255,45); }")
-                    .arg(Sigil::textPrimary().name()));
-                QObject::connect(refresh, &QPushButton::clicked, [this]() {
-                    auto *sw = qobject_cast<QWidget *>(this);
-                    if (sw) sw->update();
-                });
-                QHBoxLayout *btnRow = new QHBoxLayout;
-                btnRow->addWidget(refresh);
-                btnRow->addStretch();
-                cv->addLayout(btnRow);
-            }
-            v->addWidget(c);
-        }
-
-        // ---- Power saving card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("POWER SAVING"));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Low power mode",
-                "Reduce CPU performance to save battery",
-                vc.lowPowerMode,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.lowPowerMode = on; });
-                    // Apply CPU governor via cpupower
-                    QProcess::startDetached("pkexec", {
-                        "cpupower", "frequency-set", "-g",
-                        on ? "powersave" : "ondemand" });
-                }));
-
-            v->addWidget(c);
-        }
-
-        // ---- Timeouts card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("TIMEOUTS"));
-
-            QStringList opts = { "Never", "5 min", "15 min", "30 min",
-                                 "1 hour", "2 hours", "4 hours" };
-            QList<int> vals = { 0, 5, 15, 30, 60, 120, 240 };
-
-            auto makeTimeoutRow = [&](const QString &title,
-                                      const QString &sub,
-                                      int currentMin,
-                                      std::function<void(int)> onChange)
-            {
-                QWidget *row = new QWidget;
-                QHBoxLayout *h = new QHBoxLayout(row);
-                h->setContentsMargins(0, 6, 0, 6);
-                h->setSpacing(14);
-
-                QVBoxLayout *left = new QVBoxLayout;
-                left->setContentsMargins(0, 0, 0, 0);
-                left->setSpacing(2);
-                QLabel *t = new QLabel(title);
-                t->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textPrimary().name()));
-                QLabel *s = new QLabel(sub);
-                s->setStyleSheet(QString(
-                    "color: %1; font-size: 11px; background: transparent;")
-                    .arg(Sigil::textDim().name()));
-                left->addWidget(t);
-                left->addWidget(s);
-                h->addLayout(left, 1);
-
-                int idx = vals.indexOf(currentMin);
-                if (idx < 0) idx = 0;
-
-                Sigil::Dropdown *dd = new Sigil::Dropdown(
-                    opts, idx,
-                    [onChange, vals](int i) {
-                        if (i >= 0 && i < vals.size())
-                            onChange(vals[i]);
-                    });
-                h->addWidget(dd);
-                cv->addWidget(row);
-            };
-
-            makeTimeoutRow("Turn off screen after",
-                           "Display sleeps when idle",
-                           vc.screenOffTimeoutMin,
-                           [](int m) {
-                VisualConfigManager::instance().setAndSave(
-                    [m](VisualConfig &c) { c.screenOffTimeoutMin = m; });
-            });
-
-            makeTimeoutRow("Sleep after",
-                           "System suspends when idle",
-                           vc.sleepTimeoutMin,
-                           [](int m) {
-                VisualConfigManager::instance().setAndSave(
-                    [m](VisualConfig &c) { c.sleepTimeoutMin = m; });
-            });
-
-            v->addWidget(c);
-        }
-
-        v->addStretch();
         return page;
     }
 
