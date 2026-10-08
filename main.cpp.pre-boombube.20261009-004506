@@ -1,8 +1,4 @@
 #include <QApplication>
-#include <QMediaPlayer>
-#include <QAudioOutput>
-#include <QVideoWidget>
-#include <QSlider>
 #include <QMessageBox>
 #include <QVector>
 #include <QTransform>
@@ -2271,52 +2267,19 @@ static void drawPhotos(QPainter &p, const QRectF &r, const QColor &) {
     }
 }
 
-static void drawMusic(QPainter &p, const QRectF &r, const QColor &)
-{
-    // BoomTube — horizontal tube with three oxblood energy rings
-    p.setRenderHint(QPainter::Antialiasing, true);
-
-    const QPointF c = r.center();
-    const qreal   d = r.width();
-
-    QColor bone(240, 237, 232, 230);
-    QColor ox(168, 50, 50);
-    QColor graphite(30, 30, 32);
-
-    QRectF tube(c.x() - d * 0.40, c.y() - d * 0.14,
-                d * 0.56,        d * 0.28);
-
-    QPainterPath tubePath;
-    tubePath.addRoundedRect(tube, tube.height() / 2, tube.height() / 2);
-    p.fillPath(tubePath, graphite);
-
-    QPen bonePen(bone, 1.5);
-    p.setPen(bonePen);
-    p.setBrush(Qt::NoBrush);
-    p.drawPath(tubePath);
-
-    QRectF mouth(tube.right() - tube.height() * 0.5, tube.top(),
-                 tube.height(), tube.height());
-    QPen boneThin(bone, 1.2);
-    p.setPen(boneThin);
-    p.drawEllipse(mouth);
-
-    QPen ringPen(ox, 1.8);
-    ringPen.setCapStyle(Qt::RoundCap);
-    p.setPen(ringPen);
-
-    const QPointF ringCenter(tube.right() + tube.height() * 0.05, c.y());
-
-    for (int i = 0; i < 3; ++i) {
-        qreal radius = tube.height() * (0.62 + i * 0.30);
-        QRectF arc(ringCenter.x() - radius * 0.55,
-                   ringCenter.y() - radius,
-                   radius * 1.1,
-                   radius * 2.0);
-        p.setOpacity(1.0 - i * 0.30);
-        p.drawArc(arc, -80 * 16, 160 * 16);
+static void drawMusic(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor(190, 100, 130), QColor(110,  45,  75));
+    p.setPen(QPen(QColor(255, 255, 255, 235),
+                  qMax(1.5, r.width() * 0.09),
+                  Qt::SolidLine, Qt::RoundCap));
+    qreal base = r.center().y();
+    qreal step = r.width() * 0.16;
+    qreal hs[] = { 0.28, 0.52, 0.72, 0.42 };
+    for (int i = 0; i < 4; ++i) {
+        qreal x = r.center().x() + (i - 1.5) * step;
+        qreal h = r.width() * hs[i] * 0.55;
+        p.drawLine(QPointF(x, base - h), QPointF(x, base + h));
     }
-    p.setOpacity(1.0);
 }
 
 static void drawNotes(QPainter &p, const QRectF &r, const QColor &) {
@@ -2441,7 +2404,6 @@ static void drawFor(const QString &name, QPainter &p,
     if (name == "Finder")         drawFinder(p, r, c);
     else if (name == "Launchpad") drawLaunchpad(p, r, c);
     else if (name == "Photos")    drawPhotos(p, r, c);
-    else if (name == "BoomTube")  drawMusic(p, r, c);
     else if (name == "Music")     drawMusic(p, r, c);
     else if (name == "Notes")     drawNotes(p, r, c);
     else if (name == "Mail")      drawMail(p, r, c);
@@ -2703,7 +2665,7 @@ private:
             { "\xE2\x8C\x98",       "Finder"    },
             { "\xF0\x9F\x9A\x80",  "Launchpad" },
             { "\xE2\x9C\xA6",       "Photos"    },
-            { "\xE2\x96\xB6",       "BoomTube"  },
+            { "\xE2\x96\xB6",       "Music"     },
             { "\xF0\x9F\x93\x9D",  "Notes"     },
             { "\xE2\x9C\x89",       "Mail"      },
             { "\xE2\x9A\x99",       "Settings"  },
@@ -2884,8 +2846,6 @@ private:
                 args = { "--files" };
             else if (appName == "Glyph")
                 args = { "--glyph" };
-            else if (appName == "BoomTube")
-                args = { "--boomtube" };
             else if (appName == "Photos") {
                 // Open the image viewer with no file — user picks one
                 // For now launch with a default sample if one exists.
@@ -3057,7 +3017,7 @@ protected:
         QString matchId;
         if (m_name == "Finder")         matchId = "apokolips-shell";
         else if (m_name == "Settings")  matchId = "apokolips-shell";
-        else if (m_name == "BoomTube")  matchId = "apokolips-boombube";
+        else if (m_name == "Music")     matchId = "org.gnome.Totem";
         else if (m_name == "Photos")    matchId = "apokolips-image";
         else if (m_name == "Notes")     matchId = "org.gnome.TextEditor";
         else if (m_name == "Mail")      matchId = "thunderbird";
@@ -3105,11 +3065,8 @@ protected:
             }
         } else if (m_name == "Photos") {
             program = "eog";
-        } else if (m_name == "BoomTube") {
-            QProcess::startDetached(
-                QCoreApplication::applicationFilePath(),
-                { "--boomtube" });
-            return;
+        } else if (m_name == "Music") {
+            program = "totem";
         } else if (m_name == "Terminal") {
             program = "foot";
         } else if (m_name == "Notes") {
@@ -7437,344 +7394,6 @@ private:
     QString      m_currentPath;
     QPixmap      m_origPix;
     int          m_rotation = 0;
-};
-
-// =========================================================
-// BoomTubeWindow — Sigil-style media player
-//   QMediaPlayer + QAudioOutput + QVideoWidget
-//   Playlist: siblings of the opened file in the same folder.
-// =========================================================
-class BoomTubeWindow : public QWidget {
-public:
-    explicit BoomTubeWindow(const QString &initialPath = QString())
-        : QWidget(nullptr)
-    {
-        setWindowFlags(Qt::FramelessWindowHint);
-        setWindowTitle("BoomTube");
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAutoFillBackground(false);
-        resize(1000, 700);
-
-        if (QScreen *s = QApplication::primaryScreen()) {
-            QRect g = s->availableGeometry();
-            move(g.x() + (g.width() - 1000) / 2,
-                 g.y() + (g.height() - 700) / 2 - 20);
-        }
-
-        m_player    = new QMediaPlayer(this);
-        m_audioOut  = new QAudioOutput(this);
-        m_player->setAudioOutput(m_audioOut);
-        m_audioOut->setVolume(0.8);
-
-        // ---- Root layout ----
-        QVBoxLayout *root = new QVBoxLayout(this);
-        root->setContentsMargins(0, 0, 0, 0);
-        root->setSpacing(0);
-
-        // ---- Header (drag + traffic lights) ----
-        QWidget *header = new QWidget;
-        header->setFixedHeight(42);
-        header->setAttribute(Qt::WA_NoSystemBackground, true);
-        QHBoxLayout *hh = new QHBoxLayout(header);
-        hh->setContentsMargins(16, 0, 16, 0);
-        hh->setSpacing(10);
-
-        auto makeLight = [](const QString &idle, const QString &hover) {
-            QPushButton *b = new QPushButton;
-            b->setFixedSize(13, 13);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setStyleSheet(QString(
-                "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60);"
-                "  border-radius: 6px; }"
-                "QPushButton:hover { background: %2; }")
-                .arg(idle, hover));
-            return b;
-        };
-        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
-        QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { close(); });
-        QObject::connect(minBtn, &QPushButton::clicked,
-                         [this]() { hide(); });
-        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-            static bool zoomed = false;
-            QSize sz = zoomed ? QSize(1000, 700) : QSize(1300, 900);
-            zoomed = !zoomed;
-            resize(sz);
-        });
-
-        // macOS order: lights on the LEFT, then title
-        hh->addWidget(closeBtn);
-        hh->addWidget(minBtn);
-        hh->addWidget(maxBtn);
-        hh->addSpacing(8);
-
-        QLabel *title = new QLabel("BoomTube");
-        title->setStyleSheet(
-            "color: rgb(240, 237, 232);"
-            "font-size: 13px; font-weight: 600;"
-            "background: transparent;");
-        hh->addWidget(title);
-        hh->addStretch();
-
-        root->addWidget(header);
-
-        // ---- Video canvas ----
-        m_video = new QVideoWidget;
-        m_video->setStyleSheet("background: rgb(20, 20, 22);");
-        m_player->setVideoOutput(m_video);
-        root->addWidget(m_video, 1);
-
-        // ---- Transport bar ----
-        QWidget *transport = new QWidget;
-        transport->setFixedHeight(110);
-        transport->setAttribute(Qt::WA_NoSystemBackground, true);
-        QVBoxLayout *tv = new QVBoxLayout(transport);
-        tv->setContentsMargins(20, 8, 20, 12);
-        tv->setSpacing(6);
-
-        // Seek slider
-        m_seek = new QSlider(Qt::Horizontal);
-        m_seek->setRange(0, 0);
-        m_seek->setStyleSheet(
-            "QSlider::groove:horizontal { height: 4px;"
-            "  background: rgba(255,255,255,25);"
-            "  border-radius: 2px; }"
-            "QSlider::handle:horizontal {"
-            "  background: #ffffff; width: 14px; height: 14px;"
-            "  margin: -5px 0; border-radius: 7px; }"
-            "QSlider::sub-page:horizontal {"
-            "  background: rgb(168,50,50);"
-            "  border-radius: 2px; }");
-        tv->addWidget(m_seek);
-
-        // Time labels
-        QHBoxLayout *times = new QHBoxLayout;
-        times->setContentsMargins(0, 0, 0, 0);
-        m_timeNow = new QLabel("0:00");
-        m_timeEnd = new QLabel("0:00");
-        QString timeCss =
-            "color: rgb(122, 120, 115);"
-            "font-size: 11px; background: transparent;";
-        m_timeNow->setStyleSheet(timeCss);
-        m_timeEnd->setStyleSheet(timeCss);
-        times->addWidget(m_timeNow);
-        times->addStretch();
-        times->addWidget(m_timeEnd);
-        tv->addLayout(times);
-
-        // Controls row
-        QHBoxLayout *controls = new QHBoxLayout;
-        controls->setContentsMargins(0, 0, 0, 0);
-        controls->setSpacing(10);
-
-        auto mkBtn = [](const QString &glyph, int sz) {
-            QPushButton *b = new QPushButton(glyph);
-            b->setFixedSize(sz, sz);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setStyleSheet(
-                "QPushButton {"
-                "  color: rgb(240, 237, 232);"
-                "  background: transparent;"
-                "  border: none;"
-                "  border-radius: 6px;"
-                "  font-size: 15px;"
-                "}"
-                "QPushButton:hover { background: rgba(255,255,255,25); }");
-            return b;
-        };
-
-        QPushButton *prevBtn  = mkBtn(QString::fromUtf8("\xE2\x8F\xAE"), 30);
-        m_playBtn             = mkBtn(QString::fromUtf8("\xE2\x96\xB6"), 38);
-        QPushButton *nextBtn  = mkBtn(QString::fromUtf8("\xE2\x8F\xAD"), 30);
-
-        controls->addWidget(prevBtn);
-        controls->addWidget(m_playBtn);
-        controls->addWidget(nextBtn);
-        controls->addSpacing(20);
-
-        // Volume
-        QLabel *volIcon = new QLabel(QString::fromUtf8("\xF0\x9F\x94\x8A"));
-        volIcon->setStyleSheet(
-            "font-size: 14px; background: transparent;");
-        controls->addWidget(volIcon);
-        m_volume = new QSlider(Qt::Horizontal);
-        m_volume->setRange(0, 100);
-        m_volume->setValue(80);
-        m_volume->setFixedWidth(120);
-        m_volume->setStyleSheet(
-            "QSlider::groove:horizontal { height: 4px;"
-            "  background: rgba(255,255,255,25);"
-            "  border-radius: 2px; }"
-            "QSlider::handle:horizontal {"
-            "  background: #ffffff; width: 12px; height: 12px;"
-            "  margin: -4px 0; border-radius: 6px; }"
-            "QSlider::sub-page:horizontal {"
-            "  background: rgb(168,50,50);"
-            "  border-radius: 2px; }");
-        controls->addWidget(m_volume);
-        controls->addStretch();
-
-        m_filename = new QLabel("No file loaded");
-        m_filename->setStyleSheet(
-            "color: rgb(176, 173, 168);"
-            "font-size: 12px; background: transparent;");
-        controls->addWidget(m_filename);
-
-        tv->addLayout(controls);
-        root->addWidget(transport);
-
-        // ---- Wiring ----
-        QObject::connect(m_playBtn, &QPushButton::clicked,
-                         [this]() { togglePlay(); });
-        QObject::connect(prevBtn, &QPushButton::clicked,
-                         [this]() { goPrev(); });
-        QObject::connect(nextBtn, &QPushButton::clicked,
-                         [this]() { goNext(); });
-        QObject::connect(m_volume, &QSlider::valueChanged,
-                         [this](int v) {
-            m_audioOut->setVolume(v / 100.0);
-        });
-        QObject::connect(m_seek, &QSlider::sliderMoved, [this](int pos) {
-            m_player->setPosition(qint64(pos) * 1000);
-        });
-        QObject::connect(m_player, &QMediaPlayer::positionChanged,
-                         this, [this](qint64 ms) {
-            if (!m_seek->isSliderDown())
-                m_seek->setValue(int(ms / 1000));
-            m_timeNow->setText(fmtTime(ms));
-        });
-        QObject::connect(m_player, &QMediaPlayer::durationChanged,
-                         this, [this](qint64 ms) {
-            m_seek->setRange(0, int(ms / 1000));
-            m_timeEnd->setText(fmtTime(ms));
-        });
-        QObject::connect(m_player, &QMediaPlayer::playbackStateChanged,
-                         this, [this](QMediaPlayer::PlaybackState st) {
-            if (st == QMediaPlayer::PlayingState)
-                m_playBtn->setText(QString::fromUtf8("\xE2\x8F\xB8"));
-            else
-                m_playBtn->setText(QString::fromUtf8("\xE2\x96\xB6"));
-        });
-        QObject::connect(m_player, &QMediaPlayer::mediaStatusChanged,
-                         this, [this](QMediaPlayer::MediaStatus st) {
-            if (st == QMediaPlayer::EndOfMedia) goNext();
-        });
-
-        if (!initialPath.isEmpty()) open(initialPath);
-    }
-
-protected:
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setCompositionMode(QPainter::CompositionMode_Source);
-        p.fillRect(rect(), Qt::transparent);
-        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-
-        QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
-        QPainterPath full;
-        full.addRoundedRect(body, 14, 14);
-        p.fillPath(full, QColor(20, 20, 22));
-
-        p.save();
-        p.setClipPath(full);
-        p.fillRect(QRect(0, 0, width(), 42), QColor(28, 28, 30));
-        p.restore();
-
-        p.setPen(QPen(QColor(255, 255, 255, 22), 1));
-        p.drawLine(0, 42, width(), 42);
-
-        p.setPen(QPen(QColor(255, 255, 255, 22), 1));
-        p.setBrush(Qt::NoBrush);
-        p.drawPath(full);
-    }
-
-    void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton && e->pos().y() < 42) {
-            if (QWindow *wh = window()->windowHandle()) {
-                if (wh->startSystemMove()) { e->accept(); return; }
-            }
-        }
-        QWidget::mousePressEvent(e);
-    }
-
-    void keyPressEvent(QKeyEvent *e) override {
-        switch (e->key()) {
-            case Qt::Key_Space: togglePlay(); return;
-            case Qt::Key_Left:  m_player->setPosition(
-                                    m_player->position() - 5000); return;
-            case Qt::Key_Right: m_player->setPosition(
-                                    m_player->position() + 5000); return;
-            case Qt::Key_Escape: close(); return;
-        }
-        QWidget::keyPressEvent(e);
-    }
-
-private:
-    static QString fmtTime(qint64 ms) {
-        qint64 s = ms / 1000;
-        return QString("%1:%2").arg(s / 60)
-                               .arg(s % 60, 2, 10, QChar('0'));
-    }
-
-    void open(const QString &path) {
-        QFileInfo fi(path);
-        QDir d = fi.absoluteDir();
-
-        QStringList filters = { "*.mp3", "*.flac", "*.ogg", "*.wav",
-                                "*.m4a", "*.aac",
-                                "*.mp4", "*.mkv", "*.webm",
-                                "*.avi", "*.mov" };
-        m_playlist.clear();
-        for (const QString &f :
-             d.entryList(filters, QDir::Files, QDir::Name))
-            m_playlist << d.filePath(f);
-
-        int idx = m_playlist.indexOf(fi.absoluteFilePath());
-        if (idx < 0) idx = 0;
-        playIndex(idx);
-    }
-
-    void playIndex(int idx) {
-        if (idx < 0 || idx >= m_playlist.size()) return;
-        m_index = idx;
-        QString path = m_playlist[idx];
-        m_player->setSource(QUrl::fromLocalFile(path));
-        m_filename->setText(QFileInfo(path).fileName());
-        m_player->play();
-    }
-
-    void goPrev() {
-        if (m_playlist.isEmpty()) return;
-        playIndex((m_index - 1 + m_playlist.size())
-                  % m_playlist.size());
-    }
-    void goNext() {
-        if (m_playlist.isEmpty()) return;
-        playIndex((m_index + 1) % m_playlist.size());
-    }
-    void togglePlay() {
-        if (m_player->playbackState() == QMediaPlayer::PlayingState)
-            m_player->pause();
-        else
-            m_player->play();
-    }
-
-    QMediaPlayer   *m_player   = nullptr;
-    QAudioOutput   *m_audioOut = nullptr;
-    QVideoWidget   *m_video    = nullptr;
-    QSlider        *m_seek     = nullptr;
-    QSlider        *m_volume   = nullptr;
-    QPushButton    *m_playBtn  = nullptr;
-    QLabel         *m_timeNow  = nullptr;
-    QLabel         *m_timeEnd  = nullptr;
-    QLabel         *m_filename = nullptr;
-    QStringList     m_playlist;
-    int             m_index = 0;
 };
 
 class SettingsWindow : public QWidget {
@@ -18274,7 +17893,7 @@ static int runShell(int argc, char *argv[])
         { "\xE2\x8C\x98",       "Finder"    },
         { "\xF0\x9F\x9A\x80",  "Launchpad" },
         { "\xE2\x9C\xA6",       "Photos"    },
-        { "\xE2\x96\xB6",       "BoomTube"  },
+        { "\xE2\x96\xB6",       "Music"     },
         { "\xF0\x9F\x93\x9D",  "Notes"     },
         { "\xE2\x9C\x89",       "Mail"      },
         { "\xE2\x9A\x99",       "Settings"  },
@@ -18672,19 +18291,6 @@ int main(int argc, char *argv[])
             sock.disconnectFromServer();
         }
         return 0;
-    }
-
-    if (argc >= 2 && QString(argv[1]) == "--boomtube") {
-        QApplication app(argc, argv);
-        app.setApplicationName("BoomTube");
-        app.setDesktopFileName("apokolips-boombube");
-        ThemeManager::instance().setTheme(
-            WallpaperConfig::themeForId(WallpaperConfig::loadId()));
-        QString path = (argc >= 3) ? QString::fromUtf8(argv[2])
-                                    : QString();
-        BoomTubeWindow w(path);
-        w.show();
-        return app.exec();
     }
 
     if (argc >= 3 && QString(argv[1]) == "--image") {

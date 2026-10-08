@@ -7480,6 +7480,14 @@ public:
         hh->setContentsMargins(16, 0, 16, 0);
         hh->setSpacing(10);
 
+        QLabel *title = new QLabel("BoomTube");
+        title->setStyleSheet(
+            "color: rgb(240, 237, 232);"
+            "font-size: 13px; font-weight: 600;"
+            "background: transparent;");
+        hh->addWidget(title);
+        hh->addStretch();
+
         auto makeLight = [](const QString &idle, const QString &hover) {
             QPushButton *b = new QPushButton;
             b->setFixedSize(13, 13);
@@ -7505,20 +7513,9 @@ public:
             zoomed = !zoomed;
             resize(sz);
         });
-
-        // macOS order: lights on the LEFT, then title
         hh->addWidget(closeBtn);
         hh->addWidget(minBtn);
         hh->addWidget(maxBtn);
-        hh->addSpacing(8);
-
-        QLabel *title = new QLabel("BoomTube");
-        title->setStyleSheet(
-            "color: rgb(240, 237, 232);"
-            "font-size: 13px; font-weight: 600;"
-            "background: transparent;");
-        hh->addWidget(title);
-        hh->addStretch();
 
         root->addWidget(header);
 

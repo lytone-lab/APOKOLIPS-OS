@@ -2271,52 +2271,19 @@ static void drawPhotos(QPainter &p, const QRectF &r, const QColor &) {
     }
 }
 
-static void drawMusic(QPainter &p, const QRectF &r, const QColor &)
-{
-    // BoomTube — horizontal tube with three oxblood energy rings
-    p.setRenderHint(QPainter::Antialiasing, true);
-
-    const QPointF c = r.center();
-    const qreal   d = r.width();
-
-    QColor bone(240, 237, 232, 230);
-    QColor ox(168, 50, 50);
-    QColor graphite(30, 30, 32);
-
-    QRectF tube(c.x() - d * 0.40, c.y() - d * 0.14,
-                d * 0.56,        d * 0.28);
-
-    QPainterPath tubePath;
-    tubePath.addRoundedRect(tube, tube.height() / 2, tube.height() / 2);
-    p.fillPath(tubePath, graphite);
-
-    QPen bonePen(bone, 1.5);
-    p.setPen(bonePen);
-    p.setBrush(Qt::NoBrush);
-    p.drawPath(tubePath);
-
-    QRectF mouth(tube.right() - tube.height() * 0.5, tube.top(),
-                 tube.height(), tube.height());
-    QPen boneThin(bone, 1.2);
-    p.setPen(boneThin);
-    p.drawEllipse(mouth);
-
-    QPen ringPen(ox, 1.8);
-    ringPen.setCapStyle(Qt::RoundCap);
-    p.setPen(ringPen);
-
-    const QPointF ringCenter(tube.right() + tube.height() * 0.05, c.y());
-
-    for (int i = 0; i < 3; ++i) {
-        qreal radius = tube.height() * (0.62 + i * 0.30);
-        QRectF arc(ringCenter.x() - radius * 0.55,
-                   ringCenter.y() - radius,
-                   radius * 1.1,
-                   radius * 2.0);
-        p.setOpacity(1.0 - i * 0.30);
-        p.drawArc(arc, -80 * 16, 160 * 16);
+static void drawMusic(QPainter &p, const QRectF &r, const QColor &) {
+    appTile(p, r, QColor(190, 100, 130), QColor(110,  45,  75));
+    p.setPen(QPen(QColor(255, 255, 255, 235),
+                  qMax(1.5, r.width() * 0.09),
+                  Qt::SolidLine, Qt::RoundCap));
+    qreal base = r.center().y();
+    qreal step = r.width() * 0.16;
+    qreal hs[] = { 0.28, 0.52, 0.72, 0.42 };
+    for (int i = 0; i < 4; ++i) {
+        qreal x = r.center().x() + (i - 1.5) * step;
+        qreal h = r.width() * hs[i] * 0.55;
+        p.drawLine(QPointF(x, base - h), QPointF(x, base + h));
     }
-    p.setOpacity(1.0);
 }
 
 static void drawNotes(QPainter &p, const QRectF &r, const QColor &) {
@@ -2441,7 +2408,6 @@ static void drawFor(const QString &name, QPainter &p,
     if (name == "Finder")         drawFinder(p, r, c);
     else if (name == "Launchpad") drawLaunchpad(p, r, c);
     else if (name == "Photos")    drawPhotos(p, r, c);
-    else if (name == "BoomTube")  drawMusic(p, r, c);
     else if (name == "Music")     drawMusic(p, r, c);
     else if (name == "Notes")     drawNotes(p, r, c);
     else if (name == "Mail")      drawMail(p, r, c);
@@ -2703,7 +2669,7 @@ private:
             { "\xE2\x8C\x98",       "Finder"    },
             { "\xF0\x9F\x9A\x80",  "Launchpad" },
             { "\xE2\x9C\xA6",       "Photos"    },
-            { "\xE2\x96\xB6",       "BoomTube"  },
+            { "\xE2\x96\xB6",       "Music"     },
             { "\xF0\x9F\x93\x9D",  "Notes"     },
             { "\xE2\x9C\x89",       "Mail"      },
             { "\xE2\x9A\x99",       "Settings"  },
@@ -2884,8 +2850,6 @@ private:
                 args = { "--files" };
             else if (appName == "Glyph")
                 args = { "--glyph" };
-            else if (appName == "BoomTube")
-                args = { "--boomtube" };
             else if (appName == "Photos") {
                 // Open the image viewer with no file — user picks one
                 // For now launch with a default sample if one exists.
@@ -3057,7 +3021,7 @@ protected:
         QString matchId;
         if (m_name == "Finder")         matchId = "apokolips-shell";
         else if (m_name == "Settings")  matchId = "apokolips-shell";
-        else if (m_name == "BoomTube")  matchId = "apokolips-boombube";
+        else if (m_name == "Music")     matchId = "org.gnome.Totem";
         else if (m_name == "Photos")    matchId = "apokolips-image";
         else if (m_name == "Notes")     matchId = "org.gnome.TextEditor";
         else if (m_name == "Mail")      matchId = "thunderbird";
@@ -3105,11 +3069,8 @@ protected:
             }
         } else if (m_name == "Photos") {
             program = "eog";
-        } else if (m_name == "BoomTube") {
-            QProcess::startDetached(
-                QCoreApplication::applicationFilePath(),
-                { "--boomtube" });
-            return;
+        } else if (m_name == "Music") {
+            program = "totem";
         } else if (m_name == "Terminal") {
             program = "foot";
         } else if (m_name == "Notes") {
@@ -7480,6 +7441,14 @@ public:
         hh->setContentsMargins(16, 0, 16, 0);
         hh->setSpacing(10);
 
+        QLabel *title = new QLabel("BoomTube");
+        title->setStyleSheet(
+            "color: rgb(240, 237, 232);"
+            "font-size: 13px; font-weight: 600;"
+            "background: transparent;");
+        hh->addWidget(title);
+        hh->addStretch();
+
         auto makeLight = [](const QString &idle, const QString &hover) {
             QPushButton *b = new QPushButton;
             b->setFixedSize(13, 13);
@@ -7505,20 +7474,9 @@ public:
             zoomed = !zoomed;
             resize(sz);
         });
-
-        // macOS order: lights on the LEFT, then title
         hh->addWidget(closeBtn);
         hh->addWidget(minBtn);
         hh->addWidget(maxBtn);
-        hh->addSpacing(8);
-
-        QLabel *title = new QLabel("BoomTube");
-        title->setStyleSheet(
-            "color: rgb(240, 237, 232);"
-            "font-size: 13px; font-weight: 600;"
-            "background: transparent;");
-        hh->addWidget(title);
-        hh->addStretch();
 
         root->addWidget(header);
 
@@ -18274,7 +18232,7 @@ static int runShell(int argc, char *argv[])
         { "\xE2\x8C\x98",       "Finder"    },
         { "\xF0\x9F\x9A\x80",  "Launchpad" },
         { "\xE2\x9C\xA6",       "Photos"    },
-        { "\xE2\x96\xB6",       "BoomTube"  },
+        { "\xE2\x96\xB6",       "Music"     },
         { "\xF0\x9F\x93\x9D",  "Notes"     },
         { "\xE2\x9C\x89",       "Mail"      },
         { "\xE2\x9A\x99",       "Settings"  },
