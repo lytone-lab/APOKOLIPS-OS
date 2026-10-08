@@ -4869,7 +4869,7 @@ private:
             "QWidget { background: transparent; }");
         QVBoxLayout *sb = new QVBoxLayout(m_sidebar);
         sb->setContentsMargins(10, 8, 10, 14);
-        sb->setSpacing(1);
+        sb->setSpacing(2);
 
         auto addGroupHeader = [&](const QString &text) {
             QLabel *h = new QLabel(text);
@@ -5873,31 +5873,6 @@ inline void drawArcReactor(QPainter &p, const QRectF &r)
     p.drawEllipse(c, d * 0.24, d * 0.24);
 }
 
-// ---- OmniStorage mark: clean infinity symbol ----
-inline void drawOmniStorage(QPainter &p, const QRectF &r)
-{
-    p.setRenderHint(QPainter::Antialiasing, true);
-
-    const QPointF c = r.center();
-    const qreal   d = r.width();
-
-    // Two circles whose edges touch, forming an infinity sign.
-    // Left lobe = structured (hard), right lobe = smooth.
-    const qreal lobeR = d * 0.235;
-    const qreal leftCx  = c.x() - lobeR;
-    const qreal rightCx = c.x() + lobeR;
-
-    QPen pen(QColor(240, 237, 232), 1.7);
-    pen.setCapStyle(Qt::RoundCap);
-    p.setPen(pen);
-    p.setBrush(Qt::NoBrush);
-
-    // Left lobe: rounded square-ish — starts sharp, ends smooth
-    // We render two perfect circles — the fusion IS the infinity.
-    p.drawEllipse(QPointF(leftCx,  c.y()), lobeR, lobeR);
-    p.drawEllipse(QPointF(rightCx, c.y()), lobeR, lobeR);
-}
-
 class SidebarRow : public QWidget {
 public:
     SidebarRow(const QString &label, const QString &glyph,
@@ -5905,13 +5880,13 @@ public:
                std::function<void(QPainter&, QRectF)> customPaint = nullptr)
         : QWidget(parent), m_label(label)
     {
-        setFixedHeight(29);
+        setFixedHeight(34);
         setCursor(Qt::PointingHandCursor);
         setMouseTracking(true);
 
         QHBoxLayout *h = new QHBoxLayout(this);
         h->setContentsMargins(10, 0, 10, 0);
-        h->setSpacing(9);
+        h->setSpacing(10);
 
         if (customPaint) {
             CustomBadge *badge = new CustomBadge(customPaint, 22);
@@ -5925,7 +5900,7 @@ public:
         m_text = new QLabel(label);
         m_text->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         m_text->setStyleSheet(QString(
-            "color: %1; font-size: 12px; background: transparent;")
+            "color: %1; font-size: 13px; background: transparent;")
             .arg(Sigil::textPrimary().name()));
         h->addWidget(m_text);
         h->addStretch();
@@ -6640,16 +6615,10 @@ public:
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAutoFillBackground(false);
-        resize(1100, 700);
-        setMinimumSize(880, 620);
+        resize(720, 480);
 
-        if (QScreen *s = QApplication::primaryScreen()) {
-            QRect g = s->availableGeometry();
-            // Center horizontally, bias slightly upward (above the dock)
-            int x = g.x() + (g.width()  - 1100) / 2;
-            int y = g.y() + (g.height() - 700)  / 2 - 20;
-            move(x, y);
-        }
+        if (QScreen *s = QApplication::primaryScreen())
+            move(s->availableGeometry().center() - QPoint(360, 240));
 
         buildUi();
 
@@ -6674,44 +6643,41 @@ protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
+        QPainterPath path;
+        path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
 
-        // Clear to transparent first — prevents the black fringe around
-        // the antialiased rounded corners.
-        p.setCompositionMode(QPainter::CompositionMode_Source);
-        p.fillRect(rect(), Qt::transparent);
-        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-
-        // Draw the rounded body directly (not via clip) so the outer
-        // antialiased edge blends to the wallpaper, not to black.
-        QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        // Unified body with rounded corners on ALL sides
         QPainterPath full;
-        full.addRoundedRect(body, 14, 14);
+        full.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
 
-        p.fillPath(full, Sigil::contentBg());
-
-        // Sidebar overlay — clipped to rounded corners
-        if (m_sidebar) {
-            p.save();
-            p.setClipPath(full);
-            p.fillRect(QRect(0, 0, m_sidebar->width(), height()),
-                       Sigil::sidebarBg());
-            p.restore();
-        }
-
-        // Header strip — clipped to rounded corners
+        // 1) Fill body with base color, clipped to the rounded rect
         p.save();
         p.setClipPath(full);
-        p.fillRect(QRect(0, 0, width(), 42), Sigil::headerBg());
-        p.restore();
+        QColor bodyCol = Sigil::contentBg();
+        bodyCol.setAlpha(255);
+        p.fillRect(rect(), bodyCol);
 
-        // Separators
+        // 2) Fill sidebar region
+        if (m_sidebar) {
+            QColor sb = Sigil::sidebarBg();
+            sb.setAlpha(255);
+            p.fillRect(QRect(0, 0, m_sidebar->width(), height()), sb);
+        }
+
+        // 3) Fill header strip
+        QColor hdrCol = Sigil::headerBg();
+        hdrCol.setAlpha(255);
+        p.fillRect(QRect(0, 0, width(), 42), hdrCol);
+
+        // 4) Separators
         p.setPen(QPen(Sigil::border(), 1));
         p.drawLine(0, 42, width(), 42);
         if (m_sidebar)
             p.drawLine(m_sidebar->width(), 42,
                        m_sidebar->width(), height() - 1);
+        p.restore();
 
-        // Window outline
+        // 5) Outline around the whole window
         p.setPen(QPen(Sigil::border(), 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(full);
@@ -6759,7 +6725,7 @@ private:
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             // Cage supports client-side resize; use that for zoom.
             static bool zoomed = false;
-            QSize sz = zoomed ? QSize(920, 620) : QSize(1100, 700);
+            QSize sz = zoomed ? QSize(720, 480) : QSize(1100, 750);
             zoomed = !zoomed;
             this->resize(sz);
             if (QScreen *s = QApplication::primaryScreen())
@@ -6792,40 +6758,9 @@ private:
             .arg(Sigil::sidebarBg().red())
             .arg(Sigil::sidebarBg().green())
             .arg(Sigil::sidebarBg().blue()));
-
-        QVBoxLayout *sidebarWrap = new QVBoxLayout(m_sidebar);
-        sidebarWrap->setContentsMargins(0, 0, 0, 0);
-        sidebarWrap->setSpacing(0);
-
-        QScrollArea *sidebarScroll = new QScrollArea;
-        sidebarScroll->setWidgetResizable(true);
-        sidebarScroll->setFrameShape(QFrame::NoFrame);
-        sidebarScroll->setHorizontalScrollBarPolicy(
-            Qt::ScrollBarAlwaysOff);
-        sidebarScroll->setVerticalScrollBarPolicy(
-            Qt::ScrollBarAsNeeded);
-        sidebarScroll->setStyleSheet(
-            "QScrollArea { background: transparent; border: none; }"
-            "QScrollBar:vertical {"
-            "  background: transparent; width: 8px; margin: 2px; }"
-            "QScrollBar::handle:vertical {"
-            "  background: rgba(255,255,255,50);"
-            "  border-radius: 4px; min-height: 24px; }"
-            "QScrollBar::handle:vertical:hover {"
-            "  background: rgba(255,255,255,80); }"
-            "QScrollBar::add-line:vertical,"
-            "QScrollBar::sub-line:vertical { height: 0; background: transparent; }"
-            "QScrollBar::add-page:vertical,"
-            "QScrollBar::sub-page:vertical { background: transparent; }");
-
-        QWidget *sidebarContent = new QWidget;
-        sidebarContent->setAutoFillBackground(false);
-        sidebarContent->setStyleSheet(
-            "QWidget { background: transparent; }");
-
-        QVBoxLayout *sb = new QVBoxLayout(sidebarContent);
+        QVBoxLayout *sb = new QVBoxLayout(m_sidebar);
         sb->setContentsMargins(10, 12, 10, 12);
-        sb->setSpacing(2);
+        sb->setSpacing(4);
 
         Sigil::SearchBar *search = new Sigil::SearchBar;
         search->setPlaceholderText("Search");
@@ -6840,9 +6775,6 @@ private:
                    QColor(90, 122, 158), makeControlCenterPage());
         addSection(sb, "General", QString::fromUtf8("\xE2\x9A\x99"),
                    QColor(106, 106, 112), makeGeneralPage());
-        addSection(sb, "OmniStorage", QString::fromUtf8("\xF0\x9F\x92\xBE"),
-                   QColor(74, 122, 122), makeStoragePage(),
-                   Sigil::drawOmniStorage);
         addSection(sb, "Wallpaper",  QString::fromUtf8("\xE2\x96\xA3"),
                    QColor(90, 122, 158), makeWallpaperPage());
         addSection(sb, "Dock",       QString::fromUtf8("\xE2\x96\xAA"),
@@ -6882,9 +6814,6 @@ private:
                    QColor(106, 106, 112), makeAboutPage());
 
         sb->addStretch();
-        sidebarScroll->setWidget(sidebarContent);
-        sidebarWrap->addWidget(sidebarScroll);
-
         m_stack->setStyleSheet(QString(
             "QStackedWidget { background: rgb(%1, %2, %3); }")
             .arg(Sigil::contentBg().red())
@@ -7604,222 +7533,6 @@ private:
                 ? QColor(240, 237, 232)
                 : QColor(140, 140, 145));
             m_startupList->addItem(it);
-        }
-    }
-
-    QWidget *makeStoragePage() {
-        QWidget *page = new QWidget;
-        page->setAutoFillBackground(false);
-        QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
-
-        v->addWidget(Sigil::sectionTitle("OmniStorage"));
-
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("DISK"));
-
-            m_storageSummary = new QLabel("Querying…");
-            m_storageSummary->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            cv->addWidget(m_storageSummary);
-
-            v->addWidget(c);
-        }
-
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(12);
-
-            QHBoxLayout *hdr = new QHBoxLayout;
-            hdr->addWidget(Sigil::groupLabel("CATEGORIES"));
-            hdr->addStretch();
-            QPushButton *refresh = new QPushButton("Refresh");
-            refresh->setCursor(Qt::PointingHandCursor);
-            refresh->setFixedHeight(26);
-            refresh->setStyleSheet(QString(
-                "QPushButton { background: rgba(255,255,255,20);"
-                "  color: %1; border: none; border-radius: 6px;"
-                "  font-size: 11px; padding: 2px 12px; }"
-                "QPushButton:hover { background: rgba(255,255,255,45); }")
-                .arg(Sigil::textPrimary().name()));
-            QObject::connect(refresh, &QPushButton::clicked,
-                             [this]() { refreshStoragePage(); });
-            hdr->addWidget(refresh);
-            cv->addLayout(hdr);
-
-            m_storageCats = new QListWidget;
-            m_storageCats->setFrameShape(QFrame::NoFrame);
-            m_storageCats->setMinimumHeight(180);
-            cv->addWidget(m_storageCats);
-
-            v->addWidget(c);
-        }
-
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("TRASH"));
-
-            m_trashInfo = new QLabel("Querying…");
-            m_trashInfo->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textSecondary().name()));
-            cv->addWidget(m_trashInfo);
-
-            QHBoxLayout *h = new QHBoxLayout;
-            QPushButton *empty = new QPushButton("Empty Trash…");
-            empty->setCursor(Qt::PointingHandCursor);
-            empty->setFixedHeight(30);
-            empty->setMinimumWidth(140);
-            empty->setStyleSheet(
-                "QPushButton { background: transparent;"
-                "  color: rgb(200, 74, 74);"
-                "  border: 1px solid rgb(200, 74, 74);"
-                "  border-radius: 7px; padding: 4px 14px;"
-                "  font-size: 12px; }"
-                "QPushButton:hover { background: rgba(200,74,74,60);"
-                "  color: #ffffff; }");
-            QObject::connect(empty, &QPushButton::clicked,
-                             [this]() {
-                QMessageBox box(this);
-                box.setWindowTitle("Empty Trash");
-                box.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
-                box.setText("Permanently delete all items in the Trash?");
-                box.setStandardButtons(QMessageBox::Cancel |
-                                       QMessageBox::Yes);
-                box.setDefaultButton(QMessageBox::Cancel);
-                box.setStyleSheet(
-                    "QMessageBox { background: rgb(24, 22, 30); }"
-                    "QMessageBox QLabel { color: rgb(240, 237, 232);"
-                    "  font-size: 13px; }"
-                    "QPushButton {"
-                    "  background: rgba(255,255,255,20);"
-                    "  color: rgb(240, 237, 232);"
-                    "  border: none; border-radius: 7px;"
-                    "  padding: 6px 18px; min-width: 80px;"
-                    "}"
-                    "QPushButton:hover { background: rgba(255,255,255,45); }");
-                box.adjustSize();
-                if (QWidget *top = window()) {
-                    QPoint pt = top->mapToGlobal(QPoint(
-                        (top->width()  - box.width())  / 2,
-                        (top->height() - box.height()) / 2));
-                    box.move(pt);
-                }
-                if (box.exec() != QMessageBox::Yes) return;
-                QProcess p;
-                p.start("gio", { "trash", "--empty" });
-                p.waitForFinished(2000);
-                refreshStoragePage();
-            });
-            h->addWidget(empty);
-            h->addStretch();
-            cv->addLayout(h);
-
-            v->addWidget(c);
-        }
-
-        v->addStretch();
-        QTimer::singleShot(100, this, [this]() { refreshStoragePage(); });
-        return page;
-    }
-
-    void refreshStoragePage() {
-        if (m_storageSummary) {
-            QProcess p;
-            p.start("df", { "-B1", "--output=size,used,avail,pcent", "/" });
-            p.waitForFinished(800);
-            QString out = QString::fromUtf8(p.readAllStandardOutput());
-            QStringList lines = out.split('\n', Qt::SkipEmptyParts);
-
-            quint64 total = 0, used = 0, avail = 0;
-            int pct = 0;
-
-            if (lines.size() >= 2) {
-                QStringList p2 = lines[1].split(QRegularExpression("\\s+"),
-                                                 Qt::SkipEmptyParts);
-                if (p2.size() >= 4) {
-                    total = p2[0].toULongLong();
-                    used  = p2[1].toULongLong();
-                    avail = p2[2].toULongLong();
-                    pct   = p2[3].remove('%').toInt();
-                }
-            }
-
-            auto fmtGB = [](quint64 bytes) {
-                return QString("%1 GB").arg(bytes / 1073741824.0, 0, 'f', 1);
-            };
-
-            m_storageSummary->setText(QString(
-                "%1 used of %2     ·     %3 available     ·     %4%")
-                .arg(fmtGB(used), fmtGB(total), fmtGB(avail))
-                .arg(pct));
-        }
-
-        if (m_storageCats) {
-            m_storageCats->clear();
-            QString home = QDir::homePath();
-
-            QStringList labels = {
-                "Applications", "Home", "Documents", "Downloads",
-                "Music", "Pictures", "Videos"
-            };
-            QStringList paths = {
-                "/usr", home,
-                home + "/Documents", home + "/Downloads",
-                home + "/Music",     home + "/Pictures",
-                home + "/Videos"
-            };
-
-            for (int i = 0; i < paths.size(); ++i) {
-                QProcess d;
-                d.start("du", { "-sb", paths[i] });
-                d.waitForFinished(3000);
-                QString o = QString::fromUtf8(d.readAllStandardOutput());
-                quint64 bytes = o.section('\t', 0, 0).trimmed().toULongLong();
-
-                QString size = bytes > 1073741824
-                    ? QString("%1 GB").arg(bytes / 1073741824.0, 0, 'f', 2)
-                    : bytes > 1048576
-                        ? QString("%1 MB").arg(bytes / 1048576.0, 0, 'f', 1)
-                        : QString("%1 KB").arg(bytes / 1024.0, 0, 'f', 0);
-
-                QString text = labels[i] + QString(20 - labels[i].length(), ' ')
-                             + size;
-                QListWidgetItem *it = new QListWidgetItem(text);
-                it->setForeground(QColor(240, 237, 232));
-                m_storageCats->addItem(it);
-            }
-        }
-
-        if (m_trashInfo) {
-            QProcess t;
-            t.start("bash", { "-c",
-                "ls -1 ~/.local/share/Trash/files/ 2>/dev/null | wc -l" });
-            t.waitForFinished(700);
-            int items = QString::fromUtf8(
-                t.readAllStandardOutput()).trimmed().toInt();
-
-            QProcess s;
-            s.start("bash", { "-c",
-                "du -sh ~/.local/share/Trash 2>/dev/null | cut -f1" });
-            s.waitForFinished(700);
-            QString size = QString::fromUtf8(
-                s.readAllStandardOutput()).trimmed();
-            if (size.isEmpty()) size = "0";
-
-            m_trashInfo->setText(QString("%1  ·  %2 item(s)")
-                .arg(size).arg(items));
         }
     }
 
@@ -10907,9 +10620,6 @@ private:
     QListWidget    *m_networkList  = nullptr;
     QListWidget    *m_usersList    = nullptr;
     QListWidget    *m_startupList  = nullptr;
-    QLabel         *m_storageSummary = nullptr;
-    QListWidget    *m_storageCats  = nullptr;
-    QLabel         *m_trashInfo    = nullptr;
     QLabel         *m_userInfo     = nullptr;
     QListWidget    *m_resList      = nullptr;
     QListWidget    *m_wifiList     = nullptr;

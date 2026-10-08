@@ -4869,7 +4869,7 @@ private:
             "QWidget { background: transparent; }");
         QVBoxLayout *sb = new QVBoxLayout(m_sidebar);
         sb->setContentsMargins(10, 8, 10, 14);
-        sb->setSpacing(1);
+        sb->setSpacing(2);
 
         auto addGroupHeader = [&](const QString &text) {
             QLabel *h = new QLabel(text);
@@ -5873,7 +5873,7 @@ inline void drawArcReactor(QPainter &p, const QRectF &r)
     p.drawEllipse(c, d * 0.24, d * 0.24);
 }
 
-// ---- OmniStorage mark: clean infinity symbol ----
+// ---- OmniStorage mark: hexagonal ring fused with circular ring ----
 inline void drawOmniStorage(QPainter &p, const QRectF &r)
 {
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -5881,21 +5881,35 @@ inline void drawOmniStorage(QPainter &p, const QRectF &r)
     const QPointF c = r.center();
     const qreal   d = r.width();
 
-    // Two circles whose edges touch, forming an infinity sign.
-    // Left lobe = structured (hard), right lobe = smooth.
-    const qreal lobeR = d * 0.235;
-    const qreal leftCx  = c.x() - lobeR;
-    const qreal rightCx = c.x() + lobeR;
+    // Scale: full mark is ~90% of badge
+    const qreal leftCx  = c.x() - d * 0.16;
+    const qreal rightCx = c.x() + d * 0.16;
+    const qreal cy      = c.y();
+    const qreal radius  = d * 0.26;
 
-    QPen pen(QColor(240, 237, 232), 1.7);
-    pen.setCapStyle(Qt::RoundCap);
+    QPen pen(QColor(240, 237, 232), 1.6);
+    pen.setJoinStyle(Qt::MiterJoin);
     p.setPen(pen);
     p.setBrush(Qt::NoBrush);
 
-    // Left lobe: rounded square-ish — starts sharp, ends smooth
-    // We render two perfect circles — the fusion IS the infinity.
-    p.drawEllipse(QPointF(leftCx,  c.y()), lobeR, lobeR);
-    p.drawEllipse(QPointF(rightCx, c.y()), lobeR, lobeR);
+    // ---- Left: hexagon (flat-left orientation, 6 sides) ----
+    {
+        QPolygonF hex;
+        for (int i = 0; i < 6; ++i) {
+            qreal a = M_PI / 6.0 + i * M_PI / 3.0;
+            hex << QPointF(leftCx + std::cos(a) * radius,
+                           cy     + std::sin(a) * radius);
+        }
+        p.drawPolygon(hex);
+    }
+
+    // ---- Right: circle ----
+    p.drawEllipse(QPointF(rightCx, cy), radius, radius);
+
+    // ---- Fusion dot at the crossing (subtle oxblood) ----
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(168, 50, 50, 220));
+    p.drawEllipse(c, d * 0.055, d * 0.055);
 }
 
 class SidebarRow : public QWidget {
@@ -5905,13 +5919,13 @@ public:
                std::function<void(QPainter&, QRectF)> customPaint = nullptr)
         : QWidget(parent), m_label(label)
     {
-        setFixedHeight(29);
+        setFixedHeight(34);
         setCursor(Qt::PointingHandCursor);
         setMouseTracking(true);
 
         QHBoxLayout *h = new QHBoxLayout(this);
         h->setContentsMargins(10, 0, 10, 0);
-        h->setSpacing(9);
+        h->setSpacing(10);
 
         if (customPaint) {
             CustomBadge *badge = new CustomBadge(customPaint, 22);
@@ -5925,7 +5939,7 @@ public:
         m_text = new QLabel(label);
         m_text->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         m_text->setStyleSheet(QString(
-            "color: %1; font-size: 12px; background: transparent;")
+            "color: %1; font-size: 13px; background: transparent;")
             .arg(Sigil::textPrimary().name()));
         h->addWidget(m_text);
         h->addStretch();
@@ -6640,16 +6654,10 @@ public:
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAutoFillBackground(false);
-        resize(1100, 700);
-        setMinimumSize(880, 620);
+        resize(720, 480);
 
-        if (QScreen *s = QApplication::primaryScreen()) {
-            QRect g = s->availableGeometry();
-            // Center horizontally, bias slightly upward (above the dock)
-            int x = g.x() + (g.width()  - 1100) / 2;
-            int y = g.y() + (g.height() - 700)  / 2 - 20;
-            move(x, y);
-        }
+        if (QScreen *s = QApplication::primaryScreen())
+            move(s->availableGeometry().center() - QPoint(360, 240));
 
         buildUi();
 
@@ -6674,44 +6682,41 @@ protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
+        QPainterPath path;
+        path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
 
-        // Clear to transparent first — prevents the black fringe around
-        // the antialiased rounded corners.
-        p.setCompositionMode(QPainter::CompositionMode_Source);
-        p.fillRect(rect(), Qt::transparent);
-        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-
-        // Draw the rounded body directly (not via clip) so the outer
-        // antialiased edge blends to the wallpaper, not to black.
-        QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        // Unified body with rounded corners on ALL sides
         QPainterPath full;
-        full.addRoundedRect(body, 14, 14);
+        full.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
 
-        p.fillPath(full, Sigil::contentBg());
-
-        // Sidebar overlay — clipped to rounded corners
-        if (m_sidebar) {
-            p.save();
-            p.setClipPath(full);
-            p.fillRect(QRect(0, 0, m_sidebar->width(), height()),
-                       Sigil::sidebarBg());
-            p.restore();
-        }
-
-        // Header strip — clipped to rounded corners
+        // 1) Fill body with base color, clipped to the rounded rect
         p.save();
         p.setClipPath(full);
-        p.fillRect(QRect(0, 0, width(), 42), Sigil::headerBg());
-        p.restore();
+        QColor bodyCol = Sigil::contentBg();
+        bodyCol.setAlpha(255);
+        p.fillRect(rect(), bodyCol);
 
-        // Separators
+        // 2) Fill sidebar region
+        if (m_sidebar) {
+            QColor sb = Sigil::sidebarBg();
+            sb.setAlpha(255);
+            p.fillRect(QRect(0, 0, m_sidebar->width(), height()), sb);
+        }
+
+        // 3) Fill header strip
+        QColor hdrCol = Sigil::headerBg();
+        hdrCol.setAlpha(255);
+        p.fillRect(QRect(0, 0, width(), 42), hdrCol);
+
+        // 4) Separators
         p.setPen(QPen(Sigil::border(), 1));
         p.drawLine(0, 42, width(), 42);
         if (m_sidebar)
             p.drawLine(m_sidebar->width(), 42,
                        m_sidebar->width(), height() - 1);
+        p.restore();
 
-        // Window outline
+        // 5) Outline around the whole window
         p.setPen(QPen(Sigil::border(), 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(full);
@@ -6759,7 +6764,7 @@ private:
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             // Cage supports client-side resize; use that for zoom.
             static bool zoomed = false;
-            QSize sz = zoomed ? QSize(920, 620) : QSize(1100, 700);
+            QSize sz = zoomed ? QSize(720, 480) : QSize(1100, 750);
             zoomed = !zoomed;
             this->resize(sz);
             if (QScreen *s = QApplication::primaryScreen())
@@ -6792,40 +6797,9 @@ private:
             .arg(Sigil::sidebarBg().red())
             .arg(Sigil::sidebarBg().green())
             .arg(Sigil::sidebarBg().blue()));
-
-        QVBoxLayout *sidebarWrap = new QVBoxLayout(m_sidebar);
-        sidebarWrap->setContentsMargins(0, 0, 0, 0);
-        sidebarWrap->setSpacing(0);
-
-        QScrollArea *sidebarScroll = new QScrollArea;
-        sidebarScroll->setWidgetResizable(true);
-        sidebarScroll->setFrameShape(QFrame::NoFrame);
-        sidebarScroll->setHorizontalScrollBarPolicy(
-            Qt::ScrollBarAlwaysOff);
-        sidebarScroll->setVerticalScrollBarPolicy(
-            Qt::ScrollBarAsNeeded);
-        sidebarScroll->setStyleSheet(
-            "QScrollArea { background: transparent; border: none; }"
-            "QScrollBar:vertical {"
-            "  background: transparent; width: 8px; margin: 2px; }"
-            "QScrollBar::handle:vertical {"
-            "  background: rgba(255,255,255,50);"
-            "  border-radius: 4px; min-height: 24px; }"
-            "QScrollBar::handle:vertical:hover {"
-            "  background: rgba(255,255,255,80); }"
-            "QScrollBar::add-line:vertical,"
-            "QScrollBar::sub-line:vertical { height: 0; background: transparent; }"
-            "QScrollBar::add-page:vertical,"
-            "QScrollBar::sub-page:vertical { background: transparent; }");
-
-        QWidget *sidebarContent = new QWidget;
-        sidebarContent->setAutoFillBackground(false);
-        sidebarContent->setStyleSheet(
-            "QWidget { background: transparent; }");
-
-        QVBoxLayout *sb = new QVBoxLayout(sidebarContent);
+        QVBoxLayout *sb = new QVBoxLayout(m_sidebar);
         sb->setContentsMargins(10, 12, 10, 12);
-        sb->setSpacing(2);
+        sb->setSpacing(4);
 
         Sigil::SearchBar *search = new Sigil::SearchBar;
         search->setPlaceholderText("Search");
@@ -6882,9 +6856,6 @@ private:
                    QColor(106, 106, 112), makeAboutPage());
 
         sb->addStretch();
-        sidebarScroll->setWidget(sidebarContent);
-        sidebarWrap->addWidget(sidebarScroll);
-
         m_stack->setStyleSheet(QString(
             "QStackedWidget { background: rgb(%1, %2, %3); }")
             .arg(Sigil::contentBg().red())

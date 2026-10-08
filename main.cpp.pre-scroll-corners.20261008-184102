@@ -6674,44 +6674,41 @@ protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
+        QPainterPath path;
+        path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
 
-        // Clear to transparent first — prevents the black fringe around
-        // the antialiased rounded corners.
-        p.setCompositionMode(QPainter::CompositionMode_Source);
-        p.fillRect(rect(), Qt::transparent);
-        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-
-        // Draw the rounded body directly (not via clip) so the outer
-        // antialiased edge blends to the wallpaper, not to black.
-        QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        // Unified body with rounded corners on ALL sides
         QPainterPath full;
-        full.addRoundedRect(body, 14, 14);
+        full.addRoundedRect(rect().adjusted(0, 0, -1, -1), 14, 14);
 
-        p.fillPath(full, Sigil::contentBg());
-
-        // Sidebar overlay — clipped to rounded corners
-        if (m_sidebar) {
-            p.save();
-            p.setClipPath(full);
-            p.fillRect(QRect(0, 0, m_sidebar->width(), height()),
-                       Sigil::sidebarBg());
-            p.restore();
-        }
-
-        // Header strip — clipped to rounded corners
+        // 1) Fill body with base color, clipped to the rounded rect
         p.save();
         p.setClipPath(full);
-        p.fillRect(QRect(0, 0, width(), 42), Sigil::headerBg());
-        p.restore();
+        QColor bodyCol = Sigil::contentBg();
+        bodyCol.setAlpha(255);
+        p.fillRect(rect(), bodyCol);
 
-        // Separators
+        // 2) Fill sidebar region
+        if (m_sidebar) {
+            QColor sb = Sigil::sidebarBg();
+            sb.setAlpha(255);
+            p.fillRect(QRect(0, 0, m_sidebar->width(), height()), sb);
+        }
+
+        // 3) Fill header strip
+        QColor hdrCol = Sigil::headerBg();
+        hdrCol.setAlpha(255);
+        p.fillRect(QRect(0, 0, width(), 42), hdrCol);
+
+        // 4) Separators
         p.setPen(QPen(Sigil::border(), 1));
         p.drawLine(0, 42, width(), 42);
         if (m_sidebar)
             p.drawLine(m_sidebar->width(), 42,
                        m_sidebar->width(), height() - 1);
+        p.restore();
 
-        // Window outline
+        // 5) Outline around the whole window
         p.setPen(QPen(Sigil::border(), 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(full);
@@ -6792,40 +6789,9 @@ private:
             .arg(Sigil::sidebarBg().red())
             .arg(Sigil::sidebarBg().green())
             .arg(Sigil::sidebarBg().blue()));
-
-        QVBoxLayout *sidebarWrap = new QVBoxLayout(m_sidebar);
-        sidebarWrap->setContentsMargins(0, 0, 0, 0);
-        sidebarWrap->setSpacing(0);
-
-        QScrollArea *sidebarScroll = new QScrollArea;
-        sidebarScroll->setWidgetResizable(true);
-        sidebarScroll->setFrameShape(QFrame::NoFrame);
-        sidebarScroll->setHorizontalScrollBarPolicy(
-            Qt::ScrollBarAlwaysOff);
-        sidebarScroll->setVerticalScrollBarPolicy(
-            Qt::ScrollBarAsNeeded);
-        sidebarScroll->setStyleSheet(
-            "QScrollArea { background: transparent; border: none; }"
-            "QScrollBar:vertical {"
-            "  background: transparent; width: 8px; margin: 2px; }"
-            "QScrollBar::handle:vertical {"
-            "  background: rgba(255,255,255,50);"
-            "  border-radius: 4px; min-height: 24px; }"
-            "QScrollBar::handle:vertical:hover {"
-            "  background: rgba(255,255,255,80); }"
-            "QScrollBar::add-line:vertical,"
-            "QScrollBar::sub-line:vertical { height: 0; background: transparent; }"
-            "QScrollBar::add-page:vertical,"
-            "QScrollBar::sub-page:vertical { background: transparent; }");
-
-        QWidget *sidebarContent = new QWidget;
-        sidebarContent->setAutoFillBackground(false);
-        sidebarContent->setStyleSheet(
-            "QWidget { background: transparent; }");
-
-        QVBoxLayout *sb = new QVBoxLayout(sidebarContent);
+        QVBoxLayout *sb = new QVBoxLayout(m_sidebar);
         sb->setContentsMargins(10, 12, 10, 12);
-        sb->setSpacing(2);
+        sb->setSpacing(4);
 
         Sigil::SearchBar *search = new Sigil::SearchBar;
         search->setPlaceholderText("Search");
@@ -6882,9 +6848,6 @@ private:
                    QColor(106, 106, 112), makeAboutPage());
 
         sb->addStretch();
-        sidebarScroll->setWidget(sidebarContent);
-        sidebarWrap->addWidget(sidebarScroll);
-
         m_stack->setStyleSheet(QString(
             "QStackedWidget { background: rgb(%1, %2, %3); }")
             .arg(Sigil::contentBg().red())
