@@ -3177,14 +3177,17 @@ protected:
             program = QCoreApplication::applicationFilePath();
             args = { "--settings" };
         } else if (m_name == "Aperture") {
-            program = QCoreApplication::applicationFilePath();
+            // Launch our own image viewer on a default file
             QString sample = QDir::homePath()
                 + "/Pictures/test-gradient.png";
-            if (QFile::exists(sample))
-                args = { "--image", sample };
-            else
-                args = { "--image",
-                         QDir::homePath() + "/Pictures" };
+            if (QFile::exists(sample)) {
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--image", sample });
+                return;
+            }
+        } else if (m_name == "Aperture") {
+            program = "eog";
         } else if (m_name == "BoomTube") {
             program = QCoreApplication::applicationFilePath();
             args = { "--boomtube" };
