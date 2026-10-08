@@ -388,11 +388,6 @@ struct VisualConfig {
     int    lockGraceSeconds    = 0;    // 0 = immediately
     bool   lockShowClock       = true;
     bool   lockShowDate        = true;
-    QString keyboardLayout     = "us";
-    QString keyboardVariant    = "";
-    int    keyboardRepeatDelay = 600;
-    int    keyboardRepeatRate  = 25;
-    QString keyboardCapsLock   = "default";
     QString lockWallpaper      = "";   // empty = solid color
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -505,19 +500,6 @@ public:
         m_cfg.lockShowDate        = o.contains("lockShowDate")
                                    ? o["lockShowDate"].toBool(true)
                                    : m_cfg.lockShowDate;
-        m_cfg.keyboardLayout      = o.contains("keyboardLayout")
-                                   ? o["keyboardLayout"].toString()
-                                   : m_cfg.keyboardLayout;
-        m_cfg.keyboardVariant     = o.contains("keyboardVariant")
-                                   ? o["keyboardVariant"].toString()
-                                   : m_cfg.keyboardVariant;
-        m_cfg.keyboardRepeatDelay = getI("keyboardRepeatDelay",
-                                         m_cfg.keyboardRepeatDelay);
-        m_cfg.keyboardRepeatRate  = getI("keyboardRepeatRate",
-                                         m_cfg.keyboardRepeatRate);
-        m_cfg.keyboardCapsLock    = o.contains("keyboardCapsLock")
-                                   ? o["keyboardCapsLock"].toString()
-                                   : m_cfg.keyboardCapsLock;
         m_cfg.lockWallpaper       = o.contains("lockWallpaper")
                                    ? o["lockWallpaper"].toString()
                                    : m_cfg.lockWallpaper;
@@ -567,10 +549,6 @@ public:
         if (m_cfg.lockTimeoutMin > 240) m_cfg.lockTimeoutMin = 240;
         if (m_cfg.lockGraceSeconds < 0) m_cfg.lockGraceSeconds = 0;
         if (m_cfg.lockGraceSeconds > 60) m_cfg.lockGraceSeconds = 60;
-        if (m_cfg.keyboardRepeatDelay < 100) m_cfg.keyboardRepeatDelay = 100;
-        if (m_cfg.keyboardRepeatDelay > 2000) m_cfg.keyboardRepeatDelay = 2000;
-        if (m_cfg.keyboardRepeatRate < 1)  m_cfg.keyboardRepeatRate = 1;
-        if (m_cfg.keyboardRepeatRate > 100) m_cfg.keyboardRepeatRate = 100;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
         if (m_cfg.dockPosition < 0)  m_cfg.dockPosition = 0;
         if (m_cfg.dockPosition > 2)  m_cfg.dockPosition = 2;
@@ -621,11 +599,6 @@ public:
         o["lockGraceSeconds"]    = m_cfg.lockGraceSeconds;
         o["lockShowClock"]       = m_cfg.lockShowClock;
         o["lockShowDate"]        = m_cfg.lockShowDate;
-        o["keyboardLayout"]      = m_cfg.keyboardLayout;
-        o["keyboardVariant"]     = m_cfg.keyboardVariant;
-        o["keyboardRepeatDelay"] = m_cfg.keyboardRepeatDelay;
-        o["keyboardRepeatRate"]  = m_cfg.keyboardRepeatRate;
-        o["keyboardCapsLock"]    = m_cfg.keyboardCapsLock;
         o["lockWallpaper"]       = m_cfg.lockWallpaper;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
@@ -6759,9 +6732,6 @@ private:
         addSection(sb, "Lock Screen & Security",
                    QString::fromUtf8("\xF0\x9F"),
                    QColor(90, 122, 158), makeLockScreenPage());
-        addSection(sb, "Keyboard",
-                   QString::fromUtf8("\xE2\x8C\xA8"),
-                   QColor(122, 106, 159), makeKeyboardPage());
         addSection(sb, "Notifications",
                    QString::fromUtf8("\xF0\x9F\x94\x94"),
                    QColor(200, 100, 60), makeNotificationsPage());
@@ -7760,42 +7730,58 @@ private:
         return page;
     }
 
-    static void launchGtklock() {
+    static void launchSwaylock() {
         auto &cfg = VisualConfigManager::instance().cfg();
 
-        QStringList args;
+        QStringList args = { "-f" };
 
-        // Pin GTK theme — avoids a slow theme scan on every lock
-        args << "-g" << "Adwaita";
+        // Sigil palette
+        args << "--color"           << "141416"
+             << "--ring-color"      << "a83232"
+             << "--ring-ver-color"  << "c84a4a"
+             << "--ring-wrong-color"<< "ff5555"
+             << "--ring-clear-color"<< "7a7873"
+             << "--inside-color"    << "1e1e20"
+             << "--inside-ver-color"<< "1e1e20"
+             << "--inside-wrong-color" << "1e1e20"
+             << "--inside-clear-color" << "1e1e20"
+             << "--key-hl-color"    << "f0ede8"
+             << "--bs-hl-color"     << "f0ede8"
+             << "--text-color"      << "f0ede8"
+             << "--text-ver-color"  << "f0ede8"
+             << "--text-wrong-color"<< "ff5555"
+             << "--text-clear-color"<< "7a7873"
+             << "--separator-color" << "7a7873"
+             << "--line-color"      << "1e1e20"
+             << "--line-ver-color"  << "a83232"
+             << "--line-wrong-color"<< "ff5555"
+             << "--line-clear-color"<< "1e1e20"
+             << "--indicator-radius"  << "90"
+             << "--indicator-thickness" << "4"
+             << "--ring-radius"       << "90"
+             << "--ring-thickness"    << "4"
+             << "--font"              << "Sans 14"
+             << "--show-failed-attempts";
 
-        // Load our Sigil stylesheet if it exists
-        QString cssPath = QDir::homePath() + "/.config/gtklock/style.css";
-        if (QFile::exists(cssPath))
-            args << "-s" << cssPath;
-
-        // Time / date format
-        if (cfg.lockShowClock) {
-            args << "-t" << (cfg.clock24Hour ? "%H:%M" : "%I:%M %p");
-        } else {
-            args << "-t" << " ";
-        }
-        if (cfg.lockShowDate) {
-            args << "-D" << "%A, %d %B";
-        } else {
-            args << "-D" << " ";
-        }
-
-        // Wallpaper background
         if (!cfg.lockWallpaper.isEmpty()
             && QFile::exists(cfg.lockWallpaper)) {
-            args << "-b" << cfg.lockWallpaper;
+            args << "--image" << cfg.lockWallpaper;
         }
 
-        // Idle: hide the form until mouse/key moves
-        args << "-H" << "-T" << "4";
+        if (cfg.lockShowClock) {
+            args << "--clock"
+                 << "--timestr" << "  %H:%M"
+                 << "--datestr"
+                 << (cfg.lockShowDate ? "  %A, %d %B" : "  ");
+        } else if (cfg.lockShowDate) {
+            args << "--datestr" << "  %A, %d %B";
+        }
 
-        // Attach stdin (gtklock may need it via --daemonize)
-        QProcess::startDetached("gtklock", args);
+        if (cfg.lockGraceSeconds > 0) {
+            args << "--grace" << QString::number(cfg.lockGraceSeconds);
+        }
+
+        QProcess::startDetached("swaylock", args);
     }
 
     void applySwayidle() {
@@ -8771,234 +8757,6 @@ private:
         return page;
     }
 
-    QWidget *makeKeyboardPage() {
-        QWidget *page = new QWidget;
-        page->setAutoFillBackground(false);
-        QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
-
-        v->addWidget(Sigil::sectionTitle("Keyboard"));
-
-        auto &vc = VisualConfigManager::instance().cfg();
-
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("LAYOUT"));
-
-            struct Layout { const char *code; const char *name; };
-            const Layout layouts[] = {
-                { "us", "English (US)" },
-                { "gb", "English (UK)" },
-                { "de", "German" },
-                { "fr", "French" },
-                { "es", "Spanish" },
-                { "it", "Italian" },
-                { "ru", "Russian" },
-                { "jp", "Japanese" },
-                { "cn", "Chinese" },
-                { "ara", "Arabic" },
-                { "sw", "Swahili" },
-                { "ke", "Kenyan" }
-            };
-
-            QStringList names;
-            QStringList codes;
-            int currentIdx = 0;
-            for (const auto &l : layouts) {
-                names << QString(l.name);
-                codes << QString(l.code);
-                if (QString(l.code) == vc.keyboardLayout)
-                    currentIdx = names.size() - 1;
-            }
-
-            QWidget *row = new QWidget;
-            QHBoxLayout *h = new QHBoxLayout(row);
-            h->setContentsMargins(0, 6, 0, 6);
-            h->setSpacing(14);
-
-            QVBoxLayout *left = new QVBoxLayout;
-            left->setContentsMargins(0, 0, 0, 0);
-            left->setSpacing(2);
-            QLabel *t = new QLabel("Layout");
-            t->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *s = new QLabel(
-                "Keyboard layout applied live via swaymsg");
-            s->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            left->addWidget(t);
-            left->addWidget(s);
-            h->addLayout(left, 1);
-
-            Sigil::Dropdown *dd = new Sigil::Dropdown(
-                names, currentIdx,
-                [codes](int i) {
-                    if (i < 0 || i >= codes.size()) return;
-                    QString code = codes[i];
-                    VisualConfigManager::instance().setAndSave(
-                        [code](VisualConfig &c) { c.keyboardLayout = code; });
-                    QProcess::startDetached("swaymsg", {
-                        "input", "type:keyboard", "xkb_layout", code });
-                });
-            h->addWidget(dd);
-            cv->addWidget(row);
-            v->addWidget(c);
-        }
-
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(18);
-            cv->addWidget(Sigil::groupLabel("TYPING"));
-
-            auto addSlider = [&](const QString &title,
-                                 const QString &sub,
-                                 int value, int lo, int hi,
-                                 const QString &suffix,
-                                 std::function<void(int)> onChange) {
-                QWidget *row = new QWidget;
-                QVBoxLayout *rv = new QVBoxLayout(row);
-                rv->setContentsMargins(0, 0, 0, 0);
-                rv->setSpacing(6);
-
-                QHBoxLayout *top = new QHBoxLayout;
-                QLabel *t = new QLabel(title);
-                t->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textPrimary().name()));
-                QLabel *val = new QLabel(QString::number(value) + suffix);
-                val->setStyleSheet(QString(
-                    "color: %1; font-size: 12px; background: transparent;")
-                    .arg(Sigil::textSecondary().name()));
-                val->setMinimumWidth(60);
-                val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-                top->addWidget(t);
-                top->addStretch();
-                top->addWidget(val);
-                rv->addLayout(top);
-
-                QSlider *sl = new QSlider(Qt::Horizontal);
-                sl->setRange(lo, hi);
-                sl->setValue(value);
-                sl->setStyleSheet(
-                    "QSlider::groove:horizontal { height: 4px;"
-                    "  background: rgba(255,255,255,25);"
-                    "  border-radius: 2px; }"
-                    "QSlider::handle:horizontal {"
-                    "  background: #ffffff; width: 14px; height: 14px;"
-                    "  margin: -5px 0; border-radius: 7px; }"
-                    "QSlider::sub-page:horizontal {"
-                    "  background: rgb(168,50,50);"
-                    "  border-radius: 2px; }");
-                m_sliders.append(sl);
-
-                QObject::connect(sl, &QSlider::valueChanged,
-                                 [val, suffix, onChange](int x) {
-                    val->setText(QString::number(x) + suffix);
-                    onChange(x);
-                });
-                rv->addWidget(sl);
-
-                QLabel *subLbl = new QLabel(sub);
-                subLbl->setStyleSheet(QString(
-                    "color: %1; font-size: 11px; background: transparent;")
-                    .arg(Sigil::textDim().name()));
-                rv->addWidget(subLbl);
-                cv->addWidget(row);
-            };
-
-            addSlider("Repeat delay",
-                      "How long you hold a key before it repeats",
-                      vc.keyboardRepeatDelay, 100, 1000, " ms",
-                      [](int x) {
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.keyboardRepeatDelay = x; });
-                QProcess::startDetached("swaymsg", {
-                    "input", "type:keyboard", "repeat_delay",
-                    QString::number(x) });
-            });
-
-            addSlider("Repeat rate",
-                      "How fast the key repeats while held",
-                      vc.keyboardRepeatRate, 1, 60, " /s",
-                      [](int x) {
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.keyboardRepeatRate = x; });
-                QProcess::startDetached("swaymsg", {
-                    "input", "type:keyboard", "repeat_rate",
-                    QString::number(x) });
-            });
-
-            v->addWidget(c);
-        }
-
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("CAPS LOCK"));
-
-            QWidget *row = new QWidget;
-            QHBoxLayout *h = new QHBoxLayout(row);
-            h->setContentsMargins(0, 6, 0, 6);
-            h->setSpacing(14);
-
-            QVBoxLayout *left = new QVBoxLayout;
-            left->setContentsMargins(0, 0, 0, 0);
-            left->setSpacing(2);
-            QLabel *t = new QLabel("Caps Lock behavior");
-            t->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *s = new QLabel("What the Caps Lock key does");
-            s->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            left->addWidget(t);
-            left->addWidget(s);
-            h->addLayout(left, 1);
-
-            QStringList opts = { "Normal caps lock",
-                                 "Act as Escape",
-                                 "Disabled" };
-            QStringList values = { "default", "escape", "disabled" };
-            int idx = values.indexOf(vc.keyboardCapsLock);
-            if (idx < 0) idx = 0;
-
-            Sigil::Dropdown *dd = new Sigil::Dropdown(
-                opts, idx,
-                [values](int i) {
-                    if (i < 0 || i >= values.size()) return;
-                    QString val = values[i];
-                    VisualConfigManager::instance().setAndSave(
-                        [val](VisualConfig &c) {
-                            c.keyboardCapsLock = val;
-                        });
-                    QString xkbOpt;
-                    if (val == "escape")   xkbOpt = "caps:escape";
-                    else if (val == "disabled") xkbOpt = "caps:none";
-                    else xkbOpt = "";
-                    QProcess::startDetached("swaymsg", {
-                        "input", "type:keyboard",
-                        "xkb_options", xkbOpt });
-                });
-            h->addWidget(dd);
-            cv->addWidget(row);
-            v->addWidget(c);
-        }
-
-        v->addStretch();
-        return page;
-    }
-
     QWidget *makeLockScreenPage() {
         QWidget *page = new QWidget;
         page->setAutoFillBackground(false);
@@ -9051,7 +8809,7 @@ private:
                 "QPushButton:hover { background: rgba(200,74,74,220); }")
                 .arg(Sigil::textPrimary().name()));
             QObject::connect(lock, &QPushButton::clicked,
-                             []() { launchGtklock(); });
+                             []() { launchSwaylock(); });
             h->addWidget(lock);
 
             cv->addWidget(nowRow);
@@ -12908,15 +12666,6 @@ static int runShell(int argc, char *argv[])
         }
     }
 
-    // Pre-warm gtklock so the first real lock isn't a cold start
-    {
-        QProcess *warm = new QProcess(&window);
-        warm->start("gtklock", { "--version" });
-        QObject::connect(warm,
-            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            warm, &QProcess::deleteLater);
-    }
-
     ClipboardPanel *clipboardPanel = new ClipboardPanel(root);
 
     // IPC — second instance connects and sends "toggle"
@@ -13381,34 +13130,55 @@ int main(int argc, char *argv[])
     }
 
     if (argc >= 2 && QString(argv[1]) == "--lock") {
-        QCoreApplication app(argc, argv);
+        QApplication app(argc, argv);
         Q_UNUSED(app);
-
+        // Static call into the shell class to reuse styling.
+        class LockLauncher;
+        // Direct: rebuild the same args here
         VisualConfigManager::instance().load();
         auto &cfg = VisualConfigManager::instance().cfg();
-
-        QStringList args;
-        args << "-g" << "Adwaita";
-        QString cssPath = QDir::homePath() + "/.config/gtklock/style.css";
-        if (QFile::exists(cssPath))
-            args << "-s" << cssPath;
-
-        if (cfg.lockShowClock)
-            args << "-t" << (cfg.clock24Hour ? "%H:%M" : "%I:%M %p");
-        else
-            args << "-t" << " ";
-        if (cfg.lockShowDate)
-            args << "-D" << "%A, %d %B";
-        else
-            args << "-D" << " ";
-
+        QStringList args = { "-f" };
+        args << "--color"           << "141416"
+             << "--ring-color"      << "a83232"
+             << "--ring-ver-color"  << "c84a4a"
+             << "--ring-wrong-color"<< "ff5555"
+             << "--ring-clear-color"<< "7a7873"
+             << "--inside-color"    << "1e1e20"
+             << "--inside-ver-color"<< "1e1e20"
+             << "--inside-wrong-color" << "1e1e20"
+             << "--inside-clear-color" << "1e1e20"
+             << "--key-hl-color"    << "f0ede8"
+             << "--bs-hl-color"     << "f0ede8"
+             << "--text-color"      << "f0ede8"
+             << "--text-ver-color"  << "f0ede8"
+             << "--text-wrong-color"<< "ff5555"
+             << "--text-clear-color"<< "7a7873"
+             << "--separator-color" << "7a7873"
+             << "--line-color"      << "1e1e20"
+             << "--line-ver-color"  << "a83232"
+             << "--line-wrong-color"<< "ff5555"
+             << "--line-clear-color"<< "1e1e20"
+             << "--indicator-radius"  << "90"
+             << "--indicator-thickness" << "4"
+             << "--ring-radius"       << "90"
+             << "--ring-thickness"    << "4"
+             << "--font"              << "Sans 14"
+             << "--show-failed-attempts";
         if (!cfg.lockWallpaper.isEmpty()
-            && QFile::exists(cfg.lockWallpaper))
-            args << "-b" << cfg.lockWallpaper;
-
-        args << "-H" << "-T" << "4";
-
-        QProcess::startDetached("gtklock", args);
+            && QFile::exists(cfg.lockWallpaper)) {
+            args << "--image" << cfg.lockWallpaper;
+        }
+        if (cfg.lockShowClock) {
+            args << "--clock"
+                 << "--timestr" << "  %H:%M"
+                 << "--datestr"
+                 << (cfg.lockShowDate ? "  %A, %d %B" : "  ");
+        } else if (cfg.lockShowDate) {
+            args << "--datestr" << "  %A, %d %B";
+        }
+        if (cfg.lockGraceSeconds > 0)
+            args << "--grace" << QString::number(cfg.lockGraceSeconds);
+        QProcess::startDetached("swaylock", args);
         return 0;
     }
 
