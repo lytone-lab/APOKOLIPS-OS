@@ -314,6 +314,83 @@ Golden rule for AI features (future):
   No forced button.
 
 ------------------------------------------------------------------------
+WIRING BACKLOG (saved but not yet acting)
+------------------------------------------------------------------------
+These controls persist to visual.json but nothing reads them yet, or
+they write to a system that needs another piece to actually fire.
+Each entry names the missing piece.
+
+Focus:
+  [ ] Focus schedule timer — no daemon flips focusMode at start/end
+      hour. Needs a systemd --user timer that reads cfg.focusStartHour
+      / cfg.focusEndHour / cfg.focusScheduleOn and sets focusMode +
+      dndEnabled.
+  [ ] Focus policy — "priority" / "mute" is stored but notification
+      center still shows everything. Needs NotificationCenter to read
+      cfg.focusPolicy when DND is active.
+  [ ] Focus allowed apps — the checkbox list is stored in
+      cfg.focusAllowedApps but nothing filters notifications against
+      it. Depends on NotificationCenter knowing each notification's
+      source app.
+
+Search / Spotlight:
+  [ ] Search "Files & folders" toggle — cfg.spotFilesEnabled stored
+      but Spotlight's path-search block doesn't read it yet.
+  [ ] Search "Web search" toggle — reserved for V2; no browser hookup.
+  [ ] Search max-results slider — cfg.spotMaxResults stored but
+      SpotlightOverlay doesn't cap the result list yet.
+
+Accessibility (require GNOME daemons or specific components):
+  [ ] Sticky / Slow / Bounce / Toggle keys — write to gsettings but
+      no GNOME a11y daemon running under sway to enforce them.
+      Options: install at-spi2-core + run gnome-settings-daemon, or
+      reimplement in the shell.
+  [ ] Mouse keys — same dependency.
+  [ ] Dwell click — same dependency.
+  [ ] Visual alerts / Visual bell — writes to gsettings but no
+      compositor-side flash handler.
+  [ ] Cursor size — writes to gsettings; sway needs
+      XCURSOR_SIZE or seat config to honor it.
+  [ ] High contrast / Reduce motion (shell side) — cfg.shellHighContrast
+      and cfg.shellReduceMotion are stored but no animation or palette
+      currently reads them.
+  [ ] Notification timeout — cfg.notifTimeoutSec stored but the
+      notification center still uses cfg.notificationBannerMs. Should
+      unify: either map one to the other, or drop one.
+
+Privacy:
+  [ ] Location services toggle — writes gsettings but geoclue.service
+      is inactive; nothing reads location.
+  [ ] Telemetry toggle — the ON state runs ubuntu-report send once;
+      it is not a background service, so there's nothing to keep "off".
+      Not a bug, but the UI text could clarify this.
+
+Lock Screen:
+  [ ] Lock-on-screen-off currently handled by swayidle timers.
+      Lock-on-suspend works via before-sleep hook. Both real.
+
+Keyboard / Mouse:
+  All wired — swaymsg input type:keyboard / type:pointer / type:touchpad.
+
+Time Machine:
+  Schedule real via systemd --user timer. Back-up-now real via rsync.
+
+Software Update:
+  Check for Updates real (pkexec apt update). Install All real
+  (foot + sudo apt upgrade -y). Auto-update toggle real (writes
+  /etc/apt/apt.conf.d/20auto-upgrades via pkexec).
+  [ ] Update page doesn't poll for progress — user must click Refresh
+      after install finishes.
+
+Glyph (screenshot):
+  [ ] Tweak list (see BUG LIST #7) — toolbar layout, keyboard
+      shortcuts, snap-to-window, delay timer, configurable save path.
+
+General:
+  [ ] Startup Items page reads .desktop files but has no enable /
+      disable / add / remove UI yet. Reads only.
+
+------------------------------------------------------------------------
 BUG LIST (open)
 ------------------------------------------------------------------------
   1. Clipboard IPC unreliable

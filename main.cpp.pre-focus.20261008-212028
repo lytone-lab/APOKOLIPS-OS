@@ -416,12 +416,6 @@ struct VisualConfig {
     bool   spotFilesEnabled   = true;
     bool   spotWebEnabled     = false;   // reserved for V2
     int    spotMaxResults     = 8;
-    QString focusMode         = "off";   // off | work | sleep | personal
-    QString focusPolicy       = "priority"; // all | priority | mute
-    bool   focusScheduleOn    = false;
-    int    focusStartHour     = 9;
-    int    focusEndHour       = 17;
-    QStringList focusAllowedApps;
     QString lockWallpaper      = "";   // empty = solid color
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -609,19 +603,6 @@ public:
                                    : m_cfg.spotWebEnabled;
         m_cfg.spotMaxResults      = getI("spotMaxResults",
                                          m_cfg.spotMaxResults);
-        m_cfg.focusMode           = o.contains("focusMode")
-                                   ? o["focusMode"].toString()
-                                   : m_cfg.focusMode;
-        m_cfg.focusPolicy         = o.contains("focusPolicy")
-                                   ? o["focusPolicy"].toString()
-                                   : m_cfg.focusPolicy;
-        m_cfg.focusScheduleOn     = o.contains("focusScheduleOn")
-                                   ? o["focusScheduleOn"].toBool(false)
-                                   : m_cfg.focusScheduleOn;
-        m_cfg.focusStartHour      = getI("focusStartHour",
-                                         m_cfg.focusStartHour);
-        m_cfg.focusEndHour        = getI("focusEndHour",
-                                         m_cfg.focusEndHour);
         m_cfg.lockWallpaper       = o.contains("lockWallpaper")
                                    ? o["lockWallpaper"].toString()
                                    : m_cfg.lockWallpaper;
@@ -685,10 +666,6 @@ public:
         if (m_cfg.notifTimeoutSec > 60) m_cfg.notifTimeoutSec = 60;
         if (m_cfg.spotMaxResults < 3)  m_cfg.spotMaxResults = 3;
         if (m_cfg.spotMaxResults > 20) m_cfg.spotMaxResults = 20;
-        if (m_cfg.focusStartHour < 0)  m_cfg.focusStartHour = 0;
-        if (m_cfg.focusStartHour > 23) m_cfg.focusStartHour = 23;
-        if (m_cfg.focusEndHour < 0)    m_cfg.focusEndHour = 0;
-        if (m_cfg.focusEndHour > 23)   m_cfg.focusEndHour = 23;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
         if (m_cfg.dockPosition < 0)  m_cfg.dockPosition = 0;
         if (m_cfg.dockPosition > 2)  m_cfg.dockPosition = 2;
@@ -766,11 +743,6 @@ public:
         o["spotFilesEnabled"]    = m_cfg.spotFilesEnabled;
         o["spotWebEnabled"]      = m_cfg.spotWebEnabled;
         o["spotMaxResults"]      = m_cfg.spotMaxResults;
-        o["focusMode"]           = m_cfg.focusMode;
-        o["focusPolicy"]         = m_cfg.focusPolicy;
-        o["focusScheduleOn"]     = m_cfg.focusScheduleOn;
-        o["focusStartHour"]      = m_cfg.focusStartHour;
-        o["focusEndHour"]        = m_cfg.focusEndHour;
         o["lockWallpaper"]       = m_cfg.lockWallpaper;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
@@ -7041,9 +7013,6 @@ private:
         addSection(sb, "Search",
                    QString::fromUtf8("\xF0\x9F\x94\x8D"),
                    QColor(80, 120, 200), makeSearchPage());
-        addSection(sb, "Focus",
-                   QString::fromUtf8("\xF0\x9F\x8C\x99"),
-                   QColor(122, 106, 159), makeFocusPage());
         addSection(sb, "Wallpaper",  QString::fromUtf8("\xE2\x96\xA3"),
                    QColor(90, 122, 158), makeWallpaperPage());
         addSection(sb, "Dock",       QString::fromUtf8("\xE2\x96\xAA"),
@@ -9827,302 +9796,6 @@ private:
             h->addWidget(keycap);
             cv->addWidget(row);
 
-            v->addWidget(c);
-        }
-
-        v->addStretch();
-        return page;
-    }
-
-    QWidget *makeFocusPage() {
-        QWidget *page = new QWidget;
-        page->setAutoFillBackground(false);
-        QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
-
-        v->addWidget(Sigil::sectionTitle("Focus"));
-
-        auto &vc = VisualConfigManager::instance().cfg();
-
-        // ---- Current mode card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(16);
-            cv->addWidget(Sigil::groupLabel("MODE"));
-
-            QLabel *status = new QLabel;
-            auto refreshStatus = [status]() {
-                auto &c = VisualConfigManager::instance().cfg();
-                QString text;
-                if (c.focusMode == "work")      text = "Work";
-                else if (c.focusMode == "sleep") text = "Sleep";
-                else if (c.focusMode == "personal") text = "Personal";
-                else text = "Off";
-                status->setText(text);
-            };
-            refreshStatus();
-
-            status->setStyleSheet(QString(
-                "color: %1; font-size: 22px; font-weight: 300;"
-                " background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            cv->addWidget(status);
-
-            // 4 buttons: Off, Work, Sleep, Personal
-            QHBoxLayout *row = new QHBoxLayout;
-            row->setSpacing(10);
-
-            struct ModeBtn { const char *id; const char *label; };
-            const ModeBtn modes[] = {
-                { "off",      "Off" },
-                { "work",     "Work" },
-                { "sleep",    "Sleep" },
-                { "personal", "Personal" }
-            };
-
-            QList<QPushButton *> buttons;
-            for (const auto &m : modes) {
-                QPushButton *b = new QPushButton(m.label);
-                b->setCursor(Qt::PointingHandCursor);
-                b->setFixedHeight(36);
-                b->setMinimumWidth(90);
-
-                QString id = QString(m.id);
-                bool selected = (vc.focusMode == id);
-                b->setStyleSheet(QString(
-                    "QPushButton {"
-                    "  background: %1;"
-                    "  color: %2;"
-                    "  border: none;"
-                    "  border-radius: 8px;"
-                    "  padding: 4px 18px;"
-                    "  font-size: 12px;"
-                    "  font-weight: %3;"
-                    "}"
-                    "QPushButton:hover { background: %4; }")
-                    .arg(selected ? "rgb(168, 50, 50)"
-                                  : "rgba(255,255,255,20)",
-                         selected ? "#ffffff"
-                                  : Sigil::textPrimary().name(),
-                         selected ? "600" : "400",
-                         selected ? "rgb(200, 74, 74)"
-                                  : "rgba(255,255,255,45)"));
-
-                QObject::connect(b, &QPushButton::clicked,
-                                 [id, refreshStatus]() {
-                    VisualConfigManager::instance().setAndSave(
-                        [id](VisualConfig &c) { c.focusMode = id; });
-                    // Sync DND if mode is not off
-                    VisualConfigManager::instance().setAndSave(
-                        [id](VisualConfig &c) {
-                            c.dndEnabled = (id != "off");
-                        });
-                    refreshStatus();
-                });
-                buttons.append(b);
-                row->addWidget(b);
-            }
-            row->addStretch();
-            cv->addLayout(row);
-
-            v->addWidget(c);
-        }
-
-        // ---- Policy card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("NOTIFICATIONS"));
-
-            QWidget *row = new QWidget;
-            QHBoxLayout *h = new QHBoxLayout(row);
-            h->setContentsMargins(0, 6, 0, 6);
-            h->setSpacing(14);
-
-            QVBoxLayout *left = new QVBoxLayout;
-            left->setContentsMargins(0, 0, 0, 0);
-            left->setSpacing(2);
-            QLabel *t = new QLabel("When Focus is on");
-            t->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *s = new QLabel(
-                "What happens to incoming notifications");
-            s->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            left->addWidget(t);
-            left->addWidget(s);
-            h->addLayout(left, 1);
-
-            QStringList opts = { "Allow all", "Priority only",
-                                 "Mute everything" };
-            QStringList vals = { "all", "priority", "mute" };
-            int idx = vals.indexOf(vc.focusPolicy);
-            if (idx < 0) idx = 1;
-
-            Sigil::Dropdown *dd = new Sigil::Dropdown(
-                opts, idx,
-                [vals](int i) {
-                    if (i < 0 || i >= vals.size()) return;
-                    QString v = vals[i];
-                    VisualConfigManager::instance().setAndSave(
-                        [v](VisualConfig &c) { c.focusPolicy = v; });
-                });
-            h->addWidget(dd);
-            cv->addWidget(row);
-
-            QLabel *hint = new QLabel(
-                "Priority only lets notifications from the allowed apps "
-                "listed below through. Mute everything silences all.");
-            hint->setWordWrap(true);
-            hint->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            cv->addWidget(hint);
-
-            v->addWidget(c);
-        }
-
-        // ---- Schedule card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("SCHEDULE"));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Enable schedule",
-                "Turn Focus on automatically during a time window",
-                vc.focusScheduleOn,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.focusScheduleOn = on; });
-                }));
-
-            // Start / End hour dropdowns
-            QWidget *row = new QWidget;
-            QHBoxLayout *h = new QHBoxLayout(row);
-            h->setContentsMargins(0, 6, 0, 6);
-            h->setSpacing(14);
-
-            QVBoxLayout *left = new QVBoxLayout;
-            left->setContentsMargins(0, 0, 0, 0);
-            left->setSpacing(2);
-            QLabel *t = new QLabel("Time window");
-            t->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *s = new QLabel(
-                "From start to end, 24-hour clock");
-            s->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            left->addWidget(t);
-            left->addWidget(s);
-            h->addLayout(left, 1);
-
-            QStringList hours;
-            for (int i = 0; i < 24; ++i)
-                hours << QString("%1:00").arg(i, 2, 10, QChar('0'));
-
-            Sigil::Dropdown *startDD = new Sigil::Dropdown(
-                hours, vc.focusStartHour,
-                [](int i) {
-                    VisualConfigManager::instance().setAndSave(
-                        [i](VisualConfig &c) { c.focusStartHour = i; });
-                });
-            Sigil::Dropdown *endDD = new Sigil::Dropdown(
-                hours, vc.focusEndHour,
-                [](int i) {
-                    VisualConfigManager::instance().setAndSave(
-                        [i](VisualConfig &c) { c.focusEndHour = i; });
-                });
-
-            h->addWidget(startDD);
-            QLabel *toLbl = new QLabel("to");
-            toLbl->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            h->addWidget(toLbl);
-            h->addWidget(endDD);
-            cv->addWidget(row);
-
-            v->addWidget(c);
-        }
-
-        // ---- Allowed apps card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(12);
-            cv->addWidget(Sigil::groupLabel("ALLOWED APPS"));
-
-            QLabel *hint = new QLabel(
-                "These apps can break through Focus when policy is "
-                "Priority only.");
-            hint->setWordWrap(true);
-            hint->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(Sigil::textSecondary().name()));
-            cv->addWidget(hint);
-
-            // List installed apps (from .desktop files) with checkboxes
-            QListWidget *list = new QListWidget;
-            list->setFrameShape(QFrame::NoFrame);
-            list->setMinimumHeight(180);
-
-            QMap<QString, QString> appMap;
-            QDir appDir("/usr/share/applications");
-            for (const QString &f :
-                 appDir.entryList({ "*.desktop" }, QDir::Files)) {
-                QFile file(appDir.filePath(f));
-                if (!file.open(QIODevice::ReadOnly)) continue;
-                QString name;
-                for (const QString &line :
-                     QString::fromUtf8(file.readAll()).split('\n')) {
-                    if (line.startsWith("Name=") && name.isEmpty()) {
-                        name = line.mid(5).trimmed();
-                    }
-                }
-                if (name.isEmpty() || appMap.contains(name)) continue;
-                appMap[name] = f;
-            }
-
-            for (auto it = appMap.constBegin();
-                 it != appMap.constEnd(); ++it) {
-                QListWidgetItem *item = new QListWidgetItem(it.key());
-                item->setData(Qt::UserRole, it.value());
-                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-                bool checked =
-                    vc.focusAllowedApps.contains(it.key());
-                item->setCheckState(checked ? Qt::Checked
-                                            : Qt::Unchecked);
-                list->addItem(item);
-            }
-
-            QObject::connect(list, &QListWidget::itemChanged,
-                             [](QListWidgetItem *item) {
-                auto &c = VisualConfigManager::instance().cfg();
-                QStringList allowed = c.focusAllowedApps;
-                QString name = item->text();
-                bool want = (item->checkState() == Qt::Checked);
-                if (want && !allowed.contains(name)) allowed << name;
-                if (!want) allowed.removeAll(name);
-                VisualConfigManager::instance().setAndSave(
-                    [allowed](VisualConfig &c) {
-                        c.focusAllowedApps = allowed;
-                    });
-            });
-
-            cv->addWidget(list);
             v->addWidget(c);
         }
 
