@@ -1,6 +1,6 @@
 ========================================================================
 APOKOLIPS OS — PROJECT STATE
-Last updated: 2026-10-08
+Last updated: 2026-10-09
 Maintained by: user (Lytone) + AI collaborators
 Read this file FIRST if you are a new AI joining the project.
 ========================================================================
@@ -165,6 +165,16 @@ Apokolips Shell (C++/Qt6):
   [x] Settings: Keyboard page
   [x] Settings: Mouse & Trackpad page
   [x] Settings: General hub + 3 sub-pages (Startup, Language, Reset)
+  [x] Settings: Search (sources, results, shortcut) + sidebar filter
+  [x] Settings: Focus (modes, policy, schedule, allowed apps)
+  [x] Settings: Printers & Scanners
+  [x] Settings: Screensaver (dim / clock / slideshow / video)
+  [x] Settings: Fonts card in Appearance (system, mono, base size)
+  [x] Sigil Image → renamed to Aperture (hexagon iris mark)
+  [x] BoomTube — audio + video + playlist + folder picker +
+      shuffle + loop. Deps: qt6-multimedia + gstreamer.
+  [x] Sigil Image Viewer class + dock/launcher/Core Matrix wiring
+  [x] MANDATORY APP CHECKLIST added (see top of doc)
   [x] swayidle wired to Arc Reactor timeouts
   [x] Settings: Dock includes Genie card at bottom
   [x] Genie sidebar icon = Iron Man 2 reactor mark (cyan)
