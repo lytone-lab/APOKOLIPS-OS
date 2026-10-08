@@ -7416,7 +7416,6 @@ private:
             QObject::connect(reset, &QPushButton::clicked, [this]() {
                 QMessageBox box(this);
                 box.setWindowTitle("Erase all data?");
-                box.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
                 box.setText("This will remove ALL user data, accounts "
                             "and preferences on this machine.\n\n"
                             "This cannot be undone. Are you absolutely "
@@ -7424,14 +7423,6 @@ private:
                 box.setStandardButtons(QMessageBox::Cancel |
                                        QMessageBox::Yes);
                 box.setDefaultButton(QMessageBox::Cancel);
-                box.adjustSize();
-                // Centre on the Settings window
-                if (QWidget *top = window()) {
-                    QPoint c = top->mapToGlobal(QPoint(
-                        (top->width()  - box.width())  / 2,
-                        (top->height() - box.height()) / 2));
-                    box.move(c);
-                }
                 box.setStyleSheet(
                     "QMessageBox { background: rgb(24, 22, 30); }"
                     "QMessageBox QLabel { color: rgb(240, 237, 232);"

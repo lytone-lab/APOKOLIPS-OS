@@ -7100,8 +7100,6 @@ private:
         v->setContentsMargins(28, 24, 28, 28);
         v->setSpacing(18);
 
-        auto &vc = VisualConfigManager::instance().cfg();
-
         QStackedWidget *hub = new QStackedWidget;
         hub->setStyleSheet("QStackedWidget { background: transparent; }");
 
@@ -7416,7 +7414,6 @@ private:
             QObject::connect(reset, &QPushButton::clicked, [this]() {
                 QMessageBox box(this);
                 box.setWindowTitle("Erase all data?");
-                box.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
                 box.setText("This will remove ALL user data, accounts "
                             "and preferences on this machine.\n\n"
                             "This cannot be undone. Are you absolutely "
@@ -7424,14 +7421,6 @@ private:
                 box.setStandardButtons(QMessageBox::Cancel |
                                        QMessageBox::Yes);
                 box.setDefaultButton(QMessageBox::Cancel);
-                box.adjustSize();
-                // Centre on the Settings window
-                if (QWidget *top = window()) {
-                    QPoint c = top->mapToGlobal(QPoint(
-                        (top->width()  - box.width())  / 2,
-                        (top->height() - box.height()) / 2));
-                    box.move(c);
-                }
                 box.setStyleSheet(
                     "QMessageBox { background: rgb(24, 22, 30); }"
                     "QMessageBox QLabel { color: rgb(240, 237, 232);"
@@ -7456,12 +7445,12 @@ private:
                 // Instead open a terminal explaining the manual step.
                 QProcess::startDetached("foot", {
                     "bash", "-c",
-                    "echo 'Apokolips OS — Reset'; echo; "
-                    "echo 'A full system reset must be done from a live '; "
-                    "echo 'USB / installer environment. This page cannot '; "
-                    "echo 'safely wipe the running system.'; echo; "
-                    "echo 'Reboot into the installer to reset.'; "
-                    "read -p 'Press Enter to close...'" });
+                    "echo 'Apokolips OS — Reset'; echo;"
+                    "echo 'A full system reset must be done from a live";"
+                    "echo 'USB / installer environment. This page cannot";"
+                    "echo 'safely wipe the running system.'; echo;"
+                    "echo 'Reboot into the installer to reset.';"
+                    "read -p 'Press Enter to close…'" });
             });
             QHBoxLayout *rh = new QHBoxLayout;
             rh->addWidget(reset);

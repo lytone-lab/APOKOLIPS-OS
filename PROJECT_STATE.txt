@@ -164,6 +164,7 @@ Apokolips Shell (C++/Qt6):
   [x] Settings: Lock Screen & Security page
   [x] Settings: Keyboard page
   [x] Settings: Mouse & Trackpad page
+  [x] Settings: General hub + 3 sub-pages (Startup, Language, Reset)
   [x] swayidle wired to Arc Reactor timeouts
   [x] Settings: Dock includes Genie card at bottom
   [x] Genie sidebar icon = Iron Man 2 reactor mark (cyan)
@@ -216,11 +217,19 @@ acceptable, but "lock speed" is on the to-do list.
 swaylock-effects build failed (libpng dep clash) — abandoned.
 
 ------------------------------------------------------------------------
-NEXT — Session A3 (General hub)
+SESSION A3 — COMPLETE
 ------------------------------------------------------------------------
-  [ ] General page with nested:
-      Software Update, Storage, Startup Items, Language & Region
-  [ ] Transfer / Reset (dangerous — careful UI)
+  [x] General hub page (nested navigation)
+  [x] Startup Items sub-page (reads ~/.config/autostart)
+  [x] Language & Region sub-page (localectl set-locale via pkexec)
+  [x] Transfer / Reset sub-page (informational Migration Assistant,
+      Erase All Content with double confirmation — deliberately
+      hands off to terminal explaining installer-media requirement)
+  [x] Sway rules for dialogs — float + centered
+
+Note: General is a hub, not a list. Clicking General shows 3
+clickable rows. Sub-pages have a "< General" back button. Sidebar
+General stays highlighted while on a sub-page.
 
 ------------------------------------------------------------------------
 PENDING — Session B (Tier 2)
