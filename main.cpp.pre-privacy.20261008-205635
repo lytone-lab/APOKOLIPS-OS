@@ -409,8 +409,6 @@ struct VisualConfig {
     int    cursorSize         = 24;
     QString visualAlerts      = "off";
     int    notifTimeoutSec    = 6;
-    bool   locationEnabled    = false;
-    bool   telemetryEnabled   = false;
     QString lockWallpaper      = "";   // empty = solid color
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -578,12 +576,6 @@ public:
                                    : m_cfg.visualAlerts;
         m_cfg.notifTimeoutSec     = getI("notifTimeoutSec",
                                          m_cfg.notifTimeoutSec);
-        m_cfg.locationEnabled     = o.contains("locationEnabled")
-                                   ? o["locationEnabled"].toBool(false)
-                                   : m_cfg.locationEnabled;
-        m_cfg.telemetryEnabled    = o.contains("telemetryEnabled")
-                                   ? o["telemetryEnabled"].toBool(false)
-                                   : m_cfg.telemetryEnabled;
         m_cfg.lockWallpaper       = o.contains("lockWallpaper")
                                    ? o["lockWallpaper"].toString()
                                    : m_cfg.lockWallpaper;
@@ -715,8 +707,6 @@ public:
         o["cursorSize"]          = m_cfg.cursorSize;
         o["visualAlerts"]        = m_cfg.visualAlerts;
         o["notifTimeoutSec"]     = m_cfg.notifTimeoutSec;
-        o["locationEnabled"]     = m_cfg.locationEnabled;
-        o["telemetryEnabled"]    = m_cfg.telemetryEnabled;
         o["lockWallpaper"]       = m_cfg.lockWallpaper;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
@@ -6968,9 +6958,6 @@ private:
         addSection(sb, "Accessibility",
                    QString::fromUtf8("\xF0\x9F\xA7\xBF"),
                    QColor(74, 122, 158), makeAccessibilityPage());
-        addSection(sb, "Privacy & Security",
-                   QString::fromUtf8("\xF0\x9F\x9B\xA1"),
-                   QColor(168, 50, 50), makePrivacyPage());
         addSection(sb, "Wallpaper",  QString::fromUtf8("\xE2\x96\xA3"),
                    QColor(90, 122, 158), makeWallpaperPage());
         addSection(sb, "Dock",       QString::fromUtf8("\xE2\x96\xAA"),
@@ -9363,238 +9350,6 @@ private:
                           "always-show-text-caret",
                           on ? "true" : "false" });
                 }));
-
-            v->addWidget(c);
-        }
-
-        v->addStretch();
-        return page;
-    }
-
-    QWidget *makePrivacyPage() {
-        QWidget *page = new QWidget;
-        page->setAutoFillBackground(false);
-        QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
-
-        v->addWidget(Sigil::sectionTitle("Privacy & Security"));
-
-        auto &vc = VisualConfigManager::instance().cfg();
-
-        // ---- Statement card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(8);
-
-            QLabel *head = new QLabel(
-                "Apokolips OS ships with zero telemetry by default.");
-            head->setWordWrap(true);
-            head->setStyleSheet(QString(
-                "color: %1; font-size: 14px; font-weight: 500;"
-                " background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            cv->addWidget(head);
-
-            QLabel *sub = new QLabel(
-                "No analytics, no usage reporting, no crash upload, no "
-                "background phone-home. This is a feature, not a default "
-                "we later flip. Any reporting on this machine is opt-in "
-                "only and can be turned off below.");
-            sub->setWordWrap(true);
-            sub->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(Sigil::textSecondary().name()));
-            cv->addWidget(sub);
-            v->addWidget(c);
-        }
-
-        // ---- System Security card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(12);
-            cv->addWidget(Sigil::groupLabel("SYSTEM SECURITY"));
-
-            // AppArmor status
-            QProcess aa;
-            aa.start("bash", { "-c",
-                "cat /sys/module/apparmor/parameters/enabled 2>/dev/null || "
-                "echo 'N'" });
-            aa.waitForFinished(500);
-            bool apparmorOn = QString::fromUtf8(
-                aa.readAllStandardOutput()).trimmed().startsWith("Y");
-
-            QHBoxLayout *row1 = new QHBoxLayout;
-            QLabel *l1 = new QLabel("AppArmor");
-            l1->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *v1 = new QLabel(apparmorOn ? "Enabled" : "Disabled");
-            v1->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(apparmorOn ? "rgb(120, 200, 120)"
-                                : "rgb(200, 120, 120)"));
-            row1->addWidget(l1);
-            row1->addStretch();
-            row1->addWidget(v1);
-            cv->addLayout(row1);
-
-            // Firewall status
-            QProcess fw;
-            fw.start("bash", { "-c",
-                "systemctl is-active ufw 2>/dev/null || echo inactive" });
-            fw.waitForFinished(500);
-            QString fwState = QString::fromUtf8(
-                fw.readAllStandardOutput()).trimmed();
-            bool fwOn = (fwState == "active");
-
-            QHBoxLayout *row2 = new QHBoxLayout;
-            QLabel *l2 = new QLabel("Firewall (ufw)");
-            l2->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *v2 = new QLabel(fwOn ? "Active" : "Inactive");
-            v2->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(fwOn ? "rgb(120, 200, 120)"
-                          : "rgb(200, 160, 100)"));
-            row2->addWidget(l2);
-            row2->addStretch();
-            row2->addWidget(v2);
-            cv->addLayout(row2);
-
-            // SSH status
-            QProcess ssh;
-            ssh.start("systemctl", { "is-active", "ssh" });
-            ssh.waitForFinished(500);
-            bool sshOn = QString::fromUtf8(
-                ssh.readAllStandardOutput()).trimmed() == "active";
-
-            QHBoxLayout *row3 = new QHBoxLayout;
-            QLabel *l3 = new QLabel("SSH server");
-            l3->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *v3 = new QLabel(sshOn ? "Running" : "Stopped");
-            v3->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(sshOn ? "rgb(200, 160, 100)"
-                           : "rgb(120, 200, 120)"));
-            row3->addWidget(l3);
-            row3->addStretch();
-            row3->addWidget(v3);
-            cv->addLayout(row3);
-
-            QLabel *hint = new QLabel(
-                "Manage firewall and SSH in Lock Screen & Security.");
-            hint->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            cv->addWidget(hint);
-
-            v->addWidget(c);
-        }
-
-        // ---- Location card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("LOCATION"));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Location services",
-                "Allow apps to determine your physical location",
-                vc.locationEnabled,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.locationEnabled = on; });
-                    QProcess::startDetached("gsettings",
-                        { "set", "org.gnome.system.location",
-                          "enabled", on ? "true" : "false" });
-                }));
-
-            v->addWidget(c);
-        }
-
-        // ---- Telemetry card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("ANALYTICS"));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Send diagnostic reports",
-                "Ubuntu report — off by default. Enabling allows anonymous "
-                "system info to be sent after installs.",
-                vc.telemetryEnabled,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.telemetryEnabled = on; });
-                    if (on) {
-                        QProcess::startDetached("ubuntu-report",
-                            { "send" });
-                    }
-                }));
-
-            QLabel *popularity = new QLabel(
-                "Popularity contest (popcon): not installed on this machine.");
-            popularity->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            popularity->setWordWrap(true);
-            cv->addWidget(popularity);
-
-            v->addWidget(c);
-        }
-
-        // ---- Autostart card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(12);
-            cv->addWidget(Sigil::groupLabel("AUTOSTART (SYSTEM)"));
-
-            QListWidget *list = new QListWidget;
-            list->setFrameShape(QFrame::NoFrame);
-            list->setMinimumHeight(160);
-
-            QDir sysDir("/etc/xdg/autostart");
-            for (const QString &f :
-                 sysDir.entryList({ "*.desktop" }, QDir::Files,
-                                  QDir::Name)) {
-                QFile file(sysDir.filePath(f));
-                QString name = f;
-                if (file.open(QIODevice::ReadOnly)) {
-                    for (const QString &line :
-                         QString::fromUtf8(file.readAll()).split('\n')) {
-                        if (line.startsWith("Name=")) {
-                            name = line.mid(5).trimmed();
-                            break;
-                        }
-                    }
-                }
-                list->addItem(name + "   (" + f + ")");
-            }
-            if (list->count() == 0) {
-                list->addItem("No system autostart entries");
-            }
-            cv->addWidget(list);
-
-            QLabel *hint = new QLabel(
-                "User autostart entries are managed in General → Startup Items.");
-            hint->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            cv->addWidget(hint);
 
             v->addWidget(c);
         }
