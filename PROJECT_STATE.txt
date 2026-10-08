@@ -340,14 +340,15 @@ BUG LIST (open)
   9. Launcher Arc Reactor tile doesn't use reactor mark yet
  10. Settings window — black fringe on rounded corners
      Wallpaper shows through at the outer antialiased edge as a dark
-     band. Attempted fix (Source composition clear + direct fillPath)
-     still leaves the fringe. Options to try:
-       - Drop WA_TranslucentBackground and paint the rounded rect over
-         a fully opaque backing
-       - Set the window's mask to the rounded rect (hard edges but
-         no fringing)
-       - Draw two passes of the rounded rect to saturate the AA edge
-       - Skip client-side rounded corners; let the compositor clip
+     band. Tried:
+       - Source composition clear + direct fillPath  → no change
+       - setMask(QRegion(rounded path))              → no change
+     Remaining options:
+       - Drop WA_TranslucentBackground entirely; use an opaque backing
+       - Do the rounding at the compositor level (sway window rules)
+       - Accept it; corner artifacts are 1-2px and only visible
+         against bright wallpapers
+     Deferred — not blocking any feature.
 
 ------------------------------------------------------------------------
 AI WORKING RULES (very important)

@@ -6671,29 +6671,12 @@ protected:
         QWidget::mousePressEvent(e);
     }
 
-    void applyMask() {
-        // Hard-clip the window to a rounded rect so the compositor
-        // never paints outside — this is what kills the black fringe.
-        QPainterPath path;
-        path.addRoundedRect(QRectF(rect()), 14, 14);
-        QRegion region(path.toFillPolygon().toPolygon());
-        setMask(region);
-    }
-
-    void resizeEvent(QResizeEvent *e) override {
-        QWidget::resizeEvent(e);
-        applyMask();
-    }
-
-    void showEvent(QShowEvent *e) override {
-        QWidget::showEvent(e);
-        applyMask();
-    }
-
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
+        // Clear to transparent first — prevents the black fringe around
+        // the antialiased rounded corners.
         p.setCompositionMode(QPainter::CompositionMode_Source);
         p.fillRect(rect(), Qt::transparent);
         p.setCompositionMode(QPainter::CompositionMode_SourceOver);
