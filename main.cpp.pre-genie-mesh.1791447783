@@ -1,6 +1,4 @@
 #include <QApplication>
-#include <QVector>
-#include <QTransform>
 #include <QBuffer>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -364,12 +362,6 @@ struct VisualConfig {
     bool   clock24Hour       = true;
     bool   clockShowSeconds  = false;
     int    dockIconSize       = 52;   // base visual size (before magnify)
-    bool   genieEnabled       = true;
-    int    genieDurationMs    = 480;
-    int    genieStrips        = 140;
-    double genieStagger       = 0.35;
-    double genieCurve         = 0.65;
-    double genieFadeStart     = 0.95;
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
     double dockSigma          = 55.0;
@@ -419,21 +411,6 @@ public:
                                    ? o["widgetsVisible"].toBool(true)
                                    : m_cfg.widgetsVisible;
         m_cfg.dockIconSize       = getI("dockIconSize", m_cfg.dockIconSize);
-        m_cfg.genieEnabled       = o.contains("genieEnabled")
-                                   ? o["genieEnabled"].toBool(true)
-                                   : m_cfg.genieEnabled;
-        m_cfg.genieDurationMs    = getI("genieDurationMs",
-                                        m_cfg.genieDurationMs);
-        m_cfg.genieStrips        = getI("genieStrips", m_cfg.genieStrips);
-        m_cfg.genieStagger       = o.contains("genieStagger")
-                                   ? o["genieStagger"].toDouble(0.35)
-                                   : m_cfg.genieStagger;
-        m_cfg.genieCurve         = o.contains("genieCurve")
-                                   ? o["genieCurve"].toDouble(0.65)
-                                   : m_cfg.genieCurve;
-        m_cfg.genieFadeStart     = o.contains("genieFadeStart")
-                                   ? o["genieFadeStart"].toDouble(0.95)
-                                   : m_cfg.genieFadeStart;
         m_cfg.dndEnabled         = o.contains("dndEnabled")
                                    ? o["dndEnabled"].toBool(false)
                                    : m_cfg.dndEnabled;
@@ -462,16 +439,6 @@ public:
         if (m_cfg.finderAlpha        < 30)  m_cfg.finderAlpha        = 30;
         if (m_cfg.dockIconSize       < 32)  m_cfg.dockIconSize       = 32;
         if (m_cfg.dockIconSize       > 90)  m_cfg.dockIconSize       = 90;
-        if (m_cfg.genieDurationMs < 120) m_cfg.genieDurationMs = 120;
-        if (m_cfg.genieDurationMs > 1500) m_cfg.genieDurationMs = 1500;
-        if (m_cfg.genieStrips < 40)   m_cfg.genieStrips = 40;
-        if (m_cfg.genieStrips > 320)  m_cfg.genieStrips = 320;
-        if (m_cfg.genieStagger < 0.0) m_cfg.genieStagger = 0.0;
-        if (m_cfg.genieStagger > 0.8) m_cfg.genieStagger = 0.8;
-        if (m_cfg.genieCurve < 0.3)   m_cfg.genieCurve = 0.3;
-        if (m_cfg.genieCurve > 2.0)   m_cfg.genieCurve = 2.0;
-        if (m_cfg.genieFadeStart < 0.5) m_cfg.genieFadeStart = 0.5;
-        if (m_cfg.genieFadeStart > 1.0) m_cfg.genieFadeStart = 1.0;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
         if (m_cfg.dockPosition < 0)  m_cfg.dockPosition = 0;
         if (m_cfg.dockPosition > 2)  m_cfg.dockPosition = 2;
@@ -499,12 +466,6 @@ public:
         o["finderAlpha"]        = m_cfg.finderAlpha;
         o["widgetsVisible"]     = m_cfg.widgetsVisible;
         o["dockIconSize"]       = m_cfg.dockIconSize;
-        o["genieEnabled"]       = m_cfg.genieEnabled;
-        o["genieDurationMs"]    = m_cfg.genieDurationMs;
-        o["genieStrips"]        = m_cfg.genieStrips;
-        o["genieStagger"]       = m_cfg.genieStagger;
-        o["genieCurve"]         = m_cfg.genieCurve;
-        o["genieFadeStart"]     = m_cfg.genieFadeStart;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
@@ -9909,173 +9870,137 @@ public:
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        setAttribute(Qt::WA_DeleteOnClose, true);
 
-        if (!m_pix.load(pngPath) || startRect.isEmpty()) {
-            qWarning() << "[genie] load failed:" << pngPath;
-            QTimer::singleShot(0, qApp, &QApplication::quit);
-            return;
-        }
-        QFile::remove(pngPath);
+        m_pix.load(pngPath);
 
         QScreen *screen = QApplication::screenAt(startRect.center());
         if (!screen) screen = QApplication::primaryScreen();
-        QRect screenRect = screen ? screen->geometry() : QRect(0, 0, 1, 1);
-        setGeometry(screenRect);
-        m_origin = screenRect.topLeft();
-        m_start  = startRect.translated(-m_origin);
-        m_dock   = dockGlobal - m_origin;
 
-        // Read live genie config
-        auto &cfg = VisualConfigManager::instance().cfg();
-        m_strips   = qBound(40, cfg.genieStrips, 320);
-        m_stagger  = qBound(0.0, cfg.genieStagger, 0.8);
-        m_curve    = qBound(0.3, cfg.genieCurve, 2.0);
-        m_fadeFrom = qBound(0.5, cfg.genieFadeStart, 1.0);
+        if (screen) {
+            const QRect screenRect = screen->geometry();
+            setGeometry(screenRect);
+            m_origin = screenRect.topLeft();
+        }
 
-        int frames = qBound(8, cfg.genieDurationMs / 16, 94);
-        m_frames = frames;
+        // sway and mapToGlobal give desktop coordinates; painting is screen-local.
+        m_start = startRect.translated(-m_origin);
+        m_dock = dockGlobal - m_origin;
 
         m_timer = new QTimer(this);
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout,
                          this, &GenieOverlay::tick);
-        QTimer::singleShot(30, this, [this]() {
-            if (m_timer) m_timer->start();
-        });
+        m_timer->start();
     }
 
 protected:
-    void paintEvent(QPaintEvent *) override {
-        if (m_pix.isNull() || m_start.isEmpty()
-            || width() <= 0 || height() <= 0) return;
+    void paintEvent(QPaintEvent *) override
+    {
+        if (m_pix.isNull() || m_start.isEmpty())
+            return;
 
         QPainter p(this);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-        const bool isLastFrame = (m_frame >= m_frames - 1);
-        const qreal t = isLastFrame ? 1.0
-            : qBound<qreal>(
-                0.0, qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
+        constexpr qreal pi = 3.14159265358979323846;
+        constexpr qreal iconSize = 36.0;
 
-        auto smoothStep = [](qreal v) {
-            v = qBound<qreal>(0.0, v, 1.0);
-            return v * v * (3.0 - 2.0 * v);
-        };
-        auto lerp = [](qreal a, qreal b, qreal k) {
-            return a + (b - a) * k;
-        };
+        const qreal t = qBound<qreal>(
+            0.0, qreal(m_frame) / qreal(FRAMES - 1), 1.0);
 
-        const qreal leftGap   = m_dock.x();
-        const qreal rightGap  = width() - m_dock.x();
-        const qreal topGap    = m_dock.y();
-        const qreal bottomGap = height() - m_dock.y();
-        const bool sideDock =
-            qMin(leftGap, rightGap) < qMin(topGap, bottomGap);
-        const bool positive = sideDock
-            ? (m_dock.x() >= width()  * 0.5)
-            : (m_dock.y() >= height() * 0.5);
+        // Animate narrow vertical slices. The rightmost slice starts first;
+        // each slice to its left follows slightly later.
+        const int columns = qBound(96, m_pix.width() / 5, 220);
+        const qreal startCx = m_start.x() + m_start.width() * 0.5;
+        const qreal startCy = m_start.y() + m_start.height() * 0.5;
+        const QPointF travel(m_dock.x() - startCx,
+                             m_dock.y() - startCy);
+        const qreal travelLength =
+            std::hypot(travel.x(), travel.y());
 
-        const qreal axisStart  = sideDock ? m_start.x()  : m_start.y();
-        const qreal axisExtent = sideDock ? m_start.width() : m_start.height();
-        const qreal crossStart = sideDock ? m_start.y()  : m_start.x();
-        const qreal crossExtent= sideDock ? m_start.height(): m_start.width();
-        const qreal dockAxis   = sideDock ? m_dock.x()   : m_dock.y();
-        const qreal dockCross  = sideDock ? m_dock.y()   : m_dock.x();
-        const qreal sourceCrossCenter = crossStart + crossExtent * 0.5;
+        QPointF normal(0.0, 0.0);
+        if (travelLength > 0.0)
+            normal = QPointF(-travel.y() / travelLength,
+                              travel.x() / travelLength);
 
-        const int stripCount = m_strips;
+        for (int i = 0; i < columns; ++i) {
+            const int sx0 = i * m_pix.width() / columns;
+            const int sx1 = (i + 1) * m_pix.width() / columns;
+            const int sw = qMax(1, sx1 - sx0);
 
-        const qreal fadeStart = qMin<qreal>(0.98, m_fadeFrom + 0.03);
-        const qreal opacity = t <= fadeStart
-            ? 1.0
-            : 1.0 - (t - fadeStart) / (1.0 - fadeStart);
-        p.setOpacity(qBound<qreal>(0.0, opacity, 1.0));
+            const qreal u = (qreal(i) + 0.5) / qreal(columns);
+            const qreal across = 2.0 * u - 1.0;
 
-        constexpr qreal overlap = 1.0;
-        constexpr qreal minSize = 0.12;
-
-        for (int i = 0; i < stripCount; ++i) {
-            const qreal f0 = qreal(i)     / stripCount;
-            const qreal f1 = qreal(i + 1) / stripCount;
-            const qreal fm = (f0 + f1) * 0.5;
-
-            const qreal s = positive ? fm : (1.0 - fm);
-            const qreal delay  = (1.0 - s) * m_stagger;
-            const qreal localT = qBound<qreal>(
+            // Right edge leads; left edge trails by up to 27% of the motion.
+            const qreal delay = (1.0 - u) * 0.27;
+            const qreal raw = qBound<qreal>(
                 0.0, (t - delay) / (1.0 - delay), 1.0);
-            const qreal e = smoothStep(localT);
+            const qreal e = raw * raw * (3.0 - 2.0 * raw);
+            const qreal bend = std::sin(pi * e);
 
-            // Narrower curve: front-load the cross-axis shrink
-            const qreal eCross = std::pow(e, m_curve);
+            const qreal sourceX = m_start.x() + u * m_start.width();
+            const qreal sourceY = startCy;
 
-            const qreal srcAxisCenter  = axisStart + fm * axisExtent;
-            const qreal srcAxisSize    = (f1 - f0) * axisExtent;
-            const qreal srcCrossCenter = sourceCrossCenter;
-            const qreal srcCrossSize   = crossExtent;
+            // Columns converge together at the dock instead of the whole
+            // window translating as one rigid rectangle.
+            const qreal targetX =
+                m_dock.x() + (u - 1.0) * iconSize * 0.36;
+            const qreal targetY =
+                m_dock.y() + across * iconSize * 0.16;
 
-            const qreal tgtAxisCenter  = dockAxis;
-            const qreal tgtAxisSize    = minSize;
-            const qreal tgtCrossCenter = dockCross;
-            const qreal tgtCrossSize   = minSize;
+            qreal centerX = sourceX + (targetX - sourceX) * e;
+            qreal centerY = sourceY + (targetY - sourceY) * e;
 
-            const qreal drawAxisCenter  = lerp(srcAxisCenter,  tgtAxisCenter,  e);
-            const qreal drawAxisSize    = lerp(srcAxisSize,    tgtAxisSize,    e);
-            const qreal drawCrossCenter = lerp(srcCrossCenter, tgtCrossCenter, e);
-            const qreal drawCrossSize   = lerp(srcCrossSize,   tgtCrossSize,   eCross);
+            // Give each trailing slice a curved path that follows the lead.
+            const qreal curve =
+                (1.0 - u) * bend *
+                qMin<qreal>(120.0, m_start.height() * 0.15);
+            centerX += normal.x() * curve;
+            centerY += normal.y() * curve;
 
-            QRectF dst;
-            if (sideDock) {
-                dst = QRectF(drawAxisCenter - (drawAxisSize + overlap) * 0.5,
-                             drawCrossCenter - drawCrossSize * 0.5,
-                             drawAxisSize + overlap,
-                             drawCrossSize);
-            } else {
-                dst = QRectF(drawCrossCenter - drawCrossSize * 0.5,
-                             drawAxisCenter - (drawAxisSize + overlap) * 0.5,
-                             drawCrossSize,
-                             drawAxisSize + overlap);
-            }
+            const qreal width =
+                (m_start.width() / qreal(columns)) * (1.0 - e) +
+                (iconSize / qreal(columns)) * e;
+            const qreal height =
+                m_start.height() + (iconSize - m_start.height()) * e;
 
-            QRectF srcR;
-            if (sideDock) {
-                srcR = QRectF(f0 * m_pix.width(), 0.0,
-                              (f1 - f0) * m_pix.width(),
-                              qreal(m_pix.height()));
-            } else {
-                srcR = QRectF(0.0, f0 * m_pix.height(),
-                              qreal(m_pix.width()),
-                              (f1 - f0) * m_pix.height());
-            }
+            qreal opacity = 1.0;
+            if (t > 0.96)
+                opacity = (1.0 - t) / 0.04;
 
-            p.drawPixmap(dst, m_pix, srcR);
+            p.setOpacity(qBound<qreal>(0.0, opacity, 1.0));
+            const QRectF dst(centerX - width * 0.5,
+                             centerY - height * 0.5,
+                             qMax<qreal>(1.0, width),
+                             qMax<qreal>(1.0, height));
+            const QRectF source(sx0, 0, sw, m_pix.height());
+            p.drawPixmap(dst, m_pix, source);
         }
     }
 
 private:
-    void tick() {
-        if (m_frame < m_frames - 1) {
+    void tick()
+    {
+        if (m_frame < FRAMES - 1) {
             ++m_frame;
             update();
             return;
         }
+
         m_timer->stop();
         update();
         QTimer::singleShot(80, qApp, &QApplication::quit);
     }
 
-    QPixmap m_pix;
-    QRect   m_start;
-    QPoint  m_dock;
-    QPoint  m_origin;
-    QTimer *m_timer = nullptr;
-    int     m_frame = 0;
+    static constexpr qreal PI = 3.14159265358979323846;
+    static constexpr int FRAMES = 36; // ~576 ms
 
-    int    m_frames   = 30;
-    int    m_strips   = 140;
-    qreal  m_stagger  = 0.35;
-    qreal  m_curve    = 0.65;
-    qreal  m_fadeFrom = 0.95;
+    QPixmap m_pix;
+    QRect m_start;
+    QPoint m_dock;
+    QPoint m_origin;
+    QTimer *m_timer = nullptr;
+    int m_frame = 0;
 };
 
 static int runShell(int argc, char *argv[])
@@ -10371,64 +10296,71 @@ static int runShell(int argc, char *argv[])
                     sh->deleteLater();
                     if (!QFile::exists(png)) return;
 
-                    // Show the captured window image first. Keep its first
-                    // frame still, then move Files into scratchpad.
-                    const QPoint dockGlobal = root->mapToGlobal(dockPt);
-                    const QStringList overlayArgs{
-                        "--genie", png,
-                        QString::number(target.rect.x()),
-                        QString::number(target.rect.y()),
-                        QString::number(target.rect.width()),
-                        QString::number(target.rect.height()),
-                        QString::number(dockGlobal.x()),
-                        QString::number(dockGlobal.y())
-                    };
-
-                    qint64 overlayPid = 0;
-                    const bool overlayStarted = QProcess::startDetached(
-                        QCoreApplication::applicationFilePath(),
-                        overlayArgs, QString(), &overlayPid);
-                    qDebug() << "[genie] overlay started first="
-                             << overlayStarted << "pid=" << overlayPid;
-
-                    if (!overlayStarted) {
+                    // Move the real window using the discovered sway socket.
+                    QProcess *move = new QProcess(root);
+                    QProcessEnvironment moveEnv =
+                        QProcessEnvironment::systemEnvironment();
+                    const QString moveSock = discoverSwaySock();
+                    if (moveSock.isEmpty()) {
+                        qDebug() << "[genie] no SWAYSOCK; aborting move";
+                        move->deleteLater();
                         QFile::remove(png);
                         return;
                     }
+                    moveEnv.insert("SWAYSOCK", moveSock);
+                    move->setProcessEnvironment(moveEnv);
 
-                    QTimer::singleShot(150, root, [root, target]() {
-                        QProcess *move = new QProcess(root);
-                        QProcessEnvironment env =
-                            QProcessEnvironment::systemEnvironment();
-                        const QString sock = discoverSwaySock();
-                        if (sock.isEmpty()) {
-                            qDebug() << "[genie] no SWAYSOCK for scratchpad move";
+                    QObject::connect(
+                        move,
+                        QOverload<int, QProcess::ExitStatus>::of(
+                            &QProcess::finished),
+                        [move, png, target, dockPt, root](int moveCode, QProcess::ExitStatus status) {
+                            const QByteArray out = move->readAllStandardOutput();
+                            const QByteArray err = move->readAllStandardError();
                             move->deleteLater();
-                            return;
-                        }
-                        env.insert("SWAYSOCK", sock);
-                        move->setProcessEnvironment(env);
 
-                        QObject::connect(
-                            move,
-                            QOverload<int, QProcess::ExitStatus>::of(
-                                &QProcess::finished),
-                            [move](int code, QProcess::ExitStatus status) {
-                                const QByteArray out =
-                                    move->readAllStandardOutput();
-                                const QByteArray err =
-                                    move->readAllStandardError();
-                                qDebug() << "[genie] delayed sway move"
-                                         << code << status
-                                         << "stdout=" << out
-                                         << "stderr=" << err;
-                                move->deleteLater();
-                            });
+                            bool moved = status == QProcess::NormalExit &&
+                                         moveCode == 0;
+                            const QJsonDocument reply =
+                                QJsonDocument::fromJson(out);
+                            const QJsonArray results = reply.array();
+                            if (results.isEmpty()) {
+                                moved = false;
+                            } else {
+                                for (const QJsonValue &v : results)
+                                    if (!v.toObject().value("success").toBool())
+                                        moved = false;
+                            }
 
-                        move->start("swaymsg",
-                            { QString("[con_id=%1]").arg(target.conId),
-                              "move", "scratchpad" });
-                    });
+                            qDebug() << "[genie] sway move code=" << moveCode
+                                     << "status=" << status
+                                     << "stdout=" << out
+                                     << "stderr=" << err;
+                            if (!moved) {
+                                qDebug() << "[genie] scratchpad move failed; "
+                                            "overlay not started";
+                                QFile::remove(png);
+                                return;
+                            }
+
+                            const QPoint dockGlobal = root->mapToGlobal(dockPt);
+                            const QStringList args{
+                                "--genie", png,
+                                QString::number(target.rect.x()),
+                                QString::number(target.rect.y()),
+                                QString::number(target.rect.width()),
+                                QString::number(target.rect.height()),
+                                QString::number(dockGlobal.x()),
+                                QString::number(dockGlobal.y())
+                            };
+                            const bool started = QProcess::startDetached(
+                                QCoreApplication::applicationFilePath(), args);
+                            qDebug() << "[genie] overlay started=" << started;
+                        });
+
+                    move->start("swaymsg",
+                        { QString("[con_id=%1]").arg(target.conId),
+                          "move", "scratchpad" });
                 });
                 QString grimArg = QString("%1,%2 %3x%4")
                         .arg(target.rect.x())

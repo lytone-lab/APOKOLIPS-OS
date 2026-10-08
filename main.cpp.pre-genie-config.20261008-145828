@@ -364,12 +364,6 @@ struct VisualConfig {
     bool   clock24Hour       = true;
     bool   clockShowSeconds  = false;
     int    dockIconSize       = 52;   // base visual size (before magnify)
-    bool   genieEnabled       = true;
-    int    genieDurationMs    = 480;
-    int    genieStrips        = 140;
-    double genieStagger       = 0.35;
-    double genieCurve         = 0.65;
-    double genieFadeStart     = 0.95;
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
     double dockSigma          = 55.0;
@@ -419,21 +413,6 @@ public:
                                    ? o["widgetsVisible"].toBool(true)
                                    : m_cfg.widgetsVisible;
         m_cfg.dockIconSize       = getI("dockIconSize", m_cfg.dockIconSize);
-        m_cfg.genieEnabled       = o.contains("genieEnabled")
-                                   ? o["genieEnabled"].toBool(true)
-                                   : m_cfg.genieEnabled;
-        m_cfg.genieDurationMs    = getI("genieDurationMs",
-                                        m_cfg.genieDurationMs);
-        m_cfg.genieStrips        = getI("genieStrips", m_cfg.genieStrips);
-        m_cfg.genieStagger       = o.contains("genieStagger")
-                                   ? o["genieStagger"].toDouble(0.35)
-                                   : m_cfg.genieStagger;
-        m_cfg.genieCurve         = o.contains("genieCurve")
-                                   ? o["genieCurve"].toDouble(0.65)
-                                   : m_cfg.genieCurve;
-        m_cfg.genieFadeStart     = o.contains("genieFadeStart")
-                                   ? o["genieFadeStart"].toDouble(0.95)
-                                   : m_cfg.genieFadeStart;
         m_cfg.dndEnabled         = o.contains("dndEnabled")
                                    ? o["dndEnabled"].toBool(false)
                                    : m_cfg.dndEnabled;
@@ -462,16 +441,6 @@ public:
         if (m_cfg.finderAlpha        < 30)  m_cfg.finderAlpha        = 30;
         if (m_cfg.dockIconSize       < 32)  m_cfg.dockIconSize       = 32;
         if (m_cfg.dockIconSize       > 90)  m_cfg.dockIconSize       = 90;
-        if (m_cfg.genieDurationMs < 120) m_cfg.genieDurationMs = 120;
-        if (m_cfg.genieDurationMs > 1500) m_cfg.genieDurationMs = 1500;
-        if (m_cfg.genieStrips < 40)   m_cfg.genieStrips = 40;
-        if (m_cfg.genieStrips > 320)  m_cfg.genieStrips = 320;
-        if (m_cfg.genieStagger < 0.0) m_cfg.genieStagger = 0.0;
-        if (m_cfg.genieStagger > 0.8) m_cfg.genieStagger = 0.8;
-        if (m_cfg.genieCurve < 0.3)   m_cfg.genieCurve = 0.3;
-        if (m_cfg.genieCurve > 2.0)   m_cfg.genieCurve = 2.0;
-        if (m_cfg.genieFadeStart < 0.5) m_cfg.genieFadeStart = 0.5;
-        if (m_cfg.genieFadeStart > 1.0) m_cfg.genieFadeStart = 1.0;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
         if (m_cfg.dockPosition < 0)  m_cfg.dockPosition = 0;
         if (m_cfg.dockPosition > 2)  m_cfg.dockPosition = 2;
@@ -499,12 +468,6 @@ public:
         o["finderAlpha"]        = m_cfg.finderAlpha;
         o["widgetsVisible"]     = m_cfg.widgetsVisible;
         o["dockIconSize"]       = m_cfg.dockIconSize;
-        o["genieEnabled"]       = m_cfg.genieEnabled;
-        o["genieDurationMs"]    = m_cfg.genieDurationMs;
-        o["genieStrips"]        = m_cfg.genieStrips;
-        o["genieStagger"]       = m_cfg.genieStagger;
-        o["genieCurve"]         = m_cfg.genieCurve;
-        o["genieFadeStart"]     = m_cfg.genieFadeStart;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
@@ -9926,21 +9889,11 @@ public:
         m_start  = startRect.translated(-m_origin);
         m_dock   = dockGlobal - m_origin;
 
-        // Read live genie config
-        auto &cfg = VisualConfigManager::instance().cfg();
-        m_strips   = qBound(40, cfg.genieStrips, 320);
-        m_stagger  = qBound(0.0, cfg.genieStagger, 0.8);
-        m_curve    = qBound(0.3, cfg.genieCurve, 2.0);
-        m_fadeFrom = qBound(0.5, cfg.genieFadeStart, 1.0);
-
-        int frames = qBound(8, cfg.genieDurationMs / 16, 94);
-        m_frames = frames;
-
         m_timer = new QTimer(this);
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout,
                          this, &GenieOverlay::tick);
-        QTimer::singleShot(30, this, [this]() {
+        QTimer::singleShot(140, this, [this]() {
             if (m_timer) m_timer->start();
         });
     }
@@ -9953,10 +9906,8 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-        const bool isLastFrame = (m_frame >= m_frames - 1);
-        const qreal t = isLastFrame ? 1.0
-            : qBound<qreal>(
-                0.0, qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
+        const qreal t = qBound<qreal>(
+            0.0, qreal(m_frame) / qreal(FRAMES - 1), 1.0);
 
         auto smoothStep = [](qreal v) {
             v = qBound<qreal>(0.0, v, 1.0);
@@ -9966,6 +9917,7 @@ protected:
             return a + (b - a) * k;
         };
 
+        // --- Dock side detection ---
         const qreal leftGap   = m_dock.x();
         const qreal rightGap  = width() - m_dock.x();
         const qreal topGap    = m_dock.y();
@@ -9976,54 +9928,64 @@ protected:
             ? (m_dock.x() >= width()  * 0.5)
             : (m_dock.y() >= height() * 0.5);
 
+        // --- Axis (travel) and cross (perpendicular) in overlay-local space ---
         const qreal axisStart  = sideDock ? m_start.x()  : m_start.y();
         const qreal axisExtent = sideDock ? m_start.width() : m_start.height();
         const qreal crossStart = sideDock ? m_start.y()  : m_start.x();
         const qreal crossExtent= sideDock ? m_start.height(): m_start.width();
         const qreal dockAxis   = sideDock ? m_dock.x()   : m_dock.y();
         const qreal dockCross  = sideDock ? m_dock.y()   : m_dock.x();
+
         const qreal sourceCrossCenter = crossStart + crossExtent * 0.5;
 
-        const int stripCount = m_strips;
+        // --- High strip count kills visible banding ---
+        const int stripCount =
+            qBound(100, int(axisExtent / 5.0), 220);
 
-        const qreal fadeStart = qMin<qreal>(0.98, m_fadeFrom + 0.03);
+        // --- Fade tail (last 5%) ---
+        const qreal fadeStart = 0.95;
         const qreal opacity = t <= fadeStart
             ? 1.0
             : 1.0 - (t - fadeStart) / (1.0 - fadeStart);
         p.setOpacity(qBound<qreal>(0.0, opacity, 1.0));
 
-        constexpr qreal overlap = 1.0;
-        constexpr qreal minSize = 0.12;
+        constexpr qreal stagger  = 0.35;   // near-dock strips lead
+        constexpr qreal overlap  = 1.0;    // 1px overlap between strips
+        constexpr qreal minSize  = 0.5;    // converge to a point
 
         for (int i = 0; i < stripCount; ++i) {
             const qreal f0 = qreal(i)     / stripCount;
             const qreal f1 = qreal(i + 1) / stripCount;
             const qreal fm = (f0 + f1) * 0.5;
 
+            // s = 0 far from dock, s = 1 nearest the dock
             const qreal s = positive ? fm : (1.0 - fm);
-            const qreal delay  = (1.0 - s) * m_stagger;
+
+            // Per-strip eased progress (near-dock strips finish first)
+            const qreal delay  = (1.0 - s) * stagger;
             const qreal localT = qBound<qreal>(
                 0.0, (t - delay) / (1.0 - delay), 1.0);
             const qreal e = smoothStep(localT);
 
-            // Narrower curve: front-load the cross-axis shrink
-            const qreal eCross = std::pow(e, m_curve);
-
+            // Source strip geometry
             const qreal srcAxisCenter  = axisStart + fm * axisExtent;
             const qreal srcAxisSize    = (f1 - f0) * axisExtent;
             const qreal srcCrossCenter = sourceCrossCenter;
             const qreal srcCrossSize   = crossExtent;
 
+            // Target: every strip converges to the SAME dock point
             const qreal tgtAxisCenter  = dockAxis;
             const qreal tgtAxisSize    = minSize;
             const qreal tgtCrossCenter = dockCross;
             const qreal tgtCrossSize   = minSize;
 
+            // Interpolate
             const qreal drawAxisCenter  = lerp(srcAxisCenter,  tgtAxisCenter,  e);
             const qreal drawAxisSize    = lerp(srcAxisSize,    tgtAxisSize,    e);
             const qreal drawCrossCenter = lerp(srcCrossCenter, tgtCrossCenter, e);
-            const qreal drawCrossSize   = lerp(srcCrossSize,   tgtCrossSize,   eCross);
+            const qreal drawCrossSize   = lerp(srcCrossSize,   tgtCrossSize,   e);
 
+            // Destination rect (extend axis by overlap to hide seams)
             QRectF dst;
             if (sideDock) {
                 dst = QRectF(drawAxisCenter - (drawAxisSize + overlap) * 0.5,
@@ -10037,6 +9999,7 @@ protected:
                              drawAxisSize + overlap);
             }
 
+            // Source rect in pixmap space
             QRectF srcR;
             if (sideDock) {
                 srcR = QRectF(f0 * m_pix.width(), 0.0,
@@ -10054,7 +10017,7 @@ protected:
 
 private:
     void tick() {
-        if (m_frame < m_frames - 1) {
+        if (m_frame < FRAMES - 1) {
             ++m_frame;
             update();
             return;
@@ -10064,18 +10027,14 @@ private:
         QTimer::singleShot(80, qApp, &QApplication::quit);
     }
 
+    static constexpr int FRAMES = 30;
+
     QPixmap m_pix;
     QRect   m_start;
     QPoint  m_dock;
     QPoint  m_origin;
     QTimer *m_timer = nullptr;
     int     m_frame = 0;
-
-    int    m_frames   = 30;
-    int    m_strips   = 140;
-    qreal  m_stagger  = 0.35;
-    qreal  m_curve    = 0.65;
-    qreal  m_fadeFrom = 0.95;
 };
 
 static int runShell(int argc, char *argv[])

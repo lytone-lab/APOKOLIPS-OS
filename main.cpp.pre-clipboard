@@ -1,9 +1,4 @@
 #include <QApplication>
-#include <QVector>
-#include <QTransform>
-#include <QBuffer>
-#include <QLocalServer>
-#include <QLocalSocket>
 #include <QMainWindow>
 #include <QWidget>
 #include <QLabel>
@@ -364,12 +359,6 @@ struct VisualConfig {
     bool   clock24Hour       = true;
     bool   clockShowSeconds  = false;
     int    dockIconSize       = 52;   // base visual size (before magnify)
-    bool   genieEnabled       = true;
-    int    genieDurationMs    = 480;
-    int    genieStrips        = 140;
-    double genieStagger       = 0.35;
-    double genieCurve         = 0.65;
-    double genieFadeStart     = 0.95;
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
     double dockSigma          = 55.0;
@@ -419,21 +408,6 @@ public:
                                    ? o["widgetsVisible"].toBool(true)
                                    : m_cfg.widgetsVisible;
         m_cfg.dockIconSize       = getI("dockIconSize", m_cfg.dockIconSize);
-        m_cfg.genieEnabled       = o.contains("genieEnabled")
-                                   ? o["genieEnabled"].toBool(true)
-                                   : m_cfg.genieEnabled;
-        m_cfg.genieDurationMs    = getI("genieDurationMs",
-                                        m_cfg.genieDurationMs);
-        m_cfg.genieStrips        = getI("genieStrips", m_cfg.genieStrips);
-        m_cfg.genieStagger       = o.contains("genieStagger")
-                                   ? o["genieStagger"].toDouble(0.35)
-                                   : m_cfg.genieStagger;
-        m_cfg.genieCurve         = o.contains("genieCurve")
-                                   ? o["genieCurve"].toDouble(0.65)
-                                   : m_cfg.genieCurve;
-        m_cfg.genieFadeStart     = o.contains("genieFadeStart")
-                                   ? o["genieFadeStart"].toDouble(0.95)
-                                   : m_cfg.genieFadeStart;
         m_cfg.dndEnabled         = o.contains("dndEnabled")
                                    ? o["dndEnabled"].toBool(false)
                                    : m_cfg.dndEnabled;
@@ -462,16 +436,6 @@ public:
         if (m_cfg.finderAlpha        < 30)  m_cfg.finderAlpha        = 30;
         if (m_cfg.dockIconSize       < 32)  m_cfg.dockIconSize       = 32;
         if (m_cfg.dockIconSize       > 90)  m_cfg.dockIconSize       = 90;
-        if (m_cfg.genieDurationMs < 120) m_cfg.genieDurationMs = 120;
-        if (m_cfg.genieDurationMs > 1500) m_cfg.genieDurationMs = 1500;
-        if (m_cfg.genieStrips < 40)   m_cfg.genieStrips = 40;
-        if (m_cfg.genieStrips > 320)  m_cfg.genieStrips = 320;
-        if (m_cfg.genieStagger < 0.0) m_cfg.genieStagger = 0.0;
-        if (m_cfg.genieStagger > 0.8) m_cfg.genieStagger = 0.8;
-        if (m_cfg.genieCurve < 0.3)   m_cfg.genieCurve = 0.3;
-        if (m_cfg.genieCurve > 2.0)   m_cfg.genieCurve = 2.0;
-        if (m_cfg.genieFadeStart < 0.5) m_cfg.genieFadeStart = 0.5;
-        if (m_cfg.genieFadeStart > 1.0) m_cfg.genieFadeStart = 1.0;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
         if (m_cfg.dockPosition < 0)  m_cfg.dockPosition = 0;
         if (m_cfg.dockPosition > 2)  m_cfg.dockPosition = 2;
@@ -499,12 +463,6 @@ public:
         o["finderAlpha"]        = m_cfg.finderAlpha;
         o["widgetsVisible"]     = m_cfg.widgetsVisible;
         o["dockIconSize"]       = m_cfg.dockIconSize;
-        o["genieEnabled"]       = m_cfg.genieEnabled;
-        o["genieDurationMs"]    = m_cfg.genieDurationMs;
-        o["genieStrips"]        = m_cfg.genieStrips;
-        o["genieStagger"]       = m_cfg.genieStagger;
-        o["genieCurve"]         = m_cfg.genieCurve;
-        o["genieFadeStart"]     = m_cfg.genieFadeStart;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
@@ -2321,8 +2279,7 @@ private:
             { "\xE2\x9C\x89",       "Mail"      },
             { "\xE2\x9A\x99",       "Settings"  },
             { "\xF0\x9F\x92»",   "Terminal"  },
-            { "\xE2\x9A\xA1",       "Power"     },
-            { "\xE2\x97\x89",       "Glyph"     }
+            { "\xE2\x9A\xA1",       "Power"     }
         };
 
         // 4 fixed-width columns, each a vertical stack.
@@ -2347,12 +2304,9 @@ private:
                                    Qt::AlignTop | Qt::AlignHCenter);
         }
 
-        // Row 3: Power in column 0, Glyph in column 1.
+        // Power sits in the first column on the next row.
         cols[0]->addWidget(
             makeTile(QString::fromUtf8(apps[8].icon), apps[8].name, 8),
-            0, Qt::AlignTop | Qt::AlignHCenter);
-        cols[1]->addWidget(
-            makeTile(QString::fromUtf8(apps[9].icon), apps[9].name, 9),
             0, Qt::AlignTop | Qt::AlignHCenter);
 
         pl->addLayout(gridRow);
@@ -2398,58 +2352,8 @@ private:
                 p.setRenderHint(QPainter::Antialiasing);
                 QRectF artRect(rect());
                 if (!m_hovered)
-                    artRect.adjust(6, 6, -6, -6);
-                if (m_name == "Glyph") {
-                    drawGlyphMark(p, artRect);
-                } else {
-                    Icons::drawFor(m_name, p, artRect, m_color);
-                }
-            }
-
-            // Glyph logo: dashed crop frame, 3 oxblood corners,
-            // bottom-right replaced by a filled caret
-            static void drawGlyphMark(QPainter &p, const QRectF &r) {
-                QRectF frame = r.adjusted(r.width() * 0.16,
-                                          r.height() * 0.16,
-                                          -r.width() * 0.16,
-                                          -r.height() * 0.16);
-
-                QPen bone(QColor(240, 237, 232, 210), 1.3);
-                bone.setStyle(Qt::DashLine);
-                bone.setDashPattern({3, 3});
-                p.setPen(bone);
-                p.setBrush(Qt::NoBrush);
-                p.drawRect(frame);
-
-                QColor ox(168, 50, 50);
-                QPen corner(ox, 2.6);
-                corner.setCapStyle(Qt::RoundCap);
-                p.setPen(corner);
-                qreal L = frame.width() * 0.34;
-
-                p.drawLine(frame.topLeft(),
-                           frame.topLeft() + QPointF(L, 0));
-                p.drawLine(frame.topLeft(),
-                           frame.topLeft() + QPointF(0, L));
-
-                p.drawLine(frame.topRight(),
-                           frame.topRight() + QPointF(-L, 0));
-                p.drawLine(frame.topRight(),
-                           frame.topRight() + QPointF(0, L));
-
-                p.drawLine(frame.bottomLeft(),
-                           frame.bottomLeft() + QPointF(L, 0));
-                p.drawLine(frame.bottomLeft(),
-                           frame.bottomLeft() + QPointF(0, -L));
-
-                QPointF br = frame.bottomRight();
-                QPolygonF caret;
-                caret << br + QPointF(-L * 0.85, 0)
-                      << br
-                      << br + QPointF(0, -L * 0.85);
-                p.setPen(Qt::NoPen);
-                p.setBrush(ox);
-                p.drawPolygon(caret);
+                    artRect.adjust(6, 6, -6, -6); // 52px idle, 64px hovered
+                Icons::drawFor(m_name, p, artRect, m_color);
             }
         private:
             QString m_name;
@@ -2495,8 +2399,6 @@ private:
                 args = { "--settings" };
             else if (appName == "Finder")
                 args = { "--files" };
-            else if (appName == "Glyph")
-                args = { "--glyph" };
             else if (appName == "Terminal") {
                 QProcess::startDetached("foot");
                 hideLauncher();
@@ -3518,220 +3420,6 @@ private:
 // =========================================================
 // File Explorer — translucent macOS-style file browser
 // =========================================================
-// =========================================================
-// ClipboardPanel — Win+V-style history popup
-// =========================================================
-class ClipboardPanel : public QWidget {
-public:
-    ClipboardPanel(QWidget *parent = nullptr) : QWidget(parent) {
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setFixedSize(340, 420);
-        hide();
-
-        QVBoxLayout *outer = new QVBoxLayout(this);
-        outer->setContentsMargins(14, 14, 14, 14);
-        outer->setSpacing(10);
-
-        QLabel *title = new QLabel("Clipboard");
-        title->setStyleSheet(
-            "color: rgb(240, 237, 232);"
-            "font-size: 15px; font-weight: 600;"
-            "background: transparent;");
-        outer->addWidget(title);
-
-        m_search = new QLineEdit;
-        m_search->setPlaceholderText("Search clipboard…");
-        m_search->setFixedHeight(30);
-        m_search->setStyleSheet(
-            "QLineEdit {"
-            "  background: rgba(255,255,255,20);"
-            "  border: none;"
-            "  border-radius: 8px;"
-            "  color: rgb(240, 237, 232);"
-            "  font-size: 12px;"
-            "  padding: 0 10px;"
-            "}"
-            "QLineEdit:focus { background: rgba(255,255,255,35); }");
-        QObject::connect(m_search, &QLineEdit::textChanged,
-                         [this](const QString &s) {
-            for (int i = 0; i < m_list->count(); ++i) {
-                QListWidgetItem *it = m_list->item(i);
-                bool hide = !s.isEmpty() &&
-                    !it->text().contains(s, Qt::CaseInsensitive) &&
-                    !it->data(Qt::UserRole).toString()
-                        .contains(s, Qt::CaseInsensitive);
-                it->setHidden(hide);
-            }
-        });
-        outer->addWidget(m_search);
-
-        m_list = new QListWidget;
-        m_list->setFrameShape(QFrame::NoFrame);
-        m_list->setStyleSheet(
-            "QListWidget {"
-            "  background: rgba(255,255,255,12);"
-            "  border-radius: 10px;"
-            "  color: rgb(240, 237, 232);"
-            "  font-size: 12px;"
-            "  padding: 4px;"
-            "}"
-            "QListWidget::item {"
-            "  padding: 8px 10px;"
-            "  border-radius: 6px;"
-            "}"
-            "QListWidget::item:hover { background: rgba(255,255,255,30); }"
-            "QListWidget::item:selected {"
-            "  background: rgba(168, 50, 50, 120);"
-            "  color: #ffffff;"
-            "}");
-        outer->addWidget(m_list, 1);
-
-        QObject::connect(m_list, &QListWidget::itemClicked,
-                         [this](QListWidgetItem *it) {
-            QString text = it->data(Qt::UserRole).toString();
-            QProcess::startDetached("wl-copy", { text });
-            hidePanel();
-        });
-
-        m_search->installEventFilter(this);
-
-        // Poll the system clipboard for new entries
-        m_poll = new QTimer(this);
-        m_poll->setInterval(700);
-        QObject::connect(m_poll, &QTimer::timeout,
-                         this, &ClipboardPanel::pollClipboard);
-        m_poll->start();
-        pollClipboard();
-    }
-
-    void toggle() { isVisible() ? hidePanel() : showPanel(); }
-
-    void showPanel() {
-        QWidget *top = window();
-        if (top) {
-            QPoint c = top->mapToGlobal(QPoint(
-                (top->width() - width()) / 2,
-                (top->height() - height()) / 2));
-            move(c);
-        }
-        raise();
-        show();
-        m_search->clear();
-        m_search->setFocus();
-    }
-
-    void hidePanel() { hide(); }
-
-protected:
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-        QRect r = rect().adjusted(0, 0, -1, -1);
-
-        // Soft shadow
-        p.setPen(Qt::NoPen);
-        for (int i = 14; i >= 1; --i) {
-            QColor sh(0, 0, 0);
-            sh.setAlphaF(0.012);
-            p.setBrush(sh);
-            p.drawRoundedRect(r.adjusted(-i, -i + 3, i, i + 3),
-                              16 + i, 16 + i);
-        }
-
-        QPainterPath path;
-        path.addRoundedRect(r, 16, 16);
-
-        const auto &vc = VisualConfigManager::instance().cfg();
-        const QPixmap &bg = ThemeManager::instance().blurredBg();
-        if (!bg.isNull() && vc.blurStrength > 0.001 && window()) {
-            p.save();
-            p.setClipPath(path);
-            QPoint pos = mapTo(window(), QPoint(0, 0));
-            p.setOpacity(vc.blurStrength);
-            p.drawPixmap(r, bg, QRect(pos, size()));
-            p.restore();
-        }
-
-        p.fillPath(path, QColor(24, 22, 28, 235));
-    }
-
-    void keyPressEvent(QKeyEvent *e) override {
-        if (e->key() == Qt::Key_Escape) {
-            hidePanel(); e->accept(); return;
-        }
-        if (e->key() == Qt::Key_Down) {
-            if (m_list->count() > 0) {
-                m_list->setCurrentRow(0);
-                m_list->setFocus();
-            }
-            e->accept(); return;
-        }
-        QWidget::keyPressEvent(e);
-    }
-
-    bool eventFilter(QObject *o, QEvent *ev) override {
-        if (ev->type() == QEvent::KeyPress) {
-            QKeyEvent *k = static_cast<QKeyEvent *>(ev);
-            if (k->key() == Qt::Key_Return || k->key() == Qt::Key_Enter) {
-                QListWidgetItem *it = m_list->currentItem();
-                if (!it && m_list->count() > 0)
-                    it = m_list->item(0);
-                if (it) {
-                    QProcess::startDetached("wl-copy",
-                        { it->data(Qt::UserRole).toString() });
-                    hidePanel();
-                    return true;
-                }
-            }
-            if (k->key() == Qt::Key_Escape) {
-                hidePanel(); return true;
-            }
-        }
-        if (o == m_search && ev->type() == QEvent::KeyPress) {
-            QKeyEvent *k = static_cast<QKeyEvent *>(ev);
-            if (k->key() == Qt::Key_Down) {
-                m_list->setFocus();
-                if (m_list->count() > 0) m_list->setCurrentRow(0);
-                return true;
-            }
-        }
-        return QWidget::eventFilter(o, ev);
-    }
-
-private:
-    void pollClipboard() {
-        QProcess p;
-        p.start("wl-paste", { "-n" });
-        p.waitForFinished(400);
-        QString text = QString::fromUtf8(p.readAllStandardOutput());
-        if (text.isEmpty() || text == m_last) return;
-        m_last = text;
-
-        // Skip if already in list
-        for (int i = 0; i < m_list->count(); ++i) {
-            if (m_list->item(i)->data(Qt::UserRole).toString() == text)
-                return;
-        }
-
-        QString preview = text;
-        preview.replace("\n", " ⏎ ");
-        if (preview.length() > 100) preview = preview.left(97) + "…";
-
-        QListWidgetItem *it = new QListWidgetItem(preview);
-        it->setData(Qt::UserRole, text);
-        it->setToolTip(text.left(500));
-        m_list->insertItem(0, it);
-
-        while (m_list->count() > 20)
-            delete m_list->takeItem(m_list->count() - 1);
-    }
-
-    QListWidget *m_list = nullptr;
-    QLineEdit   *m_search = nullptr;
-    QTimer      *m_poll = nullptr;
-    QString      m_last;
-};
-
 // =========================================================
 // ApokolipsInputDialog — themed prompt (glass + traffic lights)
 // =========================================================
@@ -5924,418 +5612,6 @@ inline QWidget *makeToggleRow(const QString &title, const QString &sub,
 }
 
 } // namespace Sigil
-
-// =========================================================
-// Glyph — screenshot tool (region select + save + copy)
-// =========================================================
-class GlyphOverlay : public QWidget {
-public:
-    GlyphOverlay() {
-        setWindowFlags(Qt::FramelessWindowHint
-                       | Qt::WindowStaysOnTopHint
-                       | Qt::Tool);
-        setAttribute(Qt::WA_DeleteOnClose, true);
-        setMouseTracking(true);
-        setCursor(Qt::CrossCursor);
-        setFocusPolicy(Qt::StrongFocus);
-
-        QProcess p;
-        p.start("grim", { "-" });
-        p.waitForFinished(2000);
-        m_frozen.loadFromData(p.readAllStandardOutput());
-
-        if (QScreen *s = QGuiApplication::primaryScreen())
-            setGeometry(s->geometry());
-        showFullScreen();
-    }
-
-protected:
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-
-        if (!m_frozen.isNull())
-            p.drawPixmap(rect(), m_frozen);
-        else
-            p.fillRect(rect(), QColor(20, 20, 22));
-
-        p.fillRect(rect(), QColor(0, 0, 0, 150));
-
-        if (m_sel.isValid() && m_sel.width() > 1 && m_sel.height() > 1) {
-            QRect clipped = m_sel.intersected(rect());
-            if (!m_frozen.isNull()) {
-                p.drawPixmap(clipped, m_frozen,
-                             QRect(clipped.topLeft()
-                                     - rect().topLeft(),
-                                   clipped.size()));
-            }
-            QPen pen(QColor(168, 50, 50), 2);
-            p.setPen(pen);
-            p.setBrush(Qt::NoBrush);
-            p.drawRect(clipped.adjusted(0, 0, -1, -1));
-
-            QString dim = QString("%1 × %2")
-                .arg(m_sel.width()).arg(m_sel.height());
-            QFont f = p.font();
-            f.setPixelSize(12);
-            p.setFont(f);
-            QFontMetrics fm(f);
-            int tw = fm.horizontalAdvance(dim) + 16;
-            int th = 22;
-            int tx = clipped.left();
-            int ty = clipped.bottom() + 6;
-            if (ty + th > rect().bottom()) ty = clipped.top() - th - 6;
-            QRect box(tx, ty, tw, th);
-            p.setPen(Qt::NoPen);
-            p.setBrush(QColor(20, 18, 24, 230));
-            p.drawRoundedRect(box, 6, 6);
-            p.setPen(QColor(240, 237, 232));
-            p.drawText(box, Qt::AlignCenter, dim);
-        }
-    }
-
-    void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() != Qt::LeftButton) {
-            if (e->button() == Qt::RightButton) close();
-            return;
-        }
-        m_anchor = e->pos();
-        m_sel = QRect(m_anchor, m_anchor);
-        m_dragging = true;
-        update();
-    }
-
-    void mouseMoveEvent(QMouseEvent *e) override {
-        if (!m_dragging) return;
-        m_sel = QRect(m_anchor, e->pos()).normalized();
-        update();
-    }
-
-    void mouseReleaseEvent(QMouseEvent *e) override {
-        if (e->button() != Qt::LeftButton) return;
-        m_dragging = false;
-        if (m_sel.width() < 4 || m_sel.height() < 4) {
-            m_sel = QRect();
-            update();
-            return;
-        }
-        showToolbar();
-    }
-
-    void keyPressEvent(QKeyEvent *e) override {
-        if (e->key() == Qt::Key_Escape) close();
-    }
-
-private:
-    void showToolbar() {
-        if (m_toolbar) m_toolbar->deleteLater();
-
-        m_toolbar = new QWidget(nullptr,
-            Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint
-            | Qt::Tool);
-        m_toolbar->setAttribute(Qt::WA_DeleteOnClose);
-        m_toolbar->setAttribute(Qt::WA_TranslucentBackground, true);
-        m_toolbar->setAttribute(Qt::WA_StyledBackground, true);
-
-        QWidget *inner = new QWidget(m_toolbar);
-        inner->setObjectName("glyphToolbar");
-        inner->setAttribute(Qt::WA_StyledBackground, true);
-        inner->setStyleSheet(
-            "QWidget#glyphToolbar {"
-            "  background: rgba(22, 20, 26, 245);"
-            "  border: 1px solid rgba(255, 255, 255, 40);"
-            "  border-radius: 12px;"
-            "}"
-            "QPushButton {"
-            "  background: transparent;"
-            "  color: rgb(240, 237, 232);"
-            "  border: none;"
-            "  border-radius: 7px;"
-            "  padding: 6px 16px;"
-            "  font-size: 12px;"
-            "}"
-            "QPushButton:hover { background: rgba(255, 255, 255, 40); }"
-            "QPushButton#save {"
-            "  background: rgb(168, 50, 50);"
-            "  color: #ffffff;"
-            "}"
-            "QPushButton#save:hover { background: rgb(200, 74, 74); }");
-
-        QVBoxLayout *outerWrap = new QVBoxLayout(m_toolbar);
-        outerWrap->setContentsMargins(0, 0, 0, 0);
-        outerWrap->setSpacing(0);
-        outerWrap->addWidget(inner);
-
-        QHBoxLayout *h = new QHBoxLayout(inner);
-        h->setContentsMargins(6, 6, 6, 6);
-        h->setSpacing(4);
-        h->setSizeConstraint(QLayout::SetFixedSize);
-
-        QPushButton *save = new QPushButton("Save");
-        save->setObjectName("save");
-        save->setCursor(Qt::PointingHandCursor);
-        save->setMinimumWidth(72);
-        save->setFixedHeight(28);
-        QPushButton *copy = new QPushButton("Copy");
-        copy->setCursor(Qt::PointingHandCursor);
-        copy->setMinimumWidth(72);
-        copy->setFixedHeight(28);
-        QPushButton *cancel = new QPushButton("Cancel");
-        cancel->setCursor(Qt::PointingHandCursor);
-        cancel->setMinimumWidth(72);
-        cancel->setFixedHeight(28);
-
-        h->addWidget(save);
-        h->addWidget(copy);
-        h->addWidget(cancel);
-
-        QObject::connect(save, &QPushButton::clicked, [this]() {
-            QString dir = QDir::homePath() + "/Pictures/Screenshots";
-            QDir().mkpath(dir);
-            QString path = dir + "/Glyph-"
-                + QDateTime::currentDateTime()
-                    .toString("yyyyMMdd-HHmmss") + ".png";
-            if (m_frozen.copy(m_sel).save(path)) {
-                QByteArray png;
-                QBuffer buf(&png);
-                buf.open(QIODevice::WriteOnly);
-                m_frozen.copy(m_sel).save(&buf, "PNG");
-                QProcess *cp = new QProcess;
-                cp->start("wl-copy", { "-t", "image/png" });
-                if (cp->waitForStarted(500)) {
-                    cp->write(png);
-                    cp->closeWriteChannel();
-                }
-            }
-            close();
-        });
-
-        QObject::connect(copy, &QPushButton::clicked, [this]() {
-            QByteArray png;
-            QBuffer buf(&png);
-            buf.open(QIODevice::WriteOnly);
-            m_frozen.copy(m_sel).save(&buf, "PNG");
-            QProcess *cp = new QProcess;
-            cp->start("wl-copy", { "-t", "image/png" });
-            if (cp->waitForStarted(500)) {
-                cp->write(png);
-                cp->closeWriteChannel();
-            }
-            close();
-        });
-
-        QObject::connect(cancel, &QPushButton::clicked,
-                         [this]() { close(); });
-
-        inner->adjustSize();
-        QSize want = inner->sizeHint();
-        if (want.width()  < 220) want.setWidth(220);
-        if (want.height() < 38)  want.setHeight(38);
-        m_toolbar->setMinimumSize(want);
-        m_toolbar->setMaximumSize(want);
-        m_toolbar->resize(want);
-
-        QRect sel = m_sel;
-        int tx = sel.right() - want.width() + 1;
-        int ty = sel.bottom() + 8;
-        if (ty + want.height() > rect().bottom())
-            ty = sel.top() - want.height() - 8;
-        if (tx + want.width() > rect().right() + 1)
-            tx = rect().right() + 1 - want.width();
-        if (tx < 0) tx = 0;
-        if (ty < 0) ty = 0;
-
-        QPoint g = mapToGlobal(QPoint(tx, ty));
-        m_toolbar->move(g);
-        m_toolbar->show();
-        m_toolbar->resize(want);
-        m_toolbar->raise();
-        m_toolbar->activateWindow();
-    }
-
-    QPixmap  m_frozen;
-    QRect    m_sel;
-    QPoint   m_anchor;
-    bool     m_dragging = false;
-    QWidget *m_toolbar = nullptr;
-};
-
-// =========================================================
-// SnapPicker — Windows 11-style snap layout popup
-// =========================================================
-class SnapPicker : public QWidget {
-public:
-    SnapPicker() {
-        setWindowFlags(Qt::FramelessWindowHint
-                       | Qt::WindowStaysOnTopHint
-                       | Qt::Tool);
-        setAttribute(Qt::WA_DeleteOnClose, true);
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setFixedSize(248, 248);
-        setFocusPolicy(Qt::StrongFocus);
-        setMouseTracking(true);
-        setCursor(Qt::ArrowCursor);
-
-        if (QScreen *s = QGuiApplication::primaryScreen())
-            move(s->geometry().center() - rect().center());
-
-        show();
-        raise();
-        activateWindow();
-    }
-
-protected:
-    QRectF cell(int idx) const {
-        const qreal pad = 12;
-        const qreal gap = 4;
-        qreal w = (width()  - 2 * pad - 2 * gap) / 3.0;
-        qreal h = (height() - 2 * pad - 2 * gap) / 3.0;
-        int col = idx % 3;
-        int row = idx / 3;
-        return QRectF(pad + col * (w + gap),
-                      pad + row * (h + gap), w, h);
-    }
-
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-
-        // Background panel
-        QPainterPath path;
-        path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 16, 16);
-        p.fillPath(path, QColor(22, 20, 26, 245));
-        p.setPen(QPen(QColor(255, 255, 255, 40), 1));
-        p.drawPath(path);
-
-        for (int i = 0; i < 9; ++i) {
-            QRectF r = cell(i);
-            bool hov = (i == m_hover);
-
-            // Cell background
-            QPainterPath cp;
-            cp.addRoundedRect(r, 6, 6);
-            p.fillPath(cp, hov ? QColor(168, 50, 50)
-                               : QColor(255, 255, 255, 20));
-
-            // Draw the "window" preview inside the cell
-            QColor shape = hov ? QColor(255, 255, 255) : QColor(200, 200, 210, 180);
-            QRectF inner = r.adjusted(r.width() * 0.14, r.height() * 0.14,
-                                      -r.width() * 0.14, -r.height() * 0.14);
-
-            // Which half of the cell to fill, based on idx
-            QRectF fill;
-            if      (i == 0) fill = QRectF(inner.left(),  inner.top(),
-                                            inner.width(), inner.height() / 2); // top half
-            else if (i == 2) fill = QRectF(inner.left(),  inner.center().y(),
-                                            inner.width(), inner.height() / 2); // bottom half
-            else if (i == 3) fill = QRectF(inner.left(),  inner.top(),
-                                            inner.width() / 2, inner.height()); // left half
-            else if (i == 5) fill = QRectF(inner.center().x(), inner.top(),
-                                            inner.width() / 2, inner.height()); // right half
-            else if (i == 6) fill = QRectF(inner.left(),  inner.top(),
-                                            inner.width() / 2, inner.height() / 2); // TL
-            else if (i == 8) fill = QRectF(inner.center().x(), inner.center().y(),
-                                            inner.width() / 2, inner.height() / 2); // BR
-            else if (i == 4) { // center — smaller inner rect
-                fill = inner.adjusted(inner.width() * 0.18,
-                                      inner.height() * 0.18,
-                                      -inner.width() * 0.18,
-                                      -inner.height() * 0.18);
-            } else {
-                // corners without specific meaning — draw full inner as X
-                fill = inner;
-            }
-
-            if (i == 4) {
-                QPainterPath fp;
-                fp.addRoundedRect(fill, 3, 3);
-                p.fillPath(fp, shape);
-            } else if (i == 1 || i == 7) {
-                // Unused — draw X mark
-                p.setPen(QPen(QColor(200, 200, 210, 60), 1.5));
-                p.drawLine(inner.topLeft(), inner.bottomRight());
-                p.drawLine(inner.topRight(), inner.bottomLeft());
-            } else {
-                QPainterPath fp;
-                fp.addRoundedRect(fill, 3, 3);
-                p.fillPath(fp, shape);
-                // Draw the empty area outline
-                p.setPen(QPen(QColor(200, 200, 210, 60), 1.2));
-                p.setBrush(Qt::NoBrush);
-                p.drawRoundedRect(inner, 3, 3);
-            }
-        }
-    }
-
-    void mouseMoveEvent(QMouseEvent *e) override {
-        int hov = -1;
-        for (int i = 0; i < 9; ++i) {
-            if (cell(i).contains(e->pos())) { hov = i; break; }
-        }
-        if (hov != m_hover) { m_hover = hov; update(); }
-    }
-
-    void leaveEvent(QEvent *) override {
-        m_hover = -1;
-        update();
-    }
-
-    void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() != Qt::LeftButton) { close(); return; }
-        int idx = -1;
-        for (int i = 0; i < 9; ++i) {
-            if (cell(i).contains(e->pos())) { idx = i; break; }
-        }
-        if (idx >= 0) applySnap(idx);
-        close();
-    }
-
-    void keyPressEvent(QKeyEvent *e) override {
-        if (e->key() == Qt::Key_Escape) close();
-    }
-
-private:
-    void applySnap(int idx) {
-        QScreen *s = QGuiApplication::primaryScreen();
-        if (!s) return;
-        QRect g = s->geometry();
-        int W = g.width();
-        int H = g.height();
-        int HW = W / 2;
-        int HH = H / 2;
-
-        auto run = [](const QStringList &cmds) {
-            for (const QString &c : cmds) {
-                QProcess::startDetached("swaymsg", c.split(" "));
-            }
-        };
-
-        switch (idx) {
-        case 0: run({ "resize set " + QString::number(W) + " " + QString::number(HH),
-                      "move position " + QString::number(g.x()) + " " + QString::number(g.y()) }); break;
-        case 2: run({ "resize set " + QString::number(W) + " " + QString::number(H - HH),
-                      "move position " + QString::number(g.x()) + " " + QString::number(g.y() + HH) }); break;
-        case 3: run({ "resize set " + QString::number(HW) + " " + QString::number(H),
-                      "move position " + QString::number(g.x()) + " " + QString::number(g.y()) }); break;
-        case 5: run({ "resize set " + QString::number(W - HW) + " " + QString::number(H),
-                      "move position " + QString::number(g.x() + HW) + " " + QString::number(g.y()) }); break;
-        case 6: run({ "resize set " + QString::number(HW) + " " + QString::number(HH),
-                      "move position " + QString::number(g.x()) + " " + QString::number(g.y()) }); break;
-        case 8: run({ "resize set " + QString::number(W - HW) + " " + QString::number(H - HH),
-                      "move position " + QString::number(g.x() + HW) + " " + QString::number(g.y() + HH) }); break;
-        case 4: {
-            int cw = W * 3 / 5;
-            int ch = H * 3 / 5;
-            run({ "resize set " + QString::number(cw) + " " + QString::number(ch),
-                  "move position " + QString::number(g.x() + (W - cw) / 2) + " "
-                                  + QString::number(g.y() + (H - ch) / 2) }); break;
-        }
-        default: break;
-        }
-    }
-
-    int m_hover = -1;
-};
 
 class SettingsWindow : public QWidget {
 public:
@@ -8546,8 +7822,7 @@ static volatile sig_atomic_t g_minimizeToggle = 0;
 static QString g_swaySock;
 static int     g_trackedConId = -1;
 static QString g_trackedAppId;
-static QString g_trackedTitle;
-static QRect   g_trackedRect;
+static int g_genieLookupRetries = 0;
 
 static QString discoverSwaySock() {
     QString dir = QString::fromUtf8(qgetenv("XDG_RUNTIME_DIR"));
@@ -9903,179 +9178,80 @@ private:
 class GenieOverlay : public QWidget {
 public:
     GenieOverlay(const QString &pngPath, QRect startRect,
-                 QPoint dockGlobal, QWidget *parent = nullptr)
-        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
+                 QPoint dockPt, QWidget *parent = nullptr)
+        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint),
+          m_start(startRect), m_dock(dockPt)
     {
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        setAttribute(Qt::WA_DeleteOnClose, true);
-
-        if (!m_pix.load(pngPath) || startRect.isEmpty()) {
-            qWarning() << "[genie] load failed:" << pngPath;
-            QTimer::singleShot(0, qApp, &QApplication::quit);
-            return;
-        }
-        QFile::remove(pngPath);
-
-        QScreen *screen = QApplication::screenAt(startRect.center());
-        if (!screen) screen = QApplication::primaryScreen();
-        QRect screenRect = screen ? screen->geometry() : QRect(0, 0, 1, 1);
-        setGeometry(screenRect);
-        m_origin = screenRect.topLeft();
-        m_start  = startRect.translated(-m_origin);
-        m_dock   = dockGlobal - m_origin;
-
-        // Read live genie config
-        auto &cfg = VisualConfigManager::instance().cfg();
-        m_strips   = qBound(40, cfg.genieStrips, 320);
-        m_stagger  = qBound(0.0, cfg.genieStagger, 0.8);
-        m_curve    = qBound(0.3, cfg.genieCurve, 2.0);
-        m_fadeFrom = qBound(0.5, cfg.genieFadeStart, 1.0);
-
-        int frames = qBound(8, cfg.genieDurationMs / 16, 94);
-        m_frames = frames;
+        m_pix.load(pngPath);
+        if (QScreen *s = QApplication::primaryScreen())
+            setGeometry(s->geometry());
 
         m_timer = new QTimer(this);
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout,
                          this, &GenieOverlay::tick);
-        QTimer::singleShot(30, this, [this]() {
-            if (m_timer) m_timer->start();
-        });
+        m_timer->start();
     }
 
 protected:
     void paintEvent(QPaintEvent *) override {
-        if (m_pix.isNull() || m_start.isEmpty()
-            || width() <= 0 || height() <= 0) return;
+        if (m_pix.isNull()) return;
 
         QPainter p(this);
-        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setRenderHint(QPainter::SmoothPixmapTransform);
 
-        const bool isLastFrame = (m_frame >= m_frames - 1);
-        const qreal t = isLastFrame ? 1.0
-            : qBound<qreal>(
-                0.0, qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
+        double t = double(m_frame) / double(FRAMES - 1);
+        if (t > 1.0) t = 1.0;
 
-        auto smoothStep = [](qreal v) {
-            v = qBound<qreal>(0.0, v, 1.0);
-            return v * v * (3.0 - 2.0 * v);
-        };
-        auto lerp = [](qreal a, qreal b, qreal k) {
-            return a + (b - a) * k;
-        };
+        // Smoothstep easing — gentle start, gentle finish
+        double e = t * t * (3.0 - 2.0 * t);
 
-        const qreal leftGap   = m_dock.x();
-        const qreal rightGap  = width() - m_dock.x();
-        const qreal topGap    = m_dock.y();
-        const qreal bottomGap = height() - m_dock.y();
-        const bool sideDock =
-            qMin(leftGap, rightGap) < qMin(topGap, bottomGap);
-        const bool positive = sideDock
-            ? (m_dock.x() >= width()  * 0.5)
-            : (m_dock.y() >= height() * 0.5);
+        // Target: a small square centered on the dock icon
+        const int endSize = 34;
+        QRect endRect(m_dock.x() - endSize / 2, m_dock.y() - endSize / 2,
+                      endSize, endSize);
 
-        const qreal axisStart  = sideDock ? m_start.x()  : m_start.y();
-        const qreal axisExtent = sideDock ? m_start.width() : m_start.height();
-        const qreal crossStart = sideDock ? m_start.y()  : m_start.x();
-        const qreal crossExtent= sideDock ? m_start.height(): m_start.width();
-        const qreal dockAxis   = sideDock ? m_dock.x()   : m_dock.y();
-        const qreal dockCross  = sideDock ? m_dock.y()   : m_dock.x();
-        const qreal sourceCrossCenter = crossStart + crossExtent * 0.5;
+        int x = int(m_start.x()      + (endRect.x()      - m_start.x())      * e);
+        int y = int(m_start.y()      + (endRect.y()      - m_start.y())      * e);
+        int w = int(m_start.width()  + (endRect.width()  - m_start.width())  * e);
+        int h = int(m_start.height() + (endRect.height() - m_start.height()) * e);
+        if (w < 1) w = 1;
+        if (h < 1) h = 1;
 
-        const int stripCount = m_strips;
+        QRect frameRect(x, y, w, h);
 
-        const qreal fadeStart = qMin<qreal>(0.98, m_fadeFrom + 0.03);
-        const qreal opacity = t <= fadeStart
-            ? 1.0
-            : 1.0 - (t - fadeStart) / (1.0 - fadeStart);
-        p.setOpacity(qBound<qreal>(0.0, opacity, 1.0));
+        // Fade out over the final 40% of the animation
+        double opacity = 1.0;
+        const double fadeStart = 0.6;
+        if (t > fadeStart)
+            opacity = 1.0 - (t - fadeStart) / (1.0 - fadeStart);
+        p.setOpacity(opacity);
 
-        constexpr qreal overlap = 1.0;
-        constexpr qreal minSize = 0.12;
-
-        for (int i = 0; i < stripCount; ++i) {
-            const qreal f0 = qreal(i)     / stripCount;
-            const qreal f1 = qreal(i + 1) / stripCount;
-            const qreal fm = (f0 + f1) * 0.5;
-
-            const qreal s = positive ? fm : (1.0 - fm);
-            const qreal delay  = (1.0 - s) * m_stagger;
-            const qreal localT = qBound<qreal>(
-                0.0, (t - delay) / (1.0 - delay), 1.0);
-            const qreal e = smoothStep(localT);
-
-            // Narrower curve: front-load the cross-axis shrink
-            const qreal eCross = std::pow(e, m_curve);
-
-            const qreal srcAxisCenter  = axisStart + fm * axisExtent;
-            const qreal srcAxisSize    = (f1 - f0) * axisExtent;
-            const qreal srcCrossCenter = sourceCrossCenter;
-            const qreal srcCrossSize   = crossExtent;
-
-            const qreal tgtAxisCenter  = dockAxis;
-            const qreal tgtAxisSize    = minSize;
-            const qreal tgtCrossCenter = dockCross;
-            const qreal tgtCrossSize   = minSize;
-
-            const qreal drawAxisCenter  = lerp(srcAxisCenter,  tgtAxisCenter,  e);
-            const qreal drawAxisSize    = lerp(srcAxisSize,    tgtAxisSize,    e);
-            const qreal drawCrossCenter = lerp(srcCrossCenter, tgtCrossCenter, e);
-            const qreal drawCrossSize   = lerp(srcCrossSize,   tgtCrossSize,   eCross);
-
-            QRectF dst;
-            if (sideDock) {
-                dst = QRectF(drawAxisCenter - (drawAxisSize + overlap) * 0.5,
-                             drawCrossCenter - drawCrossSize * 0.5,
-                             drawAxisSize + overlap,
-                             drawCrossSize);
-            } else {
-                dst = QRectF(drawCrossCenter - drawCrossSize * 0.5,
-                             drawAxisCenter - (drawAxisSize + overlap) * 0.5,
-                             drawCrossSize,
-                             drawAxisSize + overlap);
-            }
-
-            QRectF srcR;
-            if (sideDock) {
-                srcR = QRectF(f0 * m_pix.width(), 0.0,
-                              (f1 - f0) * m_pix.width(),
-                              qreal(m_pix.height()));
-            } else {
-                srcR = QRectF(0.0, f0 * m_pix.height(),
-                              qreal(m_pix.width()),
-                              (f1 - f0) * m_pix.height());
-            }
-
-            p.drawPixmap(dst, m_pix, srcR);
-        }
+        p.drawPixmap(frameRect, m_pix, m_pix.rect());
     }
 
 private:
     void tick() {
-        if (m_frame < m_frames - 1) {
-            ++m_frame;
+        ++m_frame;
+        if (m_frame >= FRAMES) {
+            m_timer->stop();
             update();
+            QTimer::singleShot(20, qApp, &QApplication::quit);
             return;
         }
-        m_timer->stop();
         update();
-        QTimer::singleShot(80, qApp, &QApplication::quit);
     }
 
+    static constexpr int FRAMES = 24;   // ~380ms @ 16ms
     QPixmap m_pix;
     QRect   m_start;
     QPoint  m_dock;
-    QPoint  m_origin;
     QTimer *m_timer = nullptr;
     int     m_frame = 0;
-
-    int    m_frames   = 30;
-    int    m_strips   = 140;
-    qreal  m_stagger  = 0.35;
-    qreal  m_curve    = 0.65;
-    qreal  m_fadeFrom = 0.95;
 };
 
 static int runShell(int argc, char *argv[])
@@ -10239,14 +9415,8 @@ static int runShell(int argc, char *argv[])
                     return;
                 }
 
-                struct Win {
-                    int conId = -1;
-                    QString appId;
-                    QString title;
-                    QRect rect;
-                    bool focused = false;
-                };
-                Win target;
+                struct Win { int conId; QString appId; QRect rect; bool focused; };
+                Win target{-1, "", {}};
                 QList<Win> wins;
 
                 std::function<void(const QJsonObject &)> collect =
@@ -10258,22 +9428,11 @@ static int runShell(int argc, char *argv[])
                         QJsonObject r = n.value("rect").toObject();
                         int w = r.value("width").toInt();
                         int h = r.value("height").toInt();
-                        const bool internalOverlay =
-                            a == "apokolips-genie" ||
-                            a == "apokolips-glyph" ||
-                            a == "apokolips-snap" ||
-                            a == "apokolips-clipboard";
-                        const bool shellChrome =
-                            a == "apokolips-shell" &&
-                            nm != "Files" &&
-                            nm != "Apokolips Settings";
-
-                        if (!a.isEmpty() && !internalOverlay && !shellChrome &&
-                            w > 100 && h > 100) {
+                        if (!a.isEmpty() && w > 100 && h > 100 &&
+                            !(a == "apokolips-shell" && nm == "Apokolips OS")) {
                             Win win;
                             win.conId = n.value("id").toInt();
                             win.appId = a;
-                            win.title = nm;
                             win.rect = QRect(r.value("x").toInt(),
                                              r.value("y").toInt(), w, h);
                             win.focused = n.value("focused").toBool();
@@ -10297,50 +9456,35 @@ static int runShell(int argc, char *argv[])
                 // Only use a fallback when exactly one app window matches.
                 if (target.conId < 0 && wins.size() == 1)
                     target = wins.first();
-
-                // The hotkey can briefly focus the shell before this query
-                // finishes. Fall back only to the last tracked real app window.
-                if (target.conId <= 0 && g_trackedConId > 0 &&
-                    !g_trackedRect.isEmpty()) {
-                    target.conId = g_trackedConId;
-                    target.appId = g_trackedAppId;
-                    target.title = g_trackedTitle;
-                    target.rect = g_trackedRect;
-                    qDebug() << "[genie] using last-focused target"
-                             << target.conId << target.title << target.rect;
-                }
                 qDebug() << "[genie] target conId=" << target.conId
                          << "rect=" << target.rect
                          << "app=" << target.appId;
                 if (target.conId <= 0 || target.rect.isEmpty()) {
-                    qDebug() << "[genie] no valid focused app window; abort";
+                    if (++g_genieLookupRetries <= 20) {
+                        qDebug() << "[genie] target not mapped; retry"
+                                 << g_genieLookupRetries << "/20";
+                        QTimer::singleShot(100, root, [] {
+                            g_minimizeToggle = 1;
+                        });
+                    } else {
+                        qDebug() << "[genie] no target after 2 seconds; abort";
+                        g_genieLookupRetries = 0;
+                    }
                     return;
                 }
+                g_genieLookupRetries = 0;
 
                 // Find the dock icon position for this app
                 QString dockName;
-                // Our own app windows share app_id; distinguish by title.
-                if (target.appId == "apokolips-shell" &&
-                    target.title == "Files") {
-                    dockName = "Finder";
-                } else if (target.appId == "apokolips-shell" &&
-                           target.title == "Apokolips Settings") {
-                    dockName = "Settings";
-                } else if (target.appId == "firefox") {
-                    dockName = "Finder";
-                } else if (target.appId == "eog") {
-                    dockName = "Photos";
-                } else if (target.appId == "org.gnome.Totem") {
-                    dockName = "Music";
-                } else if (target.appId == "org.gnome.TextEditor" ||
-                           target.appId == "gnome-text-editor") {
-                    dockName = "Notes";
-                } else if (target.appId == "thunderbird") {
-                    dockName = "Mail";
-                } else if (target.appId == "org.gnome.Terminal" ||
-                           target.appId == "foot") {
-                    dockName = "Terminal";
-                }
+                if (target.appId == "firefox")              dockName = "Finder";
+                else if (target.appId == "eog")             dockName = "Photos";
+                else if (target.appId == "org.gnome.Totem") dockName = "Music";
+                else if (target.appId == "org.gnome.TextEditor" ||
+                         target.appId == "gnome-text-editor") dockName = "Notes";
+                else if (target.appId == "thunderbird")     dockName = "Mail";
+                else if (target.appId == "org.gnome.Terminal" ||
+                         target.appId == "foot")            dockName = "Terminal";
+                else if (target.appId.startsWith("apokolips-")) dockName = "Settings";
 
                 QPoint dockPt(960, 820);   // fallback — bottom center
                 for (QWidget *w : root->findChildren<QWidget *>()) {
@@ -10371,64 +9515,22 @@ static int runShell(int argc, char *argv[])
                     sh->deleteLater();
                     if (!QFile::exists(png)) return;
 
-                    // Show the captured window image first. Keep its first
-                    // frame still, then move Files into scratchpad.
-                    const QPoint dockGlobal = root->mapToGlobal(dockPt);
-                    const QStringList overlayArgs{
-                        "--genie", png,
-                        QString::number(target.rect.x()),
-                        QString::number(target.rect.y()),
-                        QString::number(target.rect.width()),
-                        QString::number(target.rect.height()),
-                        QString::number(dockGlobal.x()),
-                        QString::number(dockGlobal.y())
-                    };
+                    // Move real window to scratchpad — the overlay takes
+                    // its place visually.
+                    QProcess::startDetached("swaymsg",
+                        { QString("[con_id=%1]").arg(target.conId),
+                          "move", "scratchpad" });
 
-                    qint64 overlayPid = 0;
-                    const bool overlayStarted = QProcess::startDetached(
+                    // Spawn overlay
+                    QProcess::startDetached(
                         QCoreApplication::applicationFilePath(),
-                        overlayArgs, QString(), &overlayPid);
-                    qDebug() << "[genie] overlay started first="
-                             << overlayStarted << "pid=" << overlayPid;
-
-                    if (!overlayStarted) {
-                        QFile::remove(png);
-                        return;
-                    }
-
-                    QTimer::singleShot(150, root, [root, target]() {
-                        QProcess *move = new QProcess(root);
-                        QProcessEnvironment env =
-                            QProcessEnvironment::systemEnvironment();
-                        const QString sock = discoverSwaySock();
-                        if (sock.isEmpty()) {
-                            qDebug() << "[genie] no SWAYSOCK for scratchpad move";
-                            move->deleteLater();
-                            return;
-                        }
-                        env.insert("SWAYSOCK", sock);
-                        move->setProcessEnvironment(env);
-
-                        QObject::connect(
-                            move,
-                            QOverload<int, QProcess::ExitStatus>::of(
-                                &QProcess::finished),
-                            [move](int code, QProcess::ExitStatus status) {
-                                const QByteArray out =
-                                    move->readAllStandardOutput();
-                                const QByteArray err =
-                                    move->readAllStandardError();
-                                qDebug() << "[genie] delayed sway move"
-                                         << code << status
-                                         << "stdout=" << out
-                                         << "stderr=" << err;
-                                move->deleteLater();
-                            });
-
-                        move->start("swaymsg",
-                            { QString("[con_id=%1]").arg(target.conId),
-                              "move", "scratchpad" });
-                    });
+                        { "--genie", png,
+                          QString::number(target.rect.x()),
+                          QString::number(target.rect.y()),
+                          QString::number(target.rect.width()),
+                          QString::number(target.rect.height()),
+                          QString::number(dockPt.x()),
+                          QString::number(dockPt.y()) });
                 });
                 QString grimArg = QString("%1,%2 %3x%4")
                         .arg(target.rect.x())
@@ -10530,8 +9632,7 @@ static int runShell(int argc, char *argv[])
             std::function<QString(const QJsonObject &)> findFocused =
             [&](const QJsonObject &node) -> QString {
             if (node.value("focused").toBool() &&
-                (node.value("type").toString() == "con" ||
-                 node.value("type").toString() == "floating_con")) {
+                node.value("type").toString() == "con") {
                 QString app = node.value("app_id").toString();
                 QString nm  = node.value("name").toString();
                 return app.isEmpty() ? nm : app;
@@ -10549,19 +9650,11 @@ static int runShell(int argc, char *argv[])
 
             // Also capture con_id of the focused window
         int conId = -1;
-        QString focusedTitle;
-        QRect focusedRect;
         std::function<bool(const QJsonObject &)> findConId =
             [&](const QJsonObject &n) -> bool {
-            const QString type = n.value("type").toString();
             if (n.value("focused").toBool() &&
-                (type == "con" || type == "floating_con")) {
+                n.value("type").toString() == "con") {
                 conId = n.value("id").toInt();
-                focusedTitle = n.value("name").toString();
-                const QJsonObject r = n.value("rect").toObject();
-                focusedRect = QRect(r.value("x").toInt(), r.value("y").toInt(),
-                                    r.value("width").toInt(),
-                                    r.value("height").toInt());
                 return true;
             }
             for (const QJsonValue &v : n.value("nodes").toArray())
@@ -10574,22 +9667,10 @@ static int runShell(int argc, char *argv[])
 
         QString id = findFocused(doc.object());
 
-        // Preserve the last real app window across the hotkey focus change.
-        const bool shellAppWindow =
-            id == "apokolips-shell" &&
-            (focusedTitle == "Files" ||
-             focusedTitle == "Apokolips Settings");
-        const bool internalOverlay =
-            id == "apokolips-genie" ||
-            id == "apokolips-glyph" ||
-            id == "apokolips-snap" ||
-            id == "apokolips-clipboard";
-        if (conId > 0 && !id.isEmpty() && !internalOverlay &&
-            (id != "apokolips-shell" || shellAppWindow)) {
+        // Store for the minimize handler
+        if (!id.isEmpty() && id != "apokolips-shell" && conId > 0) {
             g_trackedConId = conId;
             g_trackedAppId = id;
-            g_trackedTitle = focusedTitle;
-            g_trackedRect = focusedRect;
         }
 
         QString label = "Apokolips";
@@ -10929,34 +10010,6 @@ static int runShell(int argc, char *argv[])
         controlCenter->toggle();
     });
 
-    ClipboardPanel *clipboardPanel = new ClipboardPanel(root);
-
-    // IPC — second instance connects and sends "toggle"
-    QString clipSockPath = QDir::tempPath() + "/apokolips-clipboard.sock";
-    QFile::remove(clipSockPath);
-    QLocalServer *clipServer = new QLocalServer(&window);
-    if (clipServer->listen(clipSockPath)) {
-        qInfo() << "[clip] listening on" << clipSockPath;
-        QObject::connect(clipServer, &QLocalServer::newConnection,
-                         [clipServer, clipboardPanel, root]() {
-            QLocalSocket *conn = clipServer->nextPendingConnection();
-            QObject::connect(conn, &QLocalSocket::readyRead,
-                             [conn, clipboardPanel, root]() {
-                QByteArray data = conn->readAll();
-                if (data.contains("toggle")) {
-                    if (!clipboardPanel->isVisible())
-                        clipboardPanel->showPanel();
-                    else
-                        clipboardPanel->hidePanel();
-                    clipboardPanel->raise();
-                }
-                conn->disconnectFromServer();
-            });
-        });
-    } else {
-        qWarning() << "[clip] listen failed:" << clipServer->errorString();
-    }
-
     DesktopWidgets *widgets = new DesktopWidgets(root);
     root->setDesktopWidgets(widgets);
     widgets->setVisible(
@@ -11222,7 +10275,6 @@ static int runShell(int argc, char *argv[])
     if (widgets)         widgets->raise();
     if (notifications)   notifications->raise();
     if (controlCenter)   controlCenter->raise();
-    if (clipboardPanel)  clipboardPanel->raise();
     if (launcher)        launcher->raise();
     if (spotlight)       spotlight->raise();
     if (spotlight)       spotlight->raise();
@@ -11390,37 +10442,6 @@ int main(int argc, char *argv[])
         FileExplorer w;
         w.show();
         return app.exec();
-    }
-
-    if (argc >= 2 && QString(argv[1]) == "--snap") {
-        QApplication app(argc, argv);
-        app.setApplicationName("Apokolips Snap");
-        app.setDesktopFileName("apokolips-snap");
-        SnapPicker *p = new SnapPicker;
-        Q_UNUSED(p);
-        return app.exec();
-    }
-
-    if (argc >= 2 && QString(argv[1]) == "--glyph") {
-        QApplication app(argc, argv);
-        app.setApplicationName("Apokolips Glyph");
-        app.setDesktopFileName("apokolips-glyph");
-        GlyphOverlay *o = new GlyphOverlay;
-        Q_UNUSED(o);
-        return app.exec();
-    }
-
-    if (argc >= 2 && QString(argv[1]) == "--toggle-clipboard") {
-        QCoreApplication app(argc, argv);
-        QString sockPath = QDir::tempPath() + "/apokolips-clipboard.sock";
-        QLocalSocket sock;
-        sock.connectToServer(sockPath);
-        if (sock.waitForConnected(500)) {
-            sock.write("toggle");
-            sock.waitForBytesWritten(300);
-            sock.disconnectFromServer();
-        }
-        return 0;
     }
 
     if (argc >= 2 && QString(argv[1]) == "--settings") {
