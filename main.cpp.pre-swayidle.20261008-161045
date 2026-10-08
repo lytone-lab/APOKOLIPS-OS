@@ -7537,33 +7537,6 @@ private:
         return page;
     }
 
-    void applySwayidle() {
-        auto &c = VisualConfigManager::instance().cfg();
-
-        // Kill any existing swayidle we spawned
-        QProcess::execute("pkill", { "-f", "swayidle -w" });
-
-        // Nothing to do if both timeouts are 0 (never)
-        if (c.screenOffTimeoutMin == 0 && c.sleepTimeoutMin == 0)
-            return;
-
-        QStringList args = { "-w" };
-
-        if (c.screenOffTimeoutMin > 0) {
-            int sec = c.screenOffTimeoutMin * 60;
-            args << QString::number(sec)
-                 << "swaymsg output * dpms off"
-                 << "resume swaymsg output * dpms on";
-        }
-        if (c.sleepTimeoutMin > 0) {
-            int sec = c.sleepTimeoutMin * 60;
-            args << QString::number(sec)
-                 << "systemctl suspend";
-        }
-
-        QProcess::startDetached("swayidle", args);
-    }
-
     QWidget *makeArcReactorPage() {
         QWidget *page = new QWidget;
         page->setAutoFillBackground(false);
@@ -7762,19 +7735,17 @@ private:
             makeTimeoutRow("Turn off screen after",
                            "Display sleeps when idle",
                            vc.screenOffTimeoutMin,
-                           [this](int m) {
+                           [](int m) {
                 VisualConfigManager::instance().setAndSave(
                     [m](VisualConfig &c) { c.screenOffTimeoutMin = m; });
-                applySwayidle();
             });
 
             makeTimeoutRow("Sleep after",
                            "System suspends when idle",
                            vc.sleepTimeoutMin,
-                           [this](int m) {
+                           [](int m) {
                 VisualConfigManager::instance().setAndSave(
                     [m](VisualConfig &c) { c.sleepTimeoutMin = m; });
-                applySwayidle();
             });
 
             v->addWidget(c);
@@ -11760,26 +11731,6 @@ static int runShell(int argc, char *argv[])
         controlCenter->reposition(root->width());
         controlCenter->toggle();
     });
-
-    {
-        // Apply timeouts from config on shell startup
-        auto &c = VisualConfigManager::instance().cfg();
-        if (c.screenOffTimeoutMin > 0 || c.sleepTimeoutMin > 0) {
-            QStringList args = { "-w" };
-            if (c.screenOffTimeoutMin > 0) {
-                int sec = c.screenOffTimeoutMin * 60;
-                args << QString::number(sec)
-                     << "swaymsg output * dpms off"
-                     << "resume swaymsg output * dpms on";
-            }
-            if (c.sleepTimeoutMin > 0) {
-                int sec = c.sleepTimeoutMin * 60;
-                args << QString::number(sec)
-                     << "systemctl suspend";
-            }
-            QProcess::startDetached("swayidle", args);
-        }
-    }
 
     ClipboardPanel *clipboardPanel = new ClipboardPanel(root);
 

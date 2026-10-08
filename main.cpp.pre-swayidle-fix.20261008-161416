@@ -11762,6 +11762,8 @@ static int runShell(int argc, char *argv[])
     });
 
     {
+        auto *settingsWin = qobject_cast<QWidget *>(nullptr);
+        Q_UNUSED(settingsWin);
         // Apply timeouts from config on shell startup
         auto &c = VisualConfigManager::instance().cfg();
         if (c.screenOffTimeoutMin > 0 || c.sleepTimeoutMin > 0) {
