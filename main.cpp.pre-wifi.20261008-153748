@@ -6512,8 +6512,6 @@ private:
                    QColor(74, 122, 122), makeDisplayPage());
         addSection(sb, "Bluetooth",  QString::fromUtf8("\xE2\x9C\xA6"),
                    QColor(90, 122, 158), makeBluetoothPage());
-        addSection(sb, "Wi-Fi",      QString::fromUtf8("\xE2\x98\x81"),
-                   QColor(90, 122, 158), makeWiFiPage());
         addSection(sb, "Network",    QString::fromUtf8("\xE2\x98\x81"),
                    QColor(74, 122, 90), makeNetworkPage());
         addSection(sb, "Notifications",
@@ -7573,153 +7571,6 @@ private:
         }
     }
 
-    QWidget *makeWiFiPage() {
-        QWidget *page = new QWidget;
-        page->setAutoFillBackground(false);
-        QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
-
-        v->addWidget(Sigil::sectionTitle("Wi-Fi"));
-
-        // ---- Radio card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 16, 20, 16);
-            cv->setSpacing(12);
-            cv->addWidget(Sigil::groupLabel("WI-FI"));
-
-            QProcess q;
-            q.start("nmcli", { "-t", "-f", "WIFI", "general" });
-            q.waitForFinished(1000);
-            QString wifiState =
-                QString::fromUtf8(q.readAllStandardOutput()).trimmed();
-            bool hasWifi = !wifiState.isEmpty();
-
-            QProcess r;
-            r.start("nmcli", { "radio", "wifi" });
-            r.waitForFinished(1000);
-            bool radioOn = QString::fromUtf8(
-                r.readAllStandardOutput()).trimmed().contains("enabled");
-
-            if (hasWifi) {
-                cv->addWidget(Sigil::makeToggleRow(
-                    "Wi-Fi",
-                    radioOn ? "On" : "Off",
-                    radioOn,
-                    [](bool on) {
-                        QProcess::startDetached("nmcli",
-                            { "radio", "wifi", on ? "on" : "off" });
-                    }));
-            } else {
-                QLabel *head = new QLabel(
-                    "No wireless adapter detected");
-                head->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textPrimary().name()));
-                QLabel *sub = new QLabel(
-                    "This machine has no Wi-Fi hardware. Wireless networks "
-                    "will appear here once an adapter is present. Ethernet "
-                    "settings are under Network.");
-                sub->setWordWrap(true);
-                sub->setStyleSheet(QString(
-                    "color: %1; font-size: 11px; background: transparent;")
-                    .arg(Sigil::textDim().name()));
-                cv->addWidget(head);
-                cv->addWidget(sub);
-            }
-            v->addWidget(c);
-        }
-
-        // ---- Networks card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            c->setMinimumHeight(280);
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 16, 20, 16);
-            cv->setSpacing(12);
-
-            QHBoxLayout *header = new QHBoxLayout;
-            header->addWidget(Sigil::groupLabel("NETWORKS"));
-            header->addStretch();
-
-            QPushButton *scan = new QPushButton("Scan");
-            scan->setCursor(Qt::PointingHandCursor);
-            scan->setFixedHeight(26);
-            scan->setStyleSheet(QString(
-                "QPushButton { background: rgba(255,255,255,20);"
-                "  color: %1; border: none; border-radius: 6px;"
-                "  font-size: 11px; padding: 2px 12px; }"
-                "QPushButton:hover { background: rgba(255,255,255,45); }")
-                .arg(Sigil::textPrimary().name()));
-            QObject::connect(scan, &QPushButton::clicked,
-                [this]() { refreshWiFiPage(); });
-            header->addWidget(scan);
-
-            cv->addLayout(header);
-
-            m_wifiStatus = new QLabel("Querying…");
-            m_wifiStatus->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            cv->addWidget(m_wifiStatus);
-
-            m_wifiPageList = new QListWidget;
-            m_wifiPageList->setFrameShape(QFrame::NoFrame);
-            cv->addWidget(m_wifiPageList, 1);
-            refreshWiFiPage();
-            v->addWidget(c);
-        }
-
-        v->addStretch();
-        return page;
-    }
-
-    void refreshWiFiPage() {
-        if (!m_wifiPageList) return;
-        m_wifiPageList->clear();
-
-        QProcess q;
-        q.start("nmcli", { "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY",
-                           "device", "wifi", "list" });
-        q.waitForFinished(3000);
-        QString out = QString::fromUtf8(
-            q.readAllStandardOutput()).trimmed();
-
-        if (out.isEmpty()) {
-            if (m_wifiStatus)
-                m_wifiStatus->setText(
-                    "No wireless adapter — Wi-Fi list unavailable.");
-            QListWidgetItem *it = new QListWidgetItem(
-                "No networks (no adapter)");
-            it->setFlags(Qt::NoItemFlags);
-            it->setForeground(QColor(122, 120, 115));
-            m_wifiPageList->addItem(it);
-            return;
-        }
-
-        if (m_wifiStatus)
-            m_wifiStatus->setText(
-                QString("%1 network(s) found").arg(
-                    out.split('\n', Qt::SkipEmptyParts).size()));
-
-        const QStringList lines = out.split('\n', Qt::SkipEmptyParts);
-        for (const QString &line : lines) {
-            QStringList parts = line.split(':');
-            if (parts.size() < 4) continue;
-            bool inUse = parts[0].trimmed() == "*";
-            QString ssid = parts[1];
-            QString sig  = parts[2];
-            QString sec  = parts[3];
-            QString text = (inUse ? "●  " : "    ") + ssid
-                         + "   " + sig + "%   " + sec;
-            QListWidgetItem *it = new QListWidgetItem(text);
-            it->setData(Qt::UserRole, ssid);
-            m_wifiPageList->addItem(it);
-        }
-    }
-
     QWidget *makeNetworkPage() {
         QWidget *page = new QWidget;
         page->setAutoFillBackground(false);
@@ -8445,8 +8296,6 @@ private:
     QStackedWidget *m_stack = nullptr;
     QListWidget    *m_soundList    = nullptr;
     QListWidget    *m_btList       = nullptr;
-    QListWidget    *m_wifiPageList = nullptr;
-    QLabel         *m_wifiStatus   = nullptr;
     QListWidget    *m_resList      = nullptr;
     QListWidget    *m_wifiList     = nullptr;
     QLabel         *m_displayInfo  = nullptr;
