@@ -391,6 +391,43 @@ General:
       Open Folder button. Reads/writes complete.
 
 ------------------------------------------------------------------------
+MANDATORY APP CHECKLIST (every new app or app redesign)
+------------------------------------------------------------------------
+An app is NOT done until all of these are verified working. No
+exceptions. This applies to AI #1, Manus, and any future AI.
+
+  [ ] Traffic lights — present, macOS order (red / yellow / green),
+      on the LEFT. Correct hover colors. Close/min/max all wired.
+  [ ] Running dot — the white indicator dot under the dock icon
+      appears when the app is running and disappears on quit.
+      Fix: launch with `QProcess::startDetached(program, args, "",
+      &m_pid)` and store the PID via `setPid(...)`. Do NOT use a
+      bare `QProcess::startDetached(...)` followed by `return;` in
+      the dock click handler — that skips the PID capture.
+  [ ] Logo / mark — draws correctly on the dock icon at 22px and in
+      the launcher at 52px. Dispatch line in the icon renderer
+      (`else if (name == "X") drawX(p, r, c);`) matches the exact
+      string used in the dock apps array and launcher apps array.
+  [ ] Frameless + rounded corners — Sigil rounding (14px), correct
+      background, no black fringe on bottom corners.
+  [ ] Initial window size — opens at a reasonable size, does NOT
+      cover the dock, does NOT need a manual resize.
+  [ ] Launcher tile — clickable, launches the app, correct label.
+  [ ] Dock tile — clickable, launches the app, correct label.
+  [ ] Core Matrix — registered as an option for relevant MIME types
+      via a .desktop file in ~/.local/share/applications, with
+      update-desktop-database run after.
+  [ ] SVG icon — present in ~/.local/share/icons/hicolor/scalable/
+      apps/ and referenced by the .desktop file via Icon=.
+  [ ] Persistence — user settings (folder, shuffle, etc.) survive
+      restart via visual.json.
+
+If any of these is missing, the app is bug-listed, not shipped.
+
+------------------------------------------------------------------------
+MANDATORY APP CHECKLIST
+
+------------------------------------------------------------------------
 BUG LIST (open)
 ------------------------------------------------------------------------
   1. Clipboard IPC unreliable

@@ -2288,71 +2288,6 @@ static void drawPhotos(QPainter &p, const QRectF &r, const QColor &) {
     }
 }
 
-// Aperture — hexagonal iris with six angled blades
-static void drawAperture(QPainter &p, const QRectF &r, const QColor &)
-{
-    p.setRenderHint(QPainter::Antialiasing, true);
-
-    const QPointF c = r.center();
-    const qreal   d = r.width();
-
-    QColor bone(240, 237, 232, 230);
-    QColor ox(168, 50, 50);
-    QColor graphite(30, 30, 32);
-
-    // Outer hex ring
-    QPolygonF hex;
-    const qreal outerR = d * 0.42;
-    for (int i = 0; i < 6; ++i) {
-        qreal a = -M_PI / 2.0 + i * M_PI / 3.0;
-        hex << QPointF(c.x() + std::cos(a) * outerR,
-                       c.y() + std::sin(a) * outerR);
-    }
-
-    QPainterPath outer;
-    outer.addPolygon(hex);
-    outer.closeSubpath();
-
-    p.fillPath(outer, graphite);
-    QPen bonePen(bone, 1.4);
-    bonePen.setJoinStyle(Qt::MiterJoin);
-    p.setPen(bonePen);
-    p.setBrush(Qt::NoBrush);
-    p.drawPolygon(hex);
-
-    // Six inner iris blades — each a thin oxblood triangle pointing
-    // at the centre, offset around a hexagon to suggest a lens iris.
-    const qreal innerR = outerR * 0.62;
-    const qreal bladeTipR = outerR * 0.20;
-    const qreal bladeBaseR = outerR * 0.55;
-
-    QPen bladePen(ox, 1.6);
-    bladePen.setCapStyle(Qt::RoundCap);
-    p.setPen(bladePen);
-    p.setBrush(Qt::NoBrush);
-
-    for (int i = 0; i < 6; ++i) {
-        qreal a0 = -M_PI / 2.0 + i * M_PI / 3.0;
-        qreal a1 = a0 + M_PI / 3.0;
-
-        QPointF base1(c.x() + std::cos(a0) * bladeBaseR,
-                      c.y() + std::sin(a0) * bladeBaseR);
-        QPointF base2(c.x() + std::cos(a1) * bladeBaseR,
-                      c.y() + std::sin(a1) * bladeBaseR);
-        QPointF tip(c.x() + std::cos(a0 + M_PI / 6.0) * bladeTipR,
-                    c.y() + std::sin(a0 + M_PI / 6.0) * bladeTipR);
-
-        p.drawLine(base1, tip);
-        p.drawLine(base2, tip);
-    }
-
-    // Centre dot — the lens core
-    p.setPen(Qt::NoPen);
-    p.setBrush(ox);
-    p.drawEllipse(c, d * 0.045, d * 0.045);
-}
-
-
 static void drawMusic(QPainter &p, const QRectF &r, const QColor &)
 {
     // BoomTube — horizontal tube with three oxblood energy rings
@@ -2522,7 +2457,6 @@ static void drawFor(const QString &name, QPainter &p,
                     const QRectF &r, const QColor &c) {
     if (name == "Finder")         drawFinder(p, r, c);
     else if (name == "Launchpad") drawLaunchpad(p, r, c);
-    else if (name == "Aperture")  drawAperture(p, r, c);
     else if (name == "Photos")    drawPhotos(p, r, c);
     else if (name == "BoomTube")  drawMusic(p, r, c);
     else if (name == "Music")     drawMusic(p, r, c);
@@ -2785,7 +2719,7 @@ private:
         const App apps[] = {
             { "\xE2\x8C\x98",       "Finder"    },
             { "\xF0\x9F\x9A\x80",  "Launchpad" },
-            { "\xE2\x9C\xA6",       "Aperture"  },
+            { "\xE2\x9C\xA6",       "Photos"    },
             { "\xE2\x96\xB6",       "BoomTube"  },
             { "\xF0\x9F\x93\x9D",  "Notes"     },
             { "\xE2\x9C\x89",       "Mail"      },
@@ -2969,7 +2903,7 @@ private:
                 args = { "--glyph" };
             else if (appName == "BoomTube")
                 args = { "--boomtube" };
-            else if (appName == "Aperture") {
+            else if (appName == "Photos") {
                 // Open the image viewer with no file — user picks one
                 // For now launch with a default sample if one exists.
                 QString home = QDir::homePath();
@@ -3141,7 +3075,7 @@ protected:
         if (m_name == "Finder")         matchId = "apokolips-shell";
         else if (m_name == "Settings")  matchId = "apokolips-shell";
         else if (m_name == "BoomTube")  matchId = "apokolips-boombube";
-        else if (m_name == "Aperture")  matchId = "apokolips-aperture";
+        else if (m_name == "Photos")    matchId = "apokolips-image";
         else if (m_name == "Notes")     matchId = "org.gnome.TextEditor";
         else if (m_name == "Mail")      matchId = "thunderbird";
         else if (m_name == "Files")     matchId = "org.gnome.Nautilus";
@@ -3176,7 +3110,7 @@ protected:
         } else if (m_name == "Settings") {
             program = QCoreApplication::applicationFilePath();
             args = { "--settings" };
-        } else if (m_name == "Aperture") {
+        } else if (m_name == "Photos") {
             // Launch our own image viewer on a default file
             QString sample = QDir::homePath()
                 + "/Pictures/test-gradient.png";
@@ -3186,7 +3120,7 @@ protected:
                     { "--image", sample });
                 return;
             }
-        } else if (m_name == "Aperture") {
+        } else if (m_name == "Photos") {
             program = "eog";
         } else if (m_name == "BoomTube") {
             program = QCoreApplication::applicationFilePath();
@@ -7233,7 +7167,7 @@ public:
         : QWidget(nullptr)
     {
         setWindowFlags(Qt::FramelessWindowHint);
-        setWindowTitle("Aperture");
+        setWindowTitle("Sigil Image");
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAutoFillBackground(false);
@@ -7258,6 +7192,14 @@ public:
         QHBoxLayout *hh = new QHBoxLayout(header);
         hh->setContentsMargins(16, 0, 16, 0);
         hh->setSpacing(10);
+
+        QLabel *title = new QLabel("Sigil Image");
+        title->setStyleSheet(
+            "color: rgb(240, 237, 232);"
+            "font-size: 13px; font-weight: 600;"
+            "background: transparent;");
+        hh->addWidget(title);
+        hh->addStretch();
 
         auto makeLight = [](const QString &idle, const QString &hover) {
             QPushButton *b = new QPushButton;
@@ -7286,19 +7228,9 @@ public:
             resize(sz);
         });
 
-        // macOS order: lights LEFT, title after
         hh->addWidget(closeBtn);
         hh->addWidget(minBtn);
         hh->addWidget(maxBtn);
-        hh->addSpacing(8);
-
-        QLabel *title = new QLabel("Aperture");
-        title->setStyleSheet(
-            "color: rgb(240, 237, 232);"
-            "font-size: 13px; font-weight: 600;"
-            "background: transparent;");
-        hh->addWidget(title);
-        hh->addStretch();
 
         root->addWidget(header);
 
@@ -18558,7 +18490,7 @@ static int runShell(int argc, char *argv[])
     const DockApp apps[] = {
         { "\xE2\x8C\x98",       "Finder"    },
         { "\xF0\x9F\x9A\x80",  "Launchpad" },
-        { "\xE2\x9C\xA6",       "Aperture"  },
+        { "\xE2\x9C\xA6",       "Photos"    },
         { "\xE2\x96\xB6",       "BoomTube"  },
         { "\xF0\x9F\x93\x9D",  "Notes"     },
         { "\xE2\x9C\x89",       "Mail"      },
@@ -18974,8 +18906,8 @@ int main(int argc, char *argv[])
 
     if (argc >= 3 && QString(argv[1]) == "--image") {
         QApplication app(argc, argv);
-        app.setApplicationName("Aperture");
-        app.setDesktopFileName("apokolips-aperture");
+        app.setApplicationName("Sigil Image");
+        app.setDesktopFileName("apokolips-image");
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         SigilImageWindow w(QString::fromUtf8(argv[2]));
@@ -18985,8 +18917,8 @@ int main(int argc, char *argv[])
 
     if (argc >= 3 && QString(argv[1]) == "--image") {
         QApplication app(argc, argv);
-        app.setApplicationName("Aperture");
-        app.setDesktopFileName("apokolips-aperture");
+        app.setApplicationName("Sigil Image");
+        app.setDesktopFileName("apokolips-image");
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         SigilImageWindow w(QString::fromUtf8(argv[2]));

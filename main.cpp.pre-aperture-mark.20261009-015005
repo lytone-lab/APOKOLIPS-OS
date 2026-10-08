@@ -2288,71 +2288,6 @@ static void drawPhotos(QPainter &p, const QRectF &r, const QColor &) {
     }
 }
 
-// Aperture — hexagonal iris with six angled blades
-static void drawAperture(QPainter &p, const QRectF &r, const QColor &)
-{
-    p.setRenderHint(QPainter::Antialiasing, true);
-
-    const QPointF c = r.center();
-    const qreal   d = r.width();
-
-    QColor bone(240, 237, 232, 230);
-    QColor ox(168, 50, 50);
-    QColor graphite(30, 30, 32);
-
-    // Outer hex ring
-    QPolygonF hex;
-    const qreal outerR = d * 0.42;
-    for (int i = 0; i < 6; ++i) {
-        qreal a = -M_PI / 2.0 + i * M_PI / 3.0;
-        hex << QPointF(c.x() + std::cos(a) * outerR,
-                       c.y() + std::sin(a) * outerR);
-    }
-
-    QPainterPath outer;
-    outer.addPolygon(hex);
-    outer.closeSubpath();
-
-    p.fillPath(outer, graphite);
-    QPen bonePen(bone, 1.4);
-    bonePen.setJoinStyle(Qt::MiterJoin);
-    p.setPen(bonePen);
-    p.setBrush(Qt::NoBrush);
-    p.drawPolygon(hex);
-
-    // Six inner iris blades — each a thin oxblood triangle pointing
-    // at the centre, offset around a hexagon to suggest a lens iris.
-    const qreal innerR = outerR * 0.62;
-    const qreal bladeTipR = outerR * 0.20;
-    const qreal bladeBaseR = outerR * 0.55;
-
-    QPen bladePen(ox, 1.6);
-    bladePen.setCapStyle(Qt::RoundCap);
-    p.setPen(bladePen);
-    p.setBrush(Qt::NoBrush);
-
-    for (int i = 0; i < 6; ++i) {
-        qreal a0 = -M_PI / 2.0 + i * M_PI / 3.0;
-        qreal a1 = a0 + M_PI / 3.0;
-
-        QPointF base1(c.x() + std::cos(a0) * bladeBaseR,
-                      c.y() + std::sin(a0) * bladeBaseR);
-        QPointF base2(c.x() + std::cos(a1) * bladeBaseR,
-                      c.y() + std::sin(a1) * bladeBaseR);
-        QPointF tip(c.x() + std::cos(a0 + M_PI / 6.0) * bladeTipR,
-                    c.y() + std::sin(a0 + M_PI / 6.0) * bladeTipR);
-
-        p.drawLine(base1, tip);
-        p.drawLine(base2, tip);
-    }
-
-    // Centre dot — the lens core
-    p.setPen(Qt::NoPen);
-    p.setBrush(ox);
-    p.drawEllipse(c, d * 0.045, d * 0.045);
-}
-
-
 static void drawMusic(QPainter &p, const QRectF &r, const QColor &)
 {
     // BoomTube — horizontal tube with three oxblood energy rings
@@ -2522,7 +2457,6 @@ static void drawFor(const QString &name, QPainter &p,
                     const QRectF &r, const QColor &c) {
     if (name == "Finder")         drawFinder(p, r, c);
     else if (name == "Launchpad") drawLaunchpad(p, r, c);
-    else if (name == "Aperture")  drawAperture(p, r, c);
     else if (name == "Photos")    drawPhotos(p, r, c);
     else if (name == "BoomTube")  drawMusic(p, r, c);
     else if (name == "Music")     drawMusic(p, r, c);
@@ -3141,7 +3075,7 @@ protected:
         if (m_name == "Finder")         matchId = "apokolips-shell";
         else if (m_name == "Settings")  matchId = "apokolips-shell";
         else if (m_name == "BoomTube")  matchId = "apokolips-boombube";
-        else if (m_name == "Aperture")  matchId = "apokolips-aperture";
+        else if (m_name == "Photos")    matchId = "apokolips-aperture";
         else if (m_name == "Notes")     matchId = "org.gnome.TextEditor";
         else if (m_name == "Mail")      matchId = "thunderbird";
         else if (m_name == "Files")     matchId = "org.gnome.Nautilus";
