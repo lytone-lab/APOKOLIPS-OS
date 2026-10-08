@@ -393,12 +393,6 @@ struct VisualConfig {
     int    keyboardRepeatDelay = 600;
     int    keyboardRepeatRate  = 25;
     QString keyboardCapsLock   = "default";
-    int    mouseAccel          = 0;      // -1.0 .. 1.0 as int*10
-    bool   touchpadNatural     = true;
-    bool   touchpadTap         = true;
-    bool   touchpadTwoFinger   = true;
-    bool   touchpadDisableWhileTyping = true;
-    QString touchpadScrollMethod = "two_finger";
     QString lockWallpaper      = "";   // empty = solid color
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -524,24 +518,6 @@ public:
         m_cfg.keyboardCapsLock    = o.contains("keyboardCapsLock")
                                    ? o["keyboardCapsLock"].toString()
                                    : m_cfg.keyboardCapsLock;
-        m_cfg.mouseAccel          = getI("mouseAccel", m_cfg.mouseAccel);
-        m_cfg.touchpadNatural     = o.contains("touchpadNatural")
-                                   ? o["touchpadNatural"].toBool(true)
-                                   : m_cfg.touchpadNatural;
-        m_cfg.touchpadTap         = o.contains("touchpadTap")
-                                   ? o["touchpadTap"].toBool(true)
-                                   : m_cfg.touchpadTap;
-        m_cfg.touchpadTwoFinger   = o.contains("touchpadTwoFinger")
-                                   ? o["touchpadTwoFinger"].toBool(true)
-                                   : m_cfg.touchpadTwoFinger;
-        m_cfg.touchpadDisableWhileTyping =
-            o.contains("touchpadDisableWhileTyping")
-                ? o["touchpadDisableWhileTyping"].toBool(true)
-                : m_cfg.touchpadDisableWhileTyping;
-        m_cfg.touchpadScrollMethod =
-            o.contains("touchpadScrollMethod")
-                ? o["touchpadScrollMethod"].toString()
-                : m_cfg.touchpadScrollMethod;
         m_cfg.lockWallpaper       = o.contains("lockWallpaper")
                                    ? o["lockWallpaper"].toString()
                                    : m_cfg.lockWallpaper;
@@ -595,8 +571,6 @@ public:
         if (m_cfg.keyboardRepeatDelay > 2000) m_cfg.keyboardRepeatDelay = 2000;
         if (m_cfg.keyboardRepeatRate < 1)  m_cfg.keyboardRepeatRate = 1;
         if (m_cfg.keyboardRepeatRate > 100) m_cfg.keyboardRepeatRate = 100;
-        if (m_cfg.mouseAccel < -10) m_cfg.mouseAccel = -10;
-        if (m_cfg.mouseAccel > 10)  m_cfg.mouseAccel = 10;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
         if (m_cfg.dockPosition < 0)  m_cfg.dockPosition = 0;
         if (m_cfg.dockPosition > 2)  m_cfg.dockPosition = 2;
@@ -652,12 +626,6 @@ public:
         o["keyboardRepeatDelay"] = m_cfg.keyboardRepeatDelay;
         o["keyboardRepeatRate"]  = m_cfg.keyboardRepeatRate;
         o["keyboardCapsLock"]    = m_cfg.keyboardCapsLock;
-        o["mouseAccel"]          = m_cfg.mouseAccel;
-        o["touchpadNatural"]     = m_cfg.touchpadNatural;
-        o["touchpadTap"]         = m_cfg.touchpadTap;
-        o["touchpadTwoFinger"]   = m_cfg.touchpadTwoFinger;
-        o["touchpadDisableWhileTyping"] = m_cfg.touchpadDisableWhileTyping;
-        o["touchpadScrollMethod"] = m_cfg.touchpadScrollMethod;
         o["lockWallpaper"]       = m_cfg.lockWallpaper;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
@@ -6794,9 +6762,6 @@ private:
         addSection(sb, "Keyboard",
                    QString::fromUtf8("\xE2\x8C\xA8"),
                    QColor(122, 106, 159), makeKeyboardPage());
-        addSection(sb, "Mouse & Trackpad",
-                   QString::fromUtf8("\xF0\x9F\x96\xB1"),
-                   QColor(166, 122, 90), makeMousePage());
         addSection(sb, "Notifications",
                    QString::fromUtf8("\xF0\x9F\x94\x94"),
                    QColor(200, 100, 60), makeNotificationsPage());
@@ -9027,167 +8992,6 @@ private:
                 });
             h->addWidget(dd);
             cv->addWidget(row);
-            v->addWidget(c);
-        }
-
-        v->addStretch();
-        return page;
-    }
-
-    QWidget *makeMousePage() {
-        QWidget *page = new QWidget;
-        page->setAutoFillBackground(false);
-        QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
-
-        v->addWidget(Sigil::sectionTitle("Mouse & Trackpad"));
-
-        auto &vc = VisualConfigManager::instance().cfg();
-
-        // ---- Mouse card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(18);
-            cv->addWidget(Sigil::groupLabel("MOUSE"));
-
-            // Pointer speed slider
-            QWidget *row = new QWidget;
-            QVBoxLayout *rv = new QVBoxLayout(row);
-            rv->setContentsMargins(0, 0, 0, 0);
-            rv->setSpacing(6);
-
-            QHBoxLayout *top = new QHBoxLayout;
-            QLabel *t = new QLabel("Pointer speed");
-            t->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *val = new QLabel(
-                vc.mouseAccel < 0
-                    ? QString("Slow (%1)").arg(vc.mouseAccel)
-                    : (vc.mouseAccel > 0
-                        ? QString("Fast (+%1)").arg(vc.mouseAccel)
-                        : QString("Normal")));
-            val->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(Sigil::textSecondary().name()));
-            val->setMinimumWidth(80);
-            val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            top->addWidget(t);
-            top->addStretch();
-            top->addWidget(val);
-            rv->addLayout(top);
-
-            QSlider *sl = new QSlider(Qt::Horizontal);
-            sl->setRange(-10, 10);
-            sl->setValue(vc.mouseAccel);
-            sl->setStyleSheet(
-                "QSlider::groove:horizontal { height: 4px;"
-                "  background: rgba(255,255,255,25);"
-                "  border-radius: 2px; }"
-                "QSlider::handle:horizontal {"
-                "  background: #ffffff; width: 14px; height: 14px;"
-                "  margin: -5px 0; border-radius: 7px; }"
-                "QSlider::sub-page:horizontal {"
-                "  background: rgb(168,50,50);"
-                "  border-radius: 2px; }");
-            m_sliders.append(sl);
-
-            QObject::connect(sl, &QSlider::valueChanged,
-                             [val](int x) {
-                val->setText(x < 0 ? QString("Slow (%1)").arg(x)
-                                   : x > 0
-                                        ? QString("Fast (+%1)").arg(x)
-                                        : QString("Normal"));
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.mouseAccel = x; });
-                // sway's pointer accel runs -1.0 .. 1.0
-                double a = x / 10.0;
-                QProcess::startDetached("swaymsg", {
-                    "input", "type:pointer", "accel_profile", "adaptive",
-                    "accel_speed",
-                    QString::number(a, 'f', 2) });
-            });
-            rv->addWidget(sl);
-
-            QLabel *subLbl = new QLabel(
-                "Adjusts acceleration curve for pointing devices");
-            subLbl->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            rv->addWidget(subLbl);
-            cv->addWidget(row);
-
-            v->addWidget(c);
-        }
-
-        // ---- Trackpad card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("TRACKPAD"));
-
-            auto makeRow = [&](const QString &title, const QString &sub,
-                               bool on, std::function<void(bool)> onChange) {
-                return Sigil::makeToggleRow(title, sub, on, onChange);
-            };
-
-            cv->addWidget(makeRow(
-                "Natural scrolling",
-                "Content moves with your fingers",
-                vc.touchpadNatural,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.touchpadNatural = on; });
-                    QProcess::startDetached("swaymsg", {
-                        "input", "type:touchpad", "natural_scroll",
-                        on ? "enabled" : "disabled" });
-                }));
-
-            cv->addWidget(makeRow(
-                "Tap to click",
-                "Tap the trackpad without pressing",
-                vc.touchpadTap,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.touchpadTap = on; });
-                    QProcess::startDetached("swaymsg", {
-                        "input", "type:touchpad", "tap",
-                        on ? "enabled" : "disabled" });
-                }));
-
-            cv->addWidget(makeRow(
-                "Two-finger scrolling",
-                "Scroll with two fingers instead of one",
-                vc.touchpadTwoFinger,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.touchpadTwoFinger = on; });
-                    QProcess::startDetached("swaymsg", {
-                        "input", "type:touchpad",
-                        "scroll_method",
-                        on ? "two_finger" : "edge" });
-                }));
-
-            cv->addWidget(makeRow(
-                "Disable while typing",
-                "Ignore taps while the keyboard is in use",
-                vc.touchpadDisableWhileTyping,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) {
-                            c.touchpadDisableWhileTyping = on;
-                        });
-                    QProcess::startDetached("swaymsg", {
-                        "input", "type:touchpad",
-                        "dwt",
-                        on ? "enabled" : "disabled" });
-                }));
-
             v->addWidget(c);
         }
 

@@ -160,6 +160,10 @@ Apokolips Shell (C++/Qt6):
   [x] Settings: Arc Reactor page (BATTERY, POWER SAVING, TIMEOUTS)
   [x] Settings: Arc Reactor sidebar icon = Iron Man 2 reactor
   [x] Settings: Control Center page — module toggles
+  [x] Settings: Users & Groups page
+  [x] Settings: Lock Screen & Security page
+  [x] Settings: Keyboard page
+  [x] Settings: Mouse & Trackpad page
   [x] swayidle wired to Arc Reactor timeouts
   [x] Settings: Dock includes Genie card at bottom
   [x] Genie sidebar icon = Iron Man 2 reactor mark (cyan)
@@ -192,15 +196,27 @@ SESSION A1 — COMPLETE
   [x] Control Center settings page — 6 module toggles
 
 ------------------------------------------------------------------------
-PENDING — Session A2 (finish Tier 1)
+SESSION A2 — COMPLETE
 ------------------------------------------------------------------------
-  [ ] Users & Groups (read getent passwd, add/remove, password)
-  [ ] Lock Screen & Security (lock timeout, SSH toggle, firewall)
-  [ ] Keyboard (layout picker, repeat rate, Caps Lock)
-  [ ] Mouse & Trackpad (pointer speed, natural scroll, tap)
+  [x] Users & Groups — list human users, add (pkexec useradd),
+      delete via context menu (safety rails: cannot delete root
+      or current user), change password button (terminal handoff)
+  [x] Lock Screen & Security — Lock now, lock-after-idle dropdown,
+      appearance (show clock/date, grace, background image),
+      lock triggers (before sleep, screen-off), SSH toggle,
+      firewall toggle
+  [x] Keyboard — layout picker (12 languages), repeat delay,
+      repeat rate, caps lock behavior
+  [x] Mouse & Trackpad — pointer speed, natural scroll, tap to
+      click, two-finger scroll, disable-while-typing
+
+Note: Lock uses gtklock (Sigil-styled via CSS at
+~/.config/gtklock/style.css). Startup is ~1.5s (GTK cold start) —
+acceptable, but "lock speed" is on the to-do list.
+swaylock-effects build failed (libpng dep clash) — abandoned.
 
 ------------------------------------------------------------------------
-PENDING — Session A3 (General hub)
+NEXT — Session A3 (General hub)
 ------------------------------------------------------------------------
   [ ] General page with nested:
       Software Update, Storage, Startup Items, Language & Region
@@ -245,6 +261,9 @@ DEFERRED / FUTURE
       - Iron Man style
   [ ] Windhawk / Compiz-style full skinning system (V2)
   [ ] Clipboard IPC fix (parked — see bug list)
+  [ ] Lock speed — gtklock takes ~1.5s to start. Alternatives:
+      swaylock-effects (build failed — libpng dep clash),
+      own Sigil lock screen using ext-session-lock-v1 (V2)
 
 ------------------------------------------------------------------------
 NEVER — permanently banned features (bloatware)
