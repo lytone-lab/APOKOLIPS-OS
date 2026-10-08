@@ -7475,7 +7475,10 @@ private:
                     "QPushButton:hover { background: rgba(255,255,255,45); }")
                     .arg(Sigil::textPrimary().name()));
                 QObject::connect(refresh, &QPushButton::clicked,
-                    [this]() { refreshBluetoothPage(); });
+                    [this]() {
+                    auto *sw = qobject_cast<SettingsWindow *>(this);
+                    if (sw) sw->refreshBluetoothPage();
+                });
                 QHBoxLayout *btnRow = new QHBoxLayout;
                 btnRow->addWidget(refresh);
                 btnRow->addStretch();
@@ -7534,7 +7537,10 @@ private:
                 "QPushButton:hover { background: rgba(255,255,255,45); }")
                 .arg(Sigil::textPrimary().name()));
             QObject::connect(refresh, &QPushButton::clicked,
-                [this]() { refreshBluetoothPage(); });
+                [this]() {
+                auto *sw = qobject_cast<SettingsWindow *>(this);
+                if (sw) sw->refreshBluetoothPage();
+            });
             header->addWidget(refresh);
             cv->addLayout(header);
 
