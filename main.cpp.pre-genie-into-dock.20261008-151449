@@ -6506,6 +6506,8 @@ private:
                    QColor(90, 122, 158), makeWallpaperPage());
         addSection(sb, "Dock",       QString::fromUtf8("\xE2\x96\xAA"),
                    QColor(166, 122, 90), makeDockPage());
+        addSection(sb, "Genie",      QString::fromUtf8("\xE2\x9C\xA6"),
+                   QColor(168, 50, 50), makeGeniePage());
         addSection(sb, "Sound",      QString::fromUtf8("\xE2\x99\xAA"),
                    QColor(160, 90, 106), makeSoundPage());
         addSection(sb, "Display",    QString::fromUtf8("\xE2\x96\xA3"),
@@ -7121,28 +7123,28 @@ private:
             v->addWidget(c);
         }
 
-        v->addWidget(makeGenieCard());
-
         v->addStretch();
         return page;
     }
 
-    QWidget *makeGenieCard() {
-        // Rendered as a section inside makeDockPage.
-        QWidget *wrap = new QWidget;
-        QVBoxLayout *v = new QVBoxLayout(wrap);
-        v->setContentsMargins(0, 0, 0, 0);
+    QWidget *makeGeniePage() {
+        QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 28);
         v->setSpacing(18);
+
+        v->addWidget(Sigil::sectionTitle("Genie"));
 
         auto &vc = VisualConfigManager::instance().cfg();
 
-        // Enable toggle
+        // ---- Enable card ----
         {
             Sigil::Card *c = new Sigil::Card;
             QVBoxLayout *cv = new QVBoxLayout(c);
             cv->setContentsMargins(20, 16, 20, 16);
             cv->setSpacing(12);
-            cv->addWidget(Sigil::groupLabel("MINIMIZE — GENIE"));
+            cv->addWidget(Sigil::groupLabel("GENERAL"));
             cv->addWidget(Sigil::makeToggleRow(
                 "Enable Genie effect",
                 "Windows pour into the dock when minimized",
@@ -7154,13 +7156,14 @@ private:
             v->addWidget(c);
         }
 
-        // Shape sliders card
+        // ---- Shape card (sliders) ----
         {
             Sigil::Card *c = new Sigil::Card;
             QVBoxLayout *cv = new QVBoxLayout(c);
             cv->setContentsMargins(20, 16, 20, 16);
             cv->setSpacing(18);
-            cv->addWidget(Sigil::groupLabel("GENIE SHAPE"));
+
+            cv->addWidget(Sigil::groupLabel("SHAPE"));
 
             auto addSlider = [&](const QString &title, const QString &sub,
                                  int value, int lo, int hi,
@@ -7225,6 +7228,7 @@ private:
                 VisualConfigManager::instance().setAndSave(
                     [x](VisualConfig &c) { c.genieDurationMs = x; });
             });
+
             addSlider("Strips",
                       "Higher = smoother warp, more CPU",
                       vc.genieStrips, 40, 320, "",
@@ -7232,6 +7236,7 @@ private:
                 VisualConfigManager::instance().setAndSave(
                     [x](VisualConfig &c) { c.genieStrips = x; });
             });
+
             addSlider("Stagger",
                       "Per-strip delay — higher makes the pour more dramatic",
                       int(vc.genieStagger * 100), 0, 80, "%",
@@ -7239,6 +7244,7 @@ private:
                 VisualConfigManager::instance().setAndSave(
                     [x](VisualConfig &c) { c.genieStagger = x / 100.0; });
             });
+
             addSlider("Curve",
                       "How aggressively the funnel narrows (×10)",
                       int(vc.genieCurve * 10), 3, 20, "",
@@ -7246,6 +7252,7 @@ private:
                 VisualConfigManager::instance().setAndSave(
                     [x](VisualConfig &c) { c.genieCurve = x / 10.0; });
             });
+
             addSlider("Fade start",
                       "When opacity begins dropping (×100)",
                       int(vc.genieFadeStart * 100), 50, 100, "%",
@@ -7257,7 +7264,8 @@ private:
             v->addWidget(c);
         }
 
-        return wrap;
+        v->addStretch();
+        return page;
     }
 
     QWidget *makeSoundPage() {

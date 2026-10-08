@@ -7121,8 +7121,6 @@ private:
             v->addWidget(c);
         }
 
-        v->addWidget(makeGenieCard());
-
         v->addStretch();
         return page;
     }
@@ -7338,6 +7336,9 @@ private:
             refreshSoundDevices();
             v->addWidget(c);
         }
+
+        // Genie minimize settings live here — it's dock behavior.
+        v->addWidget(makeGenieCard());
 
         v->addStretch();
         return page;
