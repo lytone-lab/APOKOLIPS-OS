@@ -1,0 +1,374 @@
+========================================================================
+APOKOLIPS OS — PROJECT STATE
+Last updated: 2026-10-08
+Maintained by: user (Lytone) + AI collaborators
+Read this file FIRST if you are a new AI joining the project.
+========================================================================
+
+WHY THIS FILE EXISTS
+--------------------
+Earlier, joining AIs would:
+  - misunderstand the vision
+  - misread pasted transcripts from previous AI sessions
+  - lose track of what was done vs. pending
+  - repeat mistakes
+This file is the single source of truth. Update it when anything
+changes. If you are an AI, do not skip this file.
+
+------------------------------------------------------------------------
+THE VISION
+------------------------------------------------------------------------
+- Build a Linux distro from scratch: "Apokolips OS"
+  GitHub: lytone-lab/APOKOLIPS-OS
+- Styled to look like macOS 27 "Golden Gate" — but coded custom in
+  C++ / Qt. NOT a macOS skin. NOT Windhawk. NOT Rainmeter.
+  Everything baked into the OS itself.
+- macOS + Windows hybrid: adopt macOS layout (sidebar + cards),
+  Windows feature breadth (inline toggles, broader categories).
+- Rule of the build: NO HALF-BAKED APPS. Every control either:
+    (a) actually does something, or
+    (b) is clearly marked "not yet wired" / "Coming soon"
+  No mockups. No placeholders that look real but do nothing.
+- User is a 1st-year IT student. Cannot code yet.
+  Step-by-step instructions, one step at a time, wait for confirmation.
+  Do not dump big multi-step changes without approval.
+
+------------------------------------------------------------------------
+ENVIRONMENT
+------------------------------------------------------------------------
+- Host: Windows 11 (i5-5200U, 8GB RAM)
+- VM: VirtualBox, Ubuntu (was Arch — dropped)
+  VM: 3GB RAM, 2 CPU, 40GB disk
+- Compositor: sway (Wayland). TTY is fine; sway IPC works when
+  SWAYSOCK is exported.
+- Shell runs as systemd --user service:
+  ~/.config/systemd/user/apokolips-shell.service
+  ExecStart=/home/lytone/apokolips-shell/build/apokolips-shell
+- User codes via VS Code Remote-SSH (port forward on host 2222 →
+  guest 22). No VM terminal copy-paste of code anymore.
+- No Bluetooth hardware in the VM.
+- No Wi-Fi adapter in the VM (only enp0s3 ethernet).
+- Battery present (virtual BAT0 in VirtualBox).
+
+------------------------------------------------------------------------
+DESIGN LANGUAGE — SIGIL
+------------------------------------------------------------------------
+Graphite + bone + oxblood. Applied to Settings and Finder windows.
+
+Foundation colors:
+  contentBg   #141416
+  cardBg      #1e1e20
+  sidebarBg   #18181a
+  border      rgba(255,255,255,22)
+
+Text (bone, warm — NOT pure white):
+  textPrimary    #f0ede8
+  textSecondary  #b0ada8
+  textDim        #7a7873
+
+Accent (oxblood — the seal):
+  accent        #a83232
+  accentHover   #c84a4a
+  accentPress   #8b1a1a
+
+Category badges (muted, earth-bound):
+  Appearance  #7a6a9f  violet
+  Wallpaper   #5a7a9e  slate blue
+  Dock        #a67a5a  burnt clay
+  Sound       #a05a6a  rosewood
+  Display     #4a7a7a  teal
+  Network     #4a7a5a  forest
+  Bluetooth   #5a7a9e  slate
+  Wi-Fi       #5a7a9e  slate
+  Arc Reactor #4a7a5a  forest
+  Notifications #c8643c orange
+  Date & Time #5078c8 blue
+  About       #6a6a70 graphite
+
+What Sigil is NOT:
+  - no pure black, no pure white
+  - no decorative gradients
+  - no glossy highlights
+  - no puffy 3D
+  - no neon glow
+  - no rainbow category colors
+  - no default blue accent
+
+Light mode (deferred): parchment #f5f2ed, warm near-black text
+#2a2825, same oxblood accent.
+
+------------------------------------------------------------------------
+SIGIL COMPONENTS (in main.cpp)
+------------------------------------------------------------------------
+- Sigil::Card          frosted panel container
+- Sigil::sectionTitle  large page title
+- Sigil::groupLabel    small uppercase label inside cards
+- Sigil::makeToggleRow label + subtitle + Toggle (right-aligned)
+- Sigil::Dropdown      themed dropdown with chevron
+- Sigil::textPrimary/Secondary/Dim/accent/etc. color helpers
+- ApokolipsInputDialog themed text prompt dialog
+- IconBadge            colored circular badge for sidebar
+- CustomBadge          custom-paint badge (used by Arc Reactor)
+- Sigil::drawArcReactor  Iron Man 2 reactor mark
+
+------------------------------------------------------------------------
+DONE (features landed and verified)
+------------------------------------------------------------------------
+Apokolips Shell (C++/Qt6):
+  [x] Base Qt app, systemd user service
+  [x] Sigil design system: Card, sectionTitle, groupLabel,
+      makeToggleRow, Dropdown, textPrimary/Secondary/Dim
+  [x] Sidebar with search, icon badges, oxblood stripe on selected row
+  [x] Sidebar sections: Appearance, Wallpaper, Dock, Sound, Display,
+      Arc Reactor, Bluetooth, Wi-Fi, Network, Notifications,
+      Date & Time, About
+  [x] Content areas: opaque Sigil bg, no wallpaper bleed
+  [x] Toggle widget: slide init from initial value (bug fixed)
+  [x] Top bar clock respects 24h/seconds config live
+  [x] Control Center: Focus/DND button toggles cfg.dndEnabled
+  [x] Dock: Bottom / Left / Right position, live reflow
+  [x] Dock: Magnification slider, size slider, Finder opacity
+  [x] Finder: sidebar with icon badges, oxblood stripe on selected
+  [x] Finder: Sigil toolbar (pill nav, bone text, view toggles)
+  [x] Notification auto-hide reads cfg.notificationBannerMs live
+  [x] Notification page: DND toggle, banner duration slider
+  [x] Date & Time page: live clock, timezone, NTP toggle,
+      24h/seconds toggles
+  [x] Genie effect (strip-based warp)
+      - combines best of AI1 strip technique + Manus structure
+      - config-driven: duration, strips, stagger, curve, fade start
+      - live-write from Settings under Dock
+      - 100-220 strips, all converge to a single dock point
+  [x] Glyph (screenshot tool)
+      - custom Sigil logo (dashed crop frame, oxblood corners,
+        caret in bottom-right)
+      - overlay: fullscreen freeze, drag-select, red border,
+        dimension label
+      - toolbar: Save / Copy / Cancel
+      - saves to ~/Pictures/Screenshots/Glyph-*.png
+      - copies to clipboard via wl-copy
+      - in launcher (Super+Shift+S) and clickable icon
+  [x] SnapPicker (Win11-style snap layout)
+      - Super+Z popup, 3x3 grid, oxblood hover
+      - fires swaymsg resize set + move position
+  [x] Clipboard panel (Win+V) — WORKING but IPC unreliable. See bug list.
+  [x] Launcher (Launchpad) — 10 apps incl. Glyph, iron-man reactor
+      tile drawing not yet (queued)
+  [x] Settings: Bluetooth page (real code, honest empty state)
+  [x] Settings: Wi-Fi page split from Network
+  [x] Settings: Network trimmed, Ethernet/VPN list wired
+  [x] Settings: Arc Reactor page (BATTERY, POWER SAVING, TIMEOUTS)
+  [x] Settings: Dock includes Genie card at bottom
+  [x] Genie sidebar icon = Iron Man 2 reactor mark (cyan)
+
+System / sway:
+  [x] Sway config: overlay for_window rules for glyph/snap/clipboard
+  [x] Sway keybinds: Super+M (minimize), Super+Shift+S (Glyph),
+      Super+Z (snap), Super+V (clipboard)
+  [x] Sway keybind Super+Shift+R — DOES NOT RELOAD (bug list)
+  [x] SSH via VirtualBox port-forward (host 2222 → guest 22)
+  [x] VS Code Remote-SSH from host
+
+------------------------------------------------------------------------
+IN PROGRESS
+------------------------------------------------------------------------
+  [ ] Arc Reactor sidebar icon (Iron Man 2 reactor) — patched,
+      pending build + visual check
+  [ ] swayidle wiring for the TIMEOUTS card on Arc Reactor page
+      (dropdowns save, but nothing yet acts on screen-off / sleep)
+  [ ] Launcher: iron man reactor mark for Arc Reactor tile (not
+      the sidebar; the tile in the launcher)
+
+------------------------------------------------------------------------
+PENDING — Session A1 (fill the obvious gaps)
+------------------------------------------------------------------------
+  [ ] Arc Reactor page (mostly done, swayidle pending)
+  [ ] Settings page for Control Center (module toggles)
+
+------------------------------------------------------------------------
+PENDING — Session A2 (finish Tier 1)
+------------------------------------------------------------------------
+  [ ] Users & Groups (read getent passwd, add/remove, password)
+  [ ] Lock Screen & Security (lock timeout, SSH toggle, firewall)
+  [ ] Keyboard (layout picker, repeat rate, Caps Lock)
+  [ ] Mouse & Trackpad (pointer speed, natural scroll, tap)
+
+------------------------------------------------------------------------
+PENDING — Session A3 (General hub)
+------------------------------------------------------------------------
+  [ ] General page with nested:
+      Software Update, Storage, Startup Items, Language & Region
+  [ ] Transfer / Reset (dangerous — careful UI)
+
+------------------------------------------------------------------------
+PENDING — Session B (Tier 2)
+------------------------------------------------------------------------
+  [ ] Storage — disk usage bars, categories, largest files,
+      trash size, empty trash
+  [ ] Startup / Login Items — list / enable / disable / add / remove
+      from ~/.config/autostart
+  [ ] Core Matrix (file-type associations — renamed from
+      "Default Apps") — xdg-mime, xdg-settings
+  [ ] Power (fold into Arc Reactor if possible)
+  [ ] Software Update — apt list --upgradable, apt update/upgrade,
+      update history, auto-update toggle
+  [ ] Time Machine / Backup — 2 sessions, needs own design
+
+------------------------------------------------------------------------
+PENDING — Session C (Tier 3)
+------------------------------------------------------------------------
+  [ ] Accessibility
+  [ ] Privacy (per-app permissions)
+  [ ] Search / Spotlight
+  [ ] Focus (presets)
+  [ ] Printers & Scanners (CUPS)
+  [ ] Screensaver
+
+------------------------------------------------------------------------
+DEFERRED / FUTURE
+------------------------------------------------------------------------
+  [ ] Reverse Genie (un-minimize animation)
+  [ ] Scale minimize animation
+  [ ] Suck minimize animation
+  [ ] Minimize style selector in Dock settings (Genie/Scale/Suck)
+  [ ] Yellow traffic light minimize trigger for our own windows
+      (needs IPC channel from child app to shell)
+  [ ] Animated Arc Reactor on Arc Reactor page:
+      - bars surround the core, fade/reduce as battery drops
+      - core glow dims/brightens with battery
+      - Iron Man style
+  [ ] Windhawk / Compiz-style full skinning system (V2)
+  [ ] Clipboard IPC fix (parked — see bug list)
+
+------------------------------------------------------------------------
+NEVER — permanently banned features (bloatware)
+------------------------------------------------------------------------
+From Windows:
+  Candy Crush, MSN widgets, forced Copilot button, OneDrive
+  auto-prompts, Teams personal, Xbox Game Bar popup, Recommended
+  section ads, MS account requirement, Bing in local search,
+  preinstalled games, Edge forced default, S Mode.
+
+From macOS:
+  News, Stocks, Home, TV, Freeform, Journal, Siri, Safari Start
+  Page push, Apple Maps nags, iCloud forced sync, TV+/Arcade ads
+  in Spotlight, Tips, Photo Stream, Suggested Apps.
+
+Structural / hardware / ecosystem:
+  Touch ID (no biometrics in VM)
+  Internet Accounts (Apple ecosystem)
+  Game Center
+  Apple Intelligence / Siri
+  Handoff / Continuity
+  AirDrop
+  Sidecar
+  iPhone Mirroring
+
+Golden rule for AI features (future):
+  - Siri-style: NO
+  - Copilot-style forced button: NO
+  - Local LLM as Spotlight upgrade: YES (V2/V3, opt-in)
+  - Writing tools (rewrite selection anywhere): YES (V2)
+  - Screen-aware assistant (opt-in hotkey): MAYBE (V3)
+  - AI-generated wallpapers: YES (V2, local diffusion)
+  - AI semantic search across files: YES (V3)
+  User opts in. No always-on mic. No cloud requirement.
+  No forced button.
+
+------------------------------------------------------------------------
+BUG LIST (open)
+------------------------------------------------------------------------
+  1. Clipboard IPC unreliable
+     QLocalServer/Socket starts, but second-instance toggle sometimes
+     doesn't reach the running shell. Panel is built and works when
+     toggled in-process. Parked.
+  2. Finder opacity not real-time
+     Settings writes visual.json but FileExplorer (separate process)
+     doesn't poll it. Needs QTimer in FileExplorer to watch mtime
+     and repaint. ~15 lines.
+  3. Sway reload keybind Super+Shift+R doesn't fire
+     Only Ctrl+Shift+R works for shell. Check sway config bindsym.
+  4. Terminal (foot) decorations — no title bar / traffic lights
+  5. Real per-app menus — needs our own protocol
+  6. App icons — remaining line-art needs replacing
+  7. Glyph tweak list (parked):
+     - toolbar Save/Copy/Cancel still slightly spread
+     - Enter key should save, Ctrl+C copy, Esc cancel
+     - dimension label inside selection, top-left
+     - rule-of-thirds guide lines while dragging
+     - save notification toast
+     - save path configurable
+     - snap-to-window (single click selects a whole sway window)
+     - delay timer (Super+Shift+D → 5s delay)
+     - filename pattern configurable
+     - Settings → Glyph page
+  8. QString::arg missing argument warnings (harmless, in logs)
+  9. Launcher Arc Reactor tile doesn't use reactor mark yet
+
+------------------------------------------------------------------------
+AI WORKING RULES (very important)
+------------------------------------------------------------------------
+- Read this file first.
+- Read any pasted transcripts carefully before responding.
+  Do NOT claim you read something you didn't. Do NOT fabricate
+  memory of a conversation. If you missed it, say so.
+- One change at a time. Build-verify between steps.
+- For any feature: first read the discussion text where the user and
+  previous AI talked about it, confirm understanding, THEN proceed.
+- Backup files before editing: cp main.cpp main.cpp.pre-<feature>
+  Use timestamped backups when chaining.
+- Patches should be Python scripts that:
+  - use exact-string anchors on main.cpp
+  - print OK: <label> / MISS: <label> per replacement
+  - abort (with "--- not writing ---") if any anchor misses
+  - make a timestamped backup before write
+- Never claim something is "better" before it compiles and the user
+  has seen it run.
+- Ownership rule: only one AI edits main.cpp at a time. Hand back
+  explicitly with a handoff message that lists:
+    - what changed
+    - new classes / methods / signatures
+    - sway config changes
+    - any genie / animation side-effects
+  The other AI stays OUT until handback.
+
+------------------------------------------------------------------------
+AI OWNERSHIP / HANDOFF NOTES
+------------------------------------------------------------------------
+- Manus AI: owns genie effect + launcher polish + the "genie
+  generation" pipeline (the swing / reverse genie / scale / suck
+  family). Currently genie is DELIVERED (strip-based combined
+  version — see DONE). Manus is OUT until the next handoff.
+- AI #1 (this session): owns everything else in main.cpp.
+- Handoff to Manus when genie / launcher work resumes:
+  send message with the "AI WORKING RULES" summary above.
+
+------------------------------------------------------------------------
+KEY FILES
+------------------------------------------------------------------------
+  main.cpp                                    single-file Qt app
+  build/apokolips-shell                       compiled binary
+  /home/lytone/.config/systemd/user/apokolips-shell.service
+  ~/.config/sway/config                       sway config
+  ~/visual.json                               (or in $HOME, wherever
+                                               VisualConfigManager
+                                               writes — check code)
+  /tmp/apokolips-clipboard.sock               clipboard IPC
+  /tmp/genie-<conId>-<timestamp>.png          genie temp capture
+  ~/Pictures/Screenshots/Glyph-*.png          Glyph output
+  main.cpp.pre-<feature>.<timestamp>          backups
+
+------------------------------------------------------------------------
+HOW TO UPDATE THIS FILE
+------------------------------------------------------------------------
+- When a feature lands: move it from PENDING / IN PROGRESS to DONE.
+- When a feature is dropped: move it to NEVER or DEFERRED with a
+  one-line reason.
+- When a bug is fixed: remove from BUG LIST.
+- When a new bug appears: add it with a short repro.
+- When an AI hands off: update AI OWNERSHIP / HANDOFF NOTES.
+- Keep it in the repo. Commit it alongside code changes.
+
+========================================================================
+END OF PROJECT STATE
+========================================================================
