@@ -7725,13 +7725,14 @@ private:
         page->setAutoFillBackground(false);
         QVBoxLayout *v = new QVBoxLayout(page);
         v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
+        v->setSpacing(20);
 
         v->addWidget(Sigil::sectionTitle("Network"));
 
-        // ---- Status card ----
+        // Status card
         {
             Sigil::Card *c = new Sigil::Card;
+            c->setFixedHeight(86);
             QVBoxLayout *cv = new QVBoxLayout(c);
             cv->setContentsMargins(20, 16, 20, 16);
             cv->setSpacing(8);
@@ -7745,79 +7746,50 @@ private:
             v->addWidget(c);
         }
 
-        // ---- Hint card pointing to Wi-Fi ----
+        // Wi-Fi list card
         {
             Sigil::Card *c = new Sigil::Card;
-            QHBoxLayout *h = new QHBoxLayout(c);
-            h->setContentsMargins(20, 16, 20, 16);
-            h->setSpacing(14);
-
-            QVBoxLayout *left = new QVBoxLayout;
-            left->setContentsMargins(0, 0, 0, 0);
-            left->setSpacing(2);
-            QLabel *t = new QLabel("Wireless networks");
-            t->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *s = new QLabel(
-                "Wi-Fi is handled on its own page under Settings → Wi-Fi.");
-            s->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            left->addWidget(t);
-            left->addWidget(s);
-            h->addLayout(left, 1);
-
-            QPushButton *open = new QPushButton("Open Wi-Fi");
-            open->setCursor(Qt::PointingHandCursor);
-            open->setFixedHeight(28);
-            open->setStyleSheet(QString(
-                "QPushButton { background: rgba(255,255,255,20);"
-                "  color: %1; border: none; border-radius: 7px;"
-                "  font-size: 12px; padding: 4px 14px; }"
-                "QPushButton:hover { background: rgba(255,255,255,45); }")
-                .arg(Sigil::textPrimary().name()));
-            QObject::connect(open, &QPushButton::clicked, []() {
-                QProcess::startDetached(
-                    QCoreApplication::applicationFilePath(),
-                    { "--settings" });
-            });
-            h->addWidget(open);
-
-            v->addWidget(c);
-        }
-
-        // ---- Ethernet card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            c->setMinimumHeight(180);
+            c->setMinimumHeight(320);
             QVBoxLayout *cv = new QVBoxLayout(c);
             cv->setContentsMargins(20, 16, 20, 16);
             cv->setSpacing(12);
 
             QHBoxLayout *header = new QHBoxLayout;
-            header->addWidget(Sigil::groupLabel("ETHERNET"));
+            header->addWidget(Sigil::groupLabel("WI-FI NETWORKS"));
             header->addStretch();
 
-            QPushButton *refresh = new QPushButton("Refresh");
-            refresh->setCursor(Qt::PointingHandCursor);
-            refresh->setFixedHeight(26);
-            refresh->setStyleSheet(QString(
+            QPushButton *scan = new QPushButton("Scan");
+            scan->setCursor(Qt::PointingHandCursor);
+            scan->setFixedHeight(26);
+            scan->setStyleSheet(QString(
                 "QPushButton { background: rgba(255,255,255,20);"
                 "  color: %1; border: none; border-radius: 6px;"
                 "  font-size: 11px; padding: 2px 12px; }"
                 "QPushButton:hover { background: rgba(255,255,255,45); }")
                 .arg(Sigil::textPrimary().name()));
-            QObject::connect(refresh, &QPushButton::clicked,
+            QObject::connect(scan, &QPushButton::clicked,
                              this, &SettingsWindow::refreshNetworkPage);
-            header->addWidget(refresh);
+            header->addWidget(scan);
+
+            QPushButton *open = new QPushButton("Open Settings");
+            open->setCursor(Qt::PointingHandCursor);
+            open->setFixedHeight(26);
+            open->setStyleSheet(QString(
+                "QPushButton { background: rgba(255,255,255,20);"
+                "  color: %1; border: none; border-radius: 6px;"
+                "  font-size: 11px; padding: 2px 12px; }"
+                "QPushButton:hover { background: rgba(255,255,255,45); }")
+                .arg(Sigil::textPrimary().name()));
+            QObject::connect(open, &QPushButton::clicked, []() {
+                QProcess::startDetached("gnome-control-center", { "wifi" });
+            });
+            header->addWidget(open);
 
             cv->addLayout(header);
 
-            m_networkList = new QListWidget;
-            m_networkList->setFrameShape(QFrame::NoFrame);
-            cv->addWidget(m_networkList, 1);
-
+            m_wifiList = new QListWidget;
+            m_wifiList->setFrameShape(QFrame::NoFrame);
+            cv->addWidget(m_wifiList, 1);
             v->addWidget(c);
         }
 
@@ -7896,66 +7868,49 @@ private:
     }
 
     void refreshNetworkPage() {
-        // ---- Current connection summary ----
-        if (m_networkInfo) {
-            QProcess p;
-            p.start("nmcli", { "-t", "-f", "DEVICE,TYPE,STATE", "device" });
-            p.waitForFinished(700);
-            QString out = QString::fromUtf8(p.readAllStandardOutput());
-            QString summary;
-            for (const QString &line : out.split('\n')) {
-                QStringList parts = line.trimmed().split(':');
-                if (parts.size() < 3) continue;
-                if (parts[2].startsWith("connected")) {
-                    if (!summary.isEmpty()) summary += "   ·   ";
-                    summary += parts[1] + " (" + parts[0] + ")";
-                }
-            }
-            if (summary.isEmpty()) summary = "Offline";
-            m_networkInfo->setText(summary);
+        if (!m_wifiList || !m_networkInfo) return;
+
+        // Current connection summary
+        QProcess p;
+        p.start("nmcli", { "-t", "-f", "DEVICE,TYPE,STATE", "device" });
+        p.waitForFinished(500);
+        QString devOut = QString::fromUtf8(p.readAllStandardOutput());
+        QString summary;
+        for (const QString &line : devOut.split('\n')) {
+            QStringList parts = line.trimmed().split(':');
+            if (parts.size() < 3) continue;
+            if (parts[1] == "ethernet" && parts[2].startsWith("connected"))
+                summary += "Ethernet: " + parts[0] + "  ";
+            else if (parts[1] == "wifi" && parts[2].startsWith("connected"))
+                summary += "Wi-Fi: " + parts[0] + "  ";
         }
+        if (summary.isEmpty()) summary = "Offline";
+        m_networkInfo->setText(summary);
 
-        // ---- Ethernet / VPN / Bridge device list ----
-        if (m_networkList) {
-            m_networkList->clear();
-            QProcess q;
-            q.start("nmcli", { "-t", "-f",
-                               "DEVICE,TYPE,STATE,CONNECTION", "device" });
-            q.waitForFinished(1200);
-            QString out = QString::fromUtf8(q.readAllStandardOutput());
-            bool anyAdded = false;
-            for (const QString &line : out.split('\n')) {
-                QString t = line.trimmed();
-                if (t.isEmpty()) continue;
-                QStringList p = t.split(':');
-                if (p.size() < 4) continue;
-                const QString dev  = p[0];
-                const QString type = p[1];
-                const QString st   = p[2];
-                const QString conn = p[3];
-                if (type == "wifi" || type == "loopback") continue;
-                if (type == "ethernet" && dev.startsWith("enp")
-                    && st == "unavailable") continue;
-
-                QString text = dev + "   " + type
-                             + "   " + st;
-                if (!conn.isEmpty()) text += "   (" + conn + ")";
-
-                QListWidgetItem *it = new QListWidgetItem(text);
-                if (st.startsWith("connected"))
-                    it->setForeground(QColor(240, 237, 232));
-                else
-                    it->setForeground(QColor(176, 173, 168));
-                m_networkList->addItem(it);
-                anyAdded = true;
-            }
-            if (!anyAdded) {
-                QListWidgetItem *it = new QListWidgetItem(
-                    "No wired, VPN or bridge interfaces detected");
-                it->setFlags(Qt::NoItemFlags);
-                it->setForeground(QColor(122, 120, 115));
-                m_networkList->addItem(it);
-            }
+        // List of visible Wi-Fi networks
+        m_wifiList->clear();
+        QProcess q;
+        q.start("nmcli", { "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi" });
+        q.waitForFinished(1500);
+        QString wifiOut = QString::fromUtf8(q.readAllStandardOutput());
+        QSet<QString> seen;
+        for (const QString &line : wifiOut.split('\n')) {
+            QString t = line.trimmed();
+            if (t.isEmpty()) continue;
+            QStringList p2 = t.split(':');
+            if (p2.size() < 2) continue;
+            QString ssid = p2[0];
+            if (ssid.isEmpty() || seen.contains(ssid)) continue;
+            seen.insert(ssid);
+            QString sig = p2.size() > 1 ? p2[1] : "?";
+            QString sec = p2.size() > 2 ? p2[2] : "";
+            QListWidgetItem *it = new QListWidgetItem(
+                QString("  %1    %2%%    %3").arg(ssid, -30).arg(sig).arg(sec));
+            it->setData(Qt::UserRole, ssid);
+            m_wifiList->addItem(it);
+        }
+        if (m_wifiList->count() == 0) {
+            m_wifiList->addItem("  (No networks found)");
         }
     }
 
@@ -8492,7 +8447,6 @@ private:
     QListWidget    *m_btList       = nullptr;
     QListWidget    *m_wifiPageList = nullptr;
     QLabel         *m_wifiStatus   = nullptr;
-    QListWidget    *m_networkList  = nullptr;
     QListWidget    *m_resList      = nullptr;
     QListWidget    *m_wifiList     = nullptr;
     QLabel         *m_displayInfo  = nullptr;
