@@ -373,12 +373,6 @@ struct VisualConfig {
     int    screenOffTimeoutMin = 15;   // 0 = never
     int    sleepTimeoutMin     = 30;   // 0 = never
     bool   lowPowerMode        = false;
-    bool   ccShowWiFi          = true;
-    bool   ccShowBluetooth     = true;
-    bool   ccShowMedia         = true;
-    bool   ccShowToggles       = true;
-    bool   ccShowSound         = true;
-    bool   ccShowDisplay       = true;
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
     double dockSigma          = 55.0;
@@ -450,24 +444,6 @@ public:
         m_cfg.lowPowerMode        = o.contains("lowPowerMode")
                                    ? o["lowPowerMode"].toBool(false)
                                    : m_cfg.lowPowerMode;
-        m_cfg.ccShowWiFi          = o.contains("ccShowWiFi")
-                                   ? o["ccShowWiFi"].toBool(true)
-                                   : m_cfg.ccShowWiFi;
-        m_cfg.ccShowBluetooth     = o.contains("ccShowBluetooth")
-                                   ? o["ccShowBluetooth"].toBool(true)
-                                   : m_cfg.ccShowBluetooth;
-        m_cfg.ccShowMedia         = o.contains("ccShowMedia")
-                                   ? o["ccShowMedia"].toBool(true)
-                                   : m_cfg.ccShowMedia;
-        m_cfg.ccShowToggles       = o.contains("ccShowToggles")
-                                   ? o["ccShowToggles"].toBool(true)
-                                   : m_cfg.ccShowToggles;
-        m_cfg.ccShowSound         = o.contains("ccShowSound")
-                                   ? o["ccShowSound"].toBool(true)
-                                   : m_cfg.ccShowSound;
-        m_cfg.ccShowDisplay       = o.contains("ccShowDisplay")
-                                   ? o["ccShowDisplay"].toBool(true)
-                                   : m_cfg.ccShowDisplay;
         m_cfg.dndEnabled         = o.contains("dndEnabled")
                                    ? o["dndEnabled"].toBool(false)
                                    : m_cfg.dndEnabled;
@@ -546,12 +522,6 @@ public:
         o["screenOffTimeoutMin"] = m_cfg.screenOffTimeoutMin;
         o["sleepTimeoutMin"]     = m_cfg.sleepTimeoutMin;
         o["lowPowerMode"]        = m_cfg.lowPowerMode;
-        o["ccShowWiFi"]          = m_cfg.ccShowWiFi;
-        o["ccShowBluetooth"]     = m_cfg.ccShowBluetooth;
-        o["ccShowMedia"]         = m_cfg.ccShowMedia;
-        o["ccShowToggles"]       = m_cfg.ccShowToggles;
-        o["ccShowSound"]         = m_cfg.ccShowSound;
-        o["ccShowDisplay"]       = m_cfg.ccShowDisplay;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
@@ -3225,7 +3195,6 @@ public:
     void toggle() { isVisible() && m_slide > 0.5 ? hideCC() : showCC(); }
     void showCC() {
         refreshFocusBtn();
-        applyVisibility();
         raise(); show(); m_target = 1.0; m_animTimer->start();
     }
     void hideCC() { m_target = 0.0; m_animTimer->start(); }
@@ -3541,36 +3510,18 @@ private:
         outer->setContentsMargins(12, 12, 12, 12);
         outer->setSpacing(10);
 
-        m_wiFiCard    = makeCard("WI-FI", makeWiFiRow());
-        m_btCard      = makeCard("BLUETOOTH", makeBTRow());
-        m_mediaCard   = makeCard("NOW PLAYING", makeMediaRow());
-        m_togglesCard = makeTogglesRow();
-        m_soundCard   = makeCard("SOUND",
+        outer->addWidget(makeCard("WI-FI", makeWiFiRow()));
+        outer->addWidget(makeCard("BLUETOOTH", makeBTRow()));
+        outer->addWidget(makeCard("NOW PLAYING", makeMediaRow()));
+        outer->addWidget(makeTogglesRow());
+        outer->addWidget(makeCard("SOUND",
             makeSliderRow("Output", SysControl::audioGet(),
-                [](int v) { SysControl::audioSet(v); }));
-        m_displayCard = makeCard("DISPLAY",
+                [](int v) { SysControl::audioSet(v); })));
+
+        outer->addWidget(makeCard("DISPLAY",
             makeSliderRow("Brightness", SysControl::brightnessGet(),
-                [](int v) { SysControl::brightnessSet(v); }));
-
-        outer->addWidget(m_wiFiCard);
-        outer->addWidget(m_btCard);
-        outer->addWidget(m_mediaCard);
-        outer->addWidget(m_togglesCard);
-        outer->addWidget(m_soundCard);
-        outer->addWidget(m_displayCard);
+                [](int v) { SysControl::brightnessSet(v); })));
         outer->addStretch();
-
-        applyVisibility();
-    }
-
-    void applyVisibility() {
-        auto &c = VisualConfigManager::instance().cfg();
-        if (m_wiFiCard)    m_wiFiCard->setVisible(c.ccShowWiFi);
-        if (m_btCard)      m_btCard->setVisible(c.ccShowBluetooth);
-        if (m_mediaCard)   m_mediaCard->setVisible(c.ccShowMedia);
-        if (m_togglesCard) m_togglesCard->setVisible(c.ccShowToggles);
-        if (m_soundCard)   m_soundCard->setVisible(c.ccShowSound);
-        if (m_displayCard) m_displayCard->setVisible(c.ccShowDisplay);
     }
 
     QTimer *m_animTimer = nullptr;
@@ -3579,12 +3530,6 @@ private:
     Theme m_theme;
     QPushButton *m_focusBtn  = nullptr;
     QLabel      *m_focusLbl  = nullptr;
-    QWidget     *m_wiFiCard    = nullptr;
-    QWidget     *m_btCard      = nullptr;
-    QWidget     *m_mediaCard   = nullptr;
-    QWidget     *m_togglesCard = nullptr;
-    QWidget     *m_soundCard   = nullptr;
-    QWidget     *m_displayCard = nullptr;
 };
 
 // =========================================================
@@ -6659,8 +6604,6 @@ private:
 
         addSection(sb, "Appearance", QString::fromUtf8("\xE2\x9C\xA8"),
                    QColor(122, 106, 159), makeAppearancePage());
-        addSection(sb, "Control Center", QString::fromUtf8("\xE2\x98\xB0"),
-                   QColor(90, 122, 158), makeControlCenterPage());
         addSection(sb, "Wallpaper",  QString::fromUtf8("\xE2\x96\xA3"),
                    QColor(90, 122, 158), makeWallpaperPage());
         addSection(sb, "Dock",       QString::fromUtf8("\xE2\x96\xAA"),
@@ -6960,88 +6903,6 @@ private:
                 restyleStyleButtons();
             });
             cv->addWidget(reset);
-            v->addWidget(c);
-        }
-
-        v->addStretch();
-        return page;
-    }
-
-    QWidget *makeControlCenterPage() {
-        QWidget *page = new QWidget;
-        page->setAutoFillBackground(false);
-        QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
-
-        v->addWidget(Sigil::sectionTitle("Control Center"));
-
-        auto &vc = VisualConfigManager::instance().cfg();
-
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-
-            cv->addWidget(Sigil::groupLabel("MODULES"));
-
-            auto addToggle = [&](const QString &title,
-                                 const QString &sub,
-                                 bool initial,
-                                 std::function<void(bool)> onChange) {
-                cv->addWidget(Sigil::makeToggleRow(title, sub,
-                                                   initial, onChange));
-            };
-
-            addToggle("Wi-Fi",
-                "Show connection status and quick toggle",
-                vc.ccShowWiFi,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.ccShowWiFi = on; });
-                });
-
-            addToggle("Bluetooth",
-                "Show device status",
-                vc.ccShowBluetooth,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.ccShowBluetooth = on; });
-                });
-
-            addToggle("Now Playing",
-                "Media card with play / pause / skip",
-                vc.ccShowMedia,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.ccShowMedia = on; });
-                });
-
-            addToggle("Quick toggles",
-                "Focus, Battery, Alerts, Display row",
-                vc.ccShowToggles,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.ccShowToggles = on; });
-                });
-
-            addToggle("Sound",
-                "Master volume slider",
-                vc.ccShowSound,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.ccShowSound = on; });
-                });
-
-            addToggle("Display",
-                "Brightness slider",
-                vc.ccShowDisplay,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.ccShowDisplay = on; });
-                });
-
             v->addWidget(c);
         }
 

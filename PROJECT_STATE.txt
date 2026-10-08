@@ -158,6 +158,9 @@ Apokolips Shell (C++/Qt6):
   [x] Settings: Wi-Fi page split from Network
   [x] Settings: Network trimmed, Ethernet/VPN list wired
   [x] Settings: Arc Reactor page (BATTERY, POWER SAVING, TIMEOUTS)
+  [x] Settings: Arc Reactor sidebar icon = Iron Man 2 reactor
+  [x] Settings: Control Center page — module toggles
+  [x] swayidle wired to Arc Reactor timeouts
   [x] Settings: Dock includes Genie card at bottom
   [x] Genie sidebar icon = Iron Man 2 reactor mark (cyan)
 
@@ -172,18 +175,21 @@ System / sway:
 ------------------------------------------------------------------------
 IN PROGRESS
 ------------------------------------------------------------------------
-  [ ] Arc Reactor sidebar icon (Iron Man 2 reactor) — patched,
-      pending build + visual check
-  [ ] swayidle wiring for the TIMEOUTS card on Arc Reactor page
-      (dropdowns save, but nothing yet acts on screen-off / sleep)
   [ ] Launcher: iron man reactor mark for Arc Reactor tile (not
       the sidebar; the tile in the launcher)
+  [ ] Reverse Genie — un-minimize animation (next genie pass)
+  [ ] Scale minimize animation
+  [ ] Suck minimize animation
 
 ------------------------------------------------------------------------
-PENDING — Session A1 (fill the obvious gaps)
+SESSION A1 — COMPLETE
 ------------------------------------------------------------------------
-  [ ] Arc Reactor page (mostly done, swayidle pending)
-  [ ] Settings page for Control Center (module toggles)
+  [x] Bluetooth page (real, honest empty state when no adapter)
+  [x] Wi-Fi page split from Network
+  [x] Network trimmed, Ethernet/VPN list wired
+  [x] Arc Reactor page (BATTERY, POWER SAVING, TIMEOUTS)
+  [x] swayidle wired — screen-off + sleep timeouts act on change
+  [x] Control Center settings page — 6 module toggles
 
 ------------------------------------------------------------------------
 PENDING — Session A2 (finish Tier 1)
