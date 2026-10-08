@@ -232,18 +232,22 @@ clickable rows. Sub-pages have a "< General" back button. Sidebar
 General stays highlighted while on a sub-page.
 
 ------------------------------------------------------------------------
-PENDING — Session B (Tier 2)
+SESSION B — COMPLETE
 ------------------------------------------------------------------------
-  [ ] Storage — disk usage bars, categories, largest files,
-      trash size, empty trash
-  [ ] Startup / Login Items — list / enable / disable / add / remove
-      from ~/.config/autostart
-  [ ] Core Matrix (file-type associations — renamed from
-      "Default Apps") — xdg-mime, xdg-settings
-  [ ] Power (fold into Arc Reactor if possible)
-  [ ] Software Update — apt list --upgradable, apt update/upgrade,
-      update history, auto-update toggle
-  [ ] Time Machine / Backup — 2 sessions, needs own design
+  [x] OmniStorage (renamed from Storage) — disk usage, categories,
+      trash size + empty
+  [x] Core Matrix — 8 file types mapped via xdg-mime, Reset to
+      defaults, description card
+  [x] Software Update — OS version, last checked, available updates,
+      Install All, auto-update toggle (writes
+      /etc/apt/apt.conf.d/20auto-upgrades via pkexec), apt history
+  [x] Time Machine — backup destination, schedule (systemd user
+      timer: manual / hourly / daily / weekly), Back Up Now
+      (rsync --info=progress2 to timestamped snapshot), history list
+      Excludes: .cache, .local/share/Trash, snap, Backups
+
+Note: Startup Items is under General (Session A3), not here.
+Power is under Arc Reactor (Session A1).
 
 ------------------------------------------------------------------------
 PENDING — Session C (Tier 3)
