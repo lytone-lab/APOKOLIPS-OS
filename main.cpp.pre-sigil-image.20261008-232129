@@ -2822,16 +2822,6 @@ private:
                 args = { "--files" };
             else if (appName == "Glyph")
                 args = { "--glyph" };
-            else if (appName == "Photos") {
-                // Open the image viewer with no file — user picks one
-                // For now launch with a default sample if one exists.
-                QString home = QDir::homePath();
-                QString sample = home + "/Pictures/test-gradient.png";
-                if (QFile::exists(sample))
-                    args = { "--image", sample };
-                else
-                    args = { "--files", home + "/Pictures" };
-            }
             else if (appName == "Terminal") {
                 QProcess::startDetached("foot");
                 hideLauncher();
@@ -2994,7 +2984,7 @@ protected:
         if (m_name == "Finder")         matchId = "apokolips-shell";
         else if (m_name == "Settings")  matchId = "apokolips-shell";
         else if (m_name == "Music")     matchId = "org.gnome.Totem";
-        else if (m_name == "Photos")    matchId = "apokolips-image";
+        else if (m_name == "Photos")    matchId = "eog";
         else if (m_name == "Notes")     matchId = "org.gnome.TextEditor";
         else if (m_name == "Mail")      matchId = "thunderbird";
         else if (m_name == "Files")     matchId = "org.gnome.Nautilus";
@@ -3029,16 +3019,6 @@ protected:
         } else if (m_name == "Settings") {
             program = QCoreApplication::applicationFilePath();
             args = { "--settings" };
-        } else if (m_name == "Photos") {
-            // Launch our own image viewer on a default file
-            QString sample = QDir::homePath()
-                + "/Pictures/test-gradient.png";
-            if (QFile::exists(sample)) {
-                QProcess::startDetached(
-                    QCoreApplication::applicationFilePath(),
-                    { "--image", sample });
-                return;
-            }
         } else if (m_name == "Photos") {
             program = "eog";
         } else if (m_name == "Music") {
@@ -8897,7 +8877,7 @@ private:
             };
             const Entry entries[] = {
                 { "Text files",     "text/plain"       },
-                { "Images (Sigil)", "image/png"        },
+                { "Images",         "image/png"        },
                 { "Video",          "video/mp4"        },
                 { "Audio",          "audio/mpeg"       },
                 { "PDF documents",  "application/pdf"  },
@@ -18072,17 +18052,6 @@ int main(int argc, char *argv[])
             sock.disconnectFromServer();
         }
         return 0;
-    }
-
-    if (argc >= 3 && QString(argv[1]) == "--image") {
-        QApplication app(argc, argv);
-        app.setApplicationName("Sigil Image");
-        app.setDesktopFileName("apokolips-image");
-        ThemeManager::instance().setTheme(
-            WallpaperConfig::themeForId(WallpaperConfig::loadId()));
-        SigilImageWindow w(QString::fromUtf8(argv[2]));
-        w.show();
-        return app.exec();
     }
 
     if (argc >= 3 && QString(argv[1]) == "--image") {
