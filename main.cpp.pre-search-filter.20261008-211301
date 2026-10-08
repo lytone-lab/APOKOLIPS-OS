@@ -6013,7 +6013,6 @@ public:
 
     void setSelected(bool s) { m_selected = s; update(); }
     bool isSelected() const  { return m_selected; }
-    QString label() const    { return m_label; }
 
     std::function<void()> onActivate;
 
@@ -6972,18 +6971,6 @@ private:
         search->setPlaceholderText("Search");
         sb->addWidget(search);
         sb->addSpacing(10);
-
-        // Filter sidebar rows live as the user types
-        QObject::connect(search, &QLineEdit::textChanged,
-                         [this](const QString &q) {
-            QString query = q.trimmed().toLower();
-            for (Sigil::SidebarRow *row : m_sidebarRows) {
-                if (!row) continue;
-                bool show = query.isEmpty()
-                    || row->label().toLower().contains(query);
-                row->setVisible(show);
-            }
-        });
 
         m_stack = new QStackedWidget;
 

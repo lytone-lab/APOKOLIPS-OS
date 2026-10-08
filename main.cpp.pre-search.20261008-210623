@@ -411,11 +411,6 @@ struct VisualConfig {
     int    notifTimeoutSec    = 6;
     bool   locationEnabled    = false;
     bool   telemetryEnabled   = false;
-    bool   spotCalcEnabled    = true;
-    bool   spotAppsEnabled    = true;
-    bool   spotFilesEnabled   = true;
-    bool   spotWebEnabled     = false;   // reserved for V2
-    int    spotMaxResults     = 8;
     QString lockWallpaper      = "";   // empty = solid color
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -589,20 +584,6 @@ public:
         m_cfg.telemetryEnabled    = o.contains("telemetryEnabled")
                                    ? o["telemetryEnabled"].toBool(false)
                                    : m_cfg.telemetryEnabled;
-        m_cfg.spotCalcEnabled     = o.contains("spotCalcEnabled")
-                                   ? o["spotCalcEnabled"].toBool(true)
-                                   : m_cfg.spotCalcEnabled;
-        m_cfg.spotAppsEnabled     = o.contains("spotAppsEnabled")
-                                   ? o["spotAppsEnabled"].toBool(true)
-                                   : m_cfg.spotAppsEnabled;
-        m_cfg.spotFilesEnabled    = o.contains("spotFilesEnabled")
-                                   ? o["spotFilesEnabled"].toBool(true)
-                                   : m_cfg.spotFilesEnabled;
-        m_cfg.spotWebEnabled      = o.contains("spotWebEnabled")
-                                   ? o["spotWebEnabled"].toBool(false)
-                                   : m_cfg.spotWebEnabled;
-        m_cfg.spotMaxResults      = getI("spotMaxResults",
-                                         m_cfg.spotMaxResults);
         m_cfg.lockWallpaper       = o.contains("lockWallpaper")
                                    ? o["lockWallpaper"].toString()
                                    : m_cfg.lockWallpaper;
@@ -664,8 +645,6 @@ public:
         if (m_cfg.cursorSize > 96) m_cfg.cursorSize = 96;
         if (m_cfg.notifTimeoutSec < 1)  m_cfg.notifTimeoutSec = 1;
         if (m_cfg.notifTimeoutSec > 60) m_cfg.notifTimeoutSec = 60;
-        if (m_cfg.spotMaxResults < 3)  m_cfg.spotMaxResults = 3;
-        if (m_cfg.spotMaxResults > 20) m_cfg.spotMaxResults = 20;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
         if (m_cfg.dockPosition < 0)  m_cfg.dockPosition = 0;
         if (m_cfg.dockPosition > 2)  m_cfg.dockPosition = 2;
@@ -738,11 +717,6 @@ public:
         o["notifTimeoutSec"]     = m_cfg.notifTimeoutSec;
         o["locationEnabled"]     = m_cfg.locationEnabled;
         o["telemetryEnabled"]    = m_cfg.telemetryEnabled;
-        o["spotCalcEnabled"]     = m_cfg.spotCalcEnabled;
-        o["spotAppsEnabled"]     = m_cfg.spotAppsEnabled;
-        o["spotFilesEnabled"]    = m_cfg.spotFilesEnabled;
-        o["spotWebEnabled"]      = m_cfg.spotWebEnabled;
-        o["spotMaxResults"]      = m_cfg.spotMaxResults;
         o["lockWallpaper"]       = m_cfg.lockWallpaper;
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
@@ -6013,7 +5987,6 @@ public:
 
     void setSelected(bool s) { m_selected = s; update(); }
     bool isSelected() const  { return m_selected; }
-    QString label() const    { return m_label; }
 
     std::function<void()> onActivate;
 
@@ -6973,18 +6946,6 @@ private:
         sb->addWidget(search);
         sb->addSpacing(10);
 
-        // Filter sidebar rows live as the user types
-        QObject::connect(search, &QLineEdit::textChanged,
-                         [this](const QString &q) {
-            QString query = q.trimmed().toLower();
-            for (Sigil::SidebarRow *row : m_sidebarRows) {
-                if (!row) continue;
-                bool show = query.isEmpty()
-                    || row->label().toLower().contains(query);
-                row->setVisible(show);
-            }
-        });
-
         m_stack = new QStackedWidget;
 
         addSection(sb, "Appearance", QString::fromUtf8("\xE2\x9C\xA8"),
@@ -7010,9 +6971,6 @@ private:
         addSection(sb, "Privacy & Security",
                    QString::fromUtf8("\xF0\x9F\x9B\xA1"),
                    QColor(168, 50, 50), makePrivacyPage());
-        addSection(sb, "Search",
-                   QString::fromUtf8("\xF0\x9F\x94\x8D"),
-                   QColor(80, 120, 200), makeSearchPage());
         addSection(sb, "Wallpaper",  QString::fromUtf8("\xE2\x96\xA3"),
                    QColor(90, 122, 158), makeWallpaperPage());
         addSection(sb, "Dock",       QString::fromUtf8("\xE2\x96\xAA"),
@@ -9637,164 +9595,6 @@ private:
                 "color: %1; font-size: 11px; background: transparent;")
                 .arg(Sigil::textDim().name()));
             cv->addWidget(hint);
-
-            v->addWidget(c);
-        }
-
-        v->addStretch();
-        return page;
-    }
-
-    QWidget *makeSearchPage() {
-        QWidget *page = new QWidget;
-        page->setAutoFillBackground(false);
-        QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
-
-        v->addWidget(Sigil::sectionTitle("Search"));
-
-        auto &vc = VisualConfigManager::instance().cfg();
-
-        // ---- Sources card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("SEARCH SOURCES"));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Calculator",
-                "Type math like 8*4 or 120/3 to get an inline answer",
-                vc.spotCalcEnabled,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.spotCalcEnabled = on; });
-                }));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Applications",
-                "Find and launch installed apps by name",
-                vc.spotAppsEnabled,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.spotAppsEnabled = on; });
-                }));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Files & folders",
-                "Match paths and home-directory items",
-                vc.spotFilesEnabled,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.spotFilesEnabled = on; });
-                }));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Web search",
-                "Send queries to the default browser (coming in V2)",
-                vc.spotWebEnabled,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.spotWebEnabled = on; });
-                }));
-
-            v->addWidget(c);
-        }
-
-        // ---- Result count card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("RESULTS"));
-
-            QWidget *row = new QWidget;
-            QVBoxLayout *rv = new QVBoxLayout(row);
-            rv->setContentsMargins(0, 0, 0, 0);
-            rv->setSpacing(6);
-
-            QHBoxLayout *top = new QHBoxLayout;
-            QLabel *t = new QLabel("Maximum results shown");
-            t->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *val = new QLabel(QString::number(vc.spotMaxResults));
-            val->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(Sigil::textSecondary().name()));
-            val->setMinimumWidth(40);
-            val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            top->addWidget(t);
-            top->addStretch();
-            top->addWidget(val);
-            rv->addLayout(top);
-
-            QSlider *sl = new QSlider(Qt::Horizontal);
-            sl->setRange(3, 20);
-            sl->setValue(vc.spotMaxResults);
-            sl->setStyleSheet(
-                "QSlider::groove:horizontal { height: 4px;"
-                "  background: rgba(255,255,255,25);"
-                "  border-radius: 2px; }"
-                "QSlider::handle:horizontal {"
-                "  background: #ffffff; width: 14px; height: 14px;"
-                "  margin: -5px 0; border-radius: 7px; }"
-                "QSlider::sub-page:horizontal {"
-                "  background: rgb(168,50,50);"
-                "  border-radius: 2px; }");
-            m_sliders.append(sl);
-            QObject::connect(sl, &QSlider::valueChanged,
-                             [val](int x) {
-                val->setText(QString::number(x));
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.spotMaxResults = x; });
-            });
-            rv->addWidget(sl);
-            cv->addWidget(row);
-
-            v->addWidget(c);
-        }
-
-        // ---- Shortcut card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("SHORTCUT"));
-
-            QWidget *row = new QWidget;
-            QHBoxLayout *h = new QHBoxLayout(row);
-            h->setContentsMargins(0, 6, 0, 6);
-            h->setSpacing(14);
-
-            QVBoxLayout *left = new QVBoxLayout;
-            left->setContentsMargins(0, 0, 0, 0);
-            left->setSpacing(2);
-            QLabel *t = new QLabel("Open Spotlight");
-            t->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *s = new QLabel(
-                "Bound in ~/.config/sway/config (Super+Space)");
-            s->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            left->addWidget(t);
-            left->addWidget(s);
-            h->addLayout(left, 1);
-
-            QLabel *keycap = new QLabel("Super + Space");
-            keycap->setStyleSheet(QString(
-                "color: %1; font-size: 12px;"
-                " background: rgba(255,255,255,20);"
-                " border-radius: 6px; padding: 6px 14px;")
-                .arg(Sigil::textPrimary().name()));
-            h->addWidget(keycap);
-            cv->addWidget(row);
 
             v->addWidget(c);
         }
@@ -13583,10 +13383,7 @@ private:
         m_scanTimer->stop();
         QString q = m_search->text().trimmed();
 
-        auto &spotCfg = VisualConfigManager::instance().cfg();
-
         // ---- Calculator: if query looks mathy ----
-        if (spotCfg.spotCalcEnabled)
         if (!q.isEmpty() && q.at(0).isDigit()) {
             QString val = tryCalculate(q);
             if (!val.isEmpty()) {
@@ -13626,9 +13423,7 @@ private:
             if (shown > 30) break;
             QDir appDir(dirPath);
             if (!appDir.exists()) continue;
-            QStringList files;
-            if (spotCfg.spotAppsEnabled)
-                files = appDir.entryList({"*.desktop"}, QDir::Files);
+            QStringList files = appDir.entryList({"*.desktop"}, QDir::Files);
             for (const QString &file : files) {
                 if (shown > 30) break;
                 QFile f(appDir.filePath(file));

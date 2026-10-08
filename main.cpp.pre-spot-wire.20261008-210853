@@ -6013,7 +6013,6 @@ public:
 
     void setSelected(bool s) { m_selected = s; update(); }
     bool isSelected() const  { return m_selected; }
-    QString label() const    { return m_label; }
 
     std::function<void()> onActivate;
 
@@ -6972,18 +6971,6 @@ private:
         search->setPlaceholderText("Search");
         sb->addWidget(search);
         sb->addSpacing(10);
-
-        // Filter sidebar rows live as the user types
-        QObject::connect(search, &QLineEdit::textChanged,
-                         [this](const QString &q) {
-            QString query = q.trimmed().toLower();
-            for (Sigil::SidebarRow *row : m_sidebarRows) {
-                if (!row) continue;
-                bool show = query.isEmpty()
-                    || row->label().toLower().contains(query);
-                row->setVisible(show);
-            }
-        });
 
         m_stack = new QStackedWidget;
 
@@ -13583,10 +13570,7 @@ private:
         m_scanTimer->stop();
         QString q = m_search->text().trimmed();
 
-        auto &spotCfg = VisualConfigManager::instance().cfg();
-
         // ---- Calculator: if query looks mathy ----
-        if (spotCfg.spotCalcEnabled)
         if (!q.isEmpty() && q.at(0).isDigit()) {
             QString val = tryCalculate(q);
             if (!val.isEmpty()) {
@@ -13626,9 +13610,7 @@ private:
             if (shown > 30) break;
             QDir appDir(dirPath);
             if (!appDir.exists()) continue;
-            QStringList files;
-            if (spotCfg.spotAppsEnabled)
-                files = appDir.entryList({"*.desktop"}, QDir::Files);
+            QStringList files = appDir.entryList({"*.desktop"}, QDir::Files);
             for (const QString &file : files) {
                 if (shown > 30) break;
                 QFile f(appDir.filePath(file));
