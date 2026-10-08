@@ -1,6 +1,4 @@
 #include <QApplication>
-#include <QSplitter>
-#include <QRandomGenerator>
 #include <QMediaPlayer>
 #include <QAudioOutput>
 #include <QVideoWidget>
@@ -436,9 +434,6 @@ struct VisualConfig {
     QString shellFontFamily    = "";      // empty = Qt default
     QString shellMonoFontFamily= "";
     int     shellBaseFontPt    = 10;
-    QString boomtubeFolder     = "";
-    bool    boomtubeShuffle    = false;
-    QString boomtubeLoop       = "off";   // off | all | one
     QString lockWallpaper      = "";   // empty = solid color
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -662,15 +657,6 @@ public:
                                    : m_cfg.shellMonoFontFamily;
         m_cfg.shellBaseFontPt     = getI("shellBaseFontPt",
                                          m_cfg.shellBaseFontPt);
-        m_cfg.boomtubeFolder      = o.contains("boomtubeFolder")
-                                   ? o["boomtubeFolder"].toString()
-                                   : m_cfg.boomtubeFolder;
-        m_cfg.boomtubeShuffle     = o.contains("boomtubeShuffle")
-                                   ? o["boomtubeShuffle"].toBool(false)
-                                   : m_cfg.boomtubeShuffle;
-        m_cfg.boomtubeLoop        = o.contains("boomtubeLoop")
-                                   ? o["boomtubeLoop"].toString()
-                                   : m_cfg.boomtubeLoop;
         m_cfg.shellFontFamily     = o.contains("shellFontFamily")
                                    ? o["shellFontFamily"].toString()
                                    : m_cfg.shellFontFamily;
@@ -844,9 +830,6 @@ public:
         o["shellFontFamily"]     = m_cfg.shellFontFamily;
         o["shellMonoFontFamily"] = m_cfg.shellMonoFontFamily;
         o["shellBaseFontPt"]     = m_cfg.shellBaseFontPt;
-        o["boomtubeFolder"]      = m_cfg.boomtubeFolder;
-        o["boomtubeShuffle"]     = m_cfg.boomtubeShuffle;
-        o["boomtubeLoop"]        = m_cfg.boomtubeLoop;
         o["shellFontFamily"]     = m_cfg.shellFontFamily;
         o["shellMonoFontFamily"] = m_cfg.shellMonoFontFamily;
         o["shellBaseFontPt"]     = m_cfg.shellBaseFontPt;
@@ -7541,59 +7524,7 @@ public:
         m_video = new QVideoWidget;
         m_video->setStyleSheet("background: rgb(20, 20, 22);");
         m_player->setVideoOutput(m_video);
-
-        // Splitter: video left, playlist right
-        QSplitter *split = new QSplitter(Qt::Horizontal);
-        split->setStyleSheet(
-            "QSplitter { background: rgb(20, 20, 22); }"
-            "QSplitter::handle { background: rgba(255,255,255,15);"
-            "  width: 1px; }");
-        split->addWidget(m_video);
-
-        QWidget *playlistPane = new QWidget;
-        playlistPane->setMinimumWidth(220);
-        playlistPane->setMaximumWidth(400);
-        QVBoxLayout *plv = new QVBoxLayout(playlistPane);
-        plv->setContentsMargins(8, 8, 8, 8);
-        plv->setSpacing(6);
-
-        QHBoxLayout *plHeader = new QHBoxLayout;
-        QLabel *plTitle = new QLabel("PLAYLIST");
-        plTitle->setStyleSheet(
-            "color: rgb(122, 120, 115);"
-            "font-size: 10px; font-weight: 600;"
-            "letter-spacing: 1.5px;"
-            "background: transparent;");
-        plHeader->addWidget(plTitle);
-        plHeader->addStretch();
-        m_folderBtn = new QPushButton("Folder…");
-        m_folderBtn->setCursor(Qt::PointingHandCursor);
-        m_folderBtn->setFixedHeight(22);
-        m_folderBtn->setStyleSheet(
-            "QPushButton { background: rgba(255,255,255,20);"
-            "  color: rgb(240, 237, 232); border: none;"
-            "  border-radius: 5px; font-size: 10px;"
-            "  padding: 2px 10px; }"
-            "QPushButton:hover { background: rgba(255,255,255,45); }");
-        plHeader->addWidget(m_folderBtn);
-        plv->addLayout(plHeader);
-
-        m_playlistWidget = new QListWidget;
-        m_playlistWidget->setFrameShape(QFrame::NoFrame);
-        m_playlistWidget->setStyleSheet(
-            "QListWidget { background: transparent; color: rgb(240,237,232);"
-            "  font-size: 12px; border: none; }"
-            "QListWidget::item { padding: 6px 8px; border-radius: 5px; }"
-            "QListWidget::item:hover { background: rgba(255,255,255,20); }"
-            "QListWidget::item:selected { background: rgba(168,50,50,140);"
-            "  color: #ffffff; }");
-        plv->addWidget(m_playlistWidget, 1);
-
-        split->addWidget(playlistPane);
-        split->setStretchFactor(0, 3);
-        split->setStretchFactor(1, 1);
-
-        root->addWidget(split, 1);
+        root->addWidget(m_video, 1);
 
         // ---- Transport bar ----
         QWidget *transport = new QWidget;
@@ -7683,33 +7614,6 @@ public:
             "  background: rgb(168,50,50);"
             "  border-radius: 2px; }");
         controls->addWidget(m_volume);
-        controls->addSpacing(14);
-
-        // Shuffle
-        m_shuffleBtn = new QPushButton(QString::fromUtf8("\xF0\x9F\x94\x80"));
-        m_shuffleBtn->setFixedSize(28, 28);
-        m_shuffleBtn->setCursor(Qt::PointingHandCursor);
-        m_shuffleBtn->setCheckable(true);
-        m_shuffleBtn->setStyleSheet(
-            "QPushButton { background: transparent;"
-            "  color: rgb(176, 173, 168); border: none;"
-            "  border-radius: 6px; font-size: 13px; }"
-            "QPushButton:hover { background: rgba(255,255,255,20); }"
-            "QPushButton:checked { background: rgba(168,50,50,180);"
-            "  color: #ffffff; }");
-        controls->addWidget(m_shuffleBtn);
-
-        // Loop
-        m_loopBtn = new QPushButton(QString::fromUtf8("\xF0\x9F\x94\x81"));
-        m_loopBtn->setFixedSize(28, 28);
-        m_loopBtn->setCursor(Qt::PointingHandCursor);
-        m_loopBtn->setStyleSheet(
-            "QPushButton { background: transparent;"
-            "  color: rgb(176, 173, 168); border: none;"
-            "  border-radius: 6px; font-size: 13px; }"
-            "QPushButton:hover { background: rgba(255,255,255,20); }");
-        controls->addWidget(m_loopBtn);
-
         controls->addStretch();
 
         m_filename = new QLabel("No file loaded");
@@ -7755,67 +7659,10 @@ public:
         });
         QObject::connect(m_player, &QMediaPlayer::mediaStatusChanged,
                          this, [this](QMediaPlayer::MediaStatus st) {
-            if (st != QMediaPlayer::EndOfMedia) return;
-            auto &c = VisualConfigManager::instance().cfg();
-            if (c.boomtubeLoop == "one") {
-                m_player->setPosition(0);
-                m_player->play();
-                return;
-            }
-            if (c.boomtubeLoop == "off"
-                && m_index == m_playlist.size() - 1) return;
-            goNext();
+            if (st == QMediaPlayer::EndOfMedia) goNext();
         });
-
-        QObject::connect(m_shuffleBtn, &QPushButton::toggled,
-                         [this](bool on) {
-            VisualConfigManager::instance().setAndSave(
-                [on](VisualConfig &c) { c.boomtubeShuffle = on; });
-        });
-        QObject::connect(m_loopBtn, &QPushButton::clicked, [this]() {
-            auto &c = VisualConfigManager::instance().cfg();
-            QString next = (c.boomtubeLoop == "off")   ? "all"
-                         : (c.boomtubeLoop == "all")   ? "one"
-                                                        : "off";
-            VisualConfigManager::instance().setAndSave(
-                [next](VisualConfig &v) { v.boomtubeLoop = next; });
-            refreshLoopButton();
-        });
-        QObject::connect(m_folderBtn, &QPushButton::clicked, [this]() {
-            bool ok = false;
-            QString def = VisualConfigManager::instance().cfg()
-                            .boomtubeFolder;
-            if (def.isEmpty()) def = QDir::homePath() + "/Music";
-            QString path = ApokolipsInputDialog::getText(
-                this, "Music folder",
-                "Folder containing audio/video files:",
-                def, &ok);
-            if (!ok || path.isEmpty()) return;
-            if (!QDir(path).exists()) return;
-            VisualConfigManager::instance().setAndSave(
-                [path](VisualConfig &c) { c.boomtubeFolder = path; });
-            openFolder(path);
-        });
-
-        QObject::connect(m_playlistWidget, &QListWidget::itemClicked,
-                         [this](QListWidgetItem *it) {
-            int idx = it->data(Qt::UserRole).toInt();
-            if (idx >= 0 && idx < m_playlist.size())
-                playIndex(idx);
-        });
-
-        // Initial state
-        m_shuffleBtn->setChecked(
-            VisualConfigManager::instance().cfg().boomtubeShuffle);
-        refreshLoopButton();
 
         if (!initialPath.isEmpty()) open(initialPath);
-        else {
-            QString folder = VisualConfigManager::instance()
-                                .cfg().boomtubeFolder;
-            if (!folder.isEmpty() && QDir(folder).exists())
-                openFolder(folder);
-        }
     }
 
 protected:
@@ -7875,19 +7722,7 @@ private:
     void open(const QString &path) {
         QFileInfo fi(path);
         QDir d = fi.absoluteDir();
-        scanFolder(d.absolutePath());
-        int idx = m_playlist.indexOf(fi.absoluteFilePath());
-        if (idx < 0) idx = 0;
-        playIndex(idx);
-    }
 
-    void openFolder(const QString &path) {
-        scanFolder(path);
-        if (!m_playlist.isEmpty()) playIndex(0);
-    }
-
-    void scanFolder(const QString &folder) {
-        QDir d(folder);
         QStringList filters = { "*.mp3", "*.flac", "*.ogg", "*.wav",
                                 "*.m4a", "*.aac",
                                 "*.mp4", "*.mkv", "*.webm",
@@ -7896,39 +7731,10 @@ private:
         for (const QString &f :
              d.entryList(filters, QDir::Files, QDir::Name))
             m_playlist << d.filePath(f);
-        refreshPlaylist();
-    }
 
-    void refreshPlaylist() {
-        if (!m_playlistWidget) return;
-        m_playlistWidget->clear();
-        for (int i = 0; i < m_playlist.size(); ++i) {
-            QListWidgetItem *it = new QListWidgetItem(
-                QFileInfo(m_playlist[i]).fileName());
-            it->setData(Qt::UserRole, i);
-            m_playlistWidget->addItem(it);
-        }
-    }
-
-    void refreshLoopButton() {
-        auto &c = VisualConfigManager::instance().cfg();
-        QString suffix;
-        QColor color;
-        if (c.boomtubeLoop == "all") {
-            suffix = " · all";  color = QColor(168, 50, 50);
-        } else if (c.boomtubeLoop == "one") {
-            suffix = " · 1";    color = QColor(168, 50, 50);
-        } else {
-            suffix = "";        color = QColor(176, 173, 168);
-        }
-        m_loopBtn->setText(
-            QString::fromUtf8("\xF0\x9F\x94\x81") + suffix);
-        m_loopBtn->setStyleSheet(QString(
-            "QPushButton { background: transparent;"
-            "  color: %1; border: none;"
-            "  border-radius: 6px; font-size: 13px; padding: 0 6px; }"
-            "QPushButton:hover { background: rgba(255,255,255,20); }")
-            .arg(color.name()));
+        int idx = m_playlist.indexOf(fi.absoluteFilePath());
+        if (idx < 0) idx = 0;
+        playIndex(idx);
     }
 
     void playIndex(int idx) {
@@ -7937,38 +7743,17 @@ private:
         QString path = m_playlist[idx];
         m_player->setSource(QUrl::fromLocalFile(path));
         m_filename->setText(QFileInfo(path).fileName());
-        if (m_playlistWidget && idx < m_playlistWidget->count())
-            m_playlistWidget->setCurrentRow(idx);
         m_player->play();
     }
 
     void goPrev() {
         if (m_playlist.isEmpty()) return;
-        auto &c = VisualConfigManager::instance().cfg();
-        if (c.boomtubeShuffle) {
-            int r = QRandomGenerator::global()
-                        ->bounded(m_playlist.size());
-            playIndex(r);
-            return;
-        }
         playIndex((m_index - 1 + m_playlist.size())
                   % m_playlist.size());
     }
     void goNext() {
         if (m_playlist.isEmpty()) return;
-        auto &c = VisualConfigManager::instance().cfg();
-        if (c.boomtubeShuffle) {
-            int r = QRandomGenerator::global()
-                        ->bounded(m_playlist.size());
-            playIndex(r);
-            return;
-        }
-        int next = m_index + 1;
-        if (next >= m_playlist.size()) {
-            if (c.boomtubeLoop == "all") next = 0;
-            else return;
-        }
-        playIndex(next);
+        playIndex((m_index + 1) % m_playlist.size());
     }
     void togglePlay() {
         if (m_player->playbackState() == QMediaPlayer::PlayingState)
@@ -7983,13 +7768,9 @@ private:
     QSlider        *m_seek     = nullptr;
     QSlider        *m_volume   = nullptr;
     QPushButton    *m_playBtn  = nullptr;
-    QPushButton    *m_shuffleBtn = nullptr;
-    QPushButton    *m_loopBtn    = nullptr;
-    QPushButton    *m_folderBtn  = nullptr;
     QLabel         *m_timeNow  = nullptr;
     QLabel         *m_timeEnd  = nullptr;
     QLabel         *m_filename = nullptr;
-    QListWidget    *m_playlistWidget = nullptr;
     QStringList     m_playlist;
     int             m_index = 0;
 };
