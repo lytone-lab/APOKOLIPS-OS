@@ -1858,38 +1858,14 @@ private:
         QColor a3 = a.darker(120);
         QColor a4 = a;
 
-        auto &cfg = VisualConfigManager::instance().cfg();
-
-        // If DND is on AND policy is mute, show nothing.
-        if (cfg.dndEnabled && cfg.focusPolicy == "mute") {
-            return;
-        }
-
-        // Helper — decides if a source app is allowed through.
-        auto allowed = [&](const QString &source) {
-            if (!cfg.dndEnabled) return true;
-            if (cfg.focusPolicy == "all") return true;
-            // priority: only apps listed in focusAllowedApps
-            for (const QString &app : cfg.focusAllowedApps) {
-                if (app.compare(source, Qt::CaseInsensitive) == 0)
-                    return true;
-            }
-            return false;
-        };
-
-        if (allowed("MUSIC"))
-            m_cards.append(makeNote("MUSIC", "Now Playing",
-                "Apokolips Anthem - track 1 of 12", "now", a1));
-        if (allowed("MAIL"))
-            m_cards.append(makeNote("MAIL", "3 new messages",
-                "From: build system, VS Code, GitHub", "2m", a2));
-        if (allowed("SYSTEM"))
-            m_cards.append(makeNote("SYSTEM", "Update available",
-                "Ubuntu 26.04 security patch ready to install", "12m",
-                a3));
-        if (allowed("APOKOLIPS"))
-            m_cards.append(makeNote("APOKOLIPS", "Shell loaded",
-                "All modules online. Welcome back.", "just now", a4));
+        m_cards.append(makeNote("MUSIC", "Now Playing",
+            "Apokolips Anthem - track 1 of 12", "now", a1));
+        m_cards.append(makeNote("MAIL", "3 new messages",
+            "From: build system, VS Code, GitHub", "2m", a2));
+        m_cards.append(makeNote("SYSTEM", "Update available",
+            "Ubuntu 26.04 security patch ready to install", "12m", a3));
+        m_cards.append(makeNote("APOKOLIPS", "Shell loaded",
+            "All modules online. Welcome back.", "just now", a4));
 
         if (m_cardsLayout) {
             for (QWidget *c : m_cards) {
@@ -8372,127 +8348,10 @@ private:
             QObject::connect(refresh, &QPushButton::clicked,
                              [this]() { refreshStartupItems(); });
             hdr->addWidget(refresh);
-
-            QPushButton *openDir = new QPushButton("Open Folder");
-            openDir->setCursor(Qt::PointingHandCursor);
-            openDir->setFixedHeight(26);
-            openDir->setStyleSheet(QString(
-                "QPushButton { background: rgba(255,255,255,20);"
-                "  color: %1; border: none; border-radius: 6px;"
-                "  font-size: 11px; padding: 2px 12px; }"
-                "QPushButton:hover { background: rgba(255,255,255,45); }")
-                .arg(Sigil::textPrimary().name()));
-            QObject::connect(openDir, &QPushButton::clicked, []() {
-                QString dir = QDir::homePath() + "/.config/autostart";
-                QDir().mkpath(dir);
-                QProcess::startDetached("xdg-open", { dir });
-            });
-            hdr->addWidget(openDir);
-
-            QPushButton *addItem = new QPushButton("Add Item…");
-            addItem->setCursor(Qt::PointingHandCursor);
-            addItem->setFixedHeight(26);
-            addItem->setStyleSheet(
-                "QPushButton { background: rgb(168, 50, 50);"
-                "  color: #ffffff; border: none; border-radius: 6px;"
-                "  font-size: 11px; padding: 2px 12px;"
-                "  font-weight: 600; }"
-                "QPushButton:hover { background: rgb(200, 74, 74); }");
-            QObject::connect(addItem, &QPushButton::clicked,
-                             [this]() {
-                bool ok = false;
-                QString path = ApokolipsInputDialog::getText(
-                    this, "Add Startup Item",
-                    "Path to a program to launch at login:",
-                    "/usr/bin/", &ok);
-                if (!ok || path.isEmpty()) return;
-                if (!QFile::exists(path)) return;
-
-                QFileInfo fi(path);
-                QString base = fi.fileName();
-                if (base.isEmpty()) return;
-
-                QString dir = QDir::homePath() + "/.config/autostart";
-                QDir().mkpath(dir);
-
-                QString desktopPath = dir + "/" + base + ".desktop";
-                QFile f(desktopPath);
-                if (!f.open(QIODevice::WriteOnly
-                            | QIODevice::Truncate)) {
-                    return;
-                }
-                QString content =
-                    "[Desktop Entry]\n"
-                    "Type=Application\n"
-                    "Name=" + base + "\n"
-                    "Exec=" + path + "\n"
-                    "Terminal=false\n"
-                    "X-GNOME-Autostart-enabled=true\n";
-                f.write(content.toUtf8());
-                f.close();
-                refreshStartupItems();
-            });
-            hdr->addWidget(addItem);
-
             cv->addLayout(hdr);
 
             m_startupList = new QListWidget;
             m_startupList->setFrameShape(QFrame::NoFrame);
-            m_startupList->setContextMenuPolicy(Qt::CustomContextMenu);
-            QObject::connect(m_startupList,
-                             &QListWidget::customContextMenuRequested,
-                             [this](const QPoint &pos) {
-                QListWidgetItem *it = m_startupList->itemAt(pos);
-                if (!it) return;
-                QString fileName = it->data(Qt::UserRole).toString();
-                if (fileName.isEmpty()) return;
-
-                QMenu m(this);
-                m.setStyleSheet(
-                    "QMenu {"
-                    "  background: rgb(24, 22, 30);"
-                    "  border: 1px solid rgba(255,255,255,30);"
-                    "  border-radius: 10px;"
-                    "  padding: 6px;"
-                    "  color: rgb(240, 237, 232);"
-                    "  font-size: 13px;"
-                    "}"
-                    "QMenu::item {"
-                    "  padding: 7px 24px 7px 16px;"
-                    "  border-radius: 6px;"
-                    "}"
-                    "QMenu::item:selected {"
-                    "  background: rgba(168, 50, 50, 90);"
-                    "}");
-
-                bool enabled = !fileName.endsWith(".disabled");
-                QAction *toggle = m.addAction(
-                    enabled ? "Disable at login" : "Enable at login");
-                m.addSeparator();
-                QAction *openDir = m.addAction("Open in Files");
-
-                QAction *chosen = m.exec(
-                    m_startupList->mapToGlobal(pos));
-                if (chosen == toggle) {
-                    QString dirPath = QDir::homePath()
-                        + "/.config/autostart";
-                    QFile f(dirPath + "/" + fileName);
-                    if (enabled) {
-                        QString newName = fileName + ".disabled";
-                        QFile::rename(f.fileName(),
-                                      dirPath + "/" + newName);
-                    } else {
-                        QString base = fileName;
-                        base.remove(QRegularExpression("\\.disabled$"));
-                        QFile::rename(f.fileName(),
-                                      dirPath + "/" + base);
-                    }
-                    refreshStartupItems();
-                } else if (chosen == openDir) {
-                    QProcess::startDetached("xdg-open",
-                        { QDir::homePath() + "/.config/autostart" });
-                }
-            });
             cv->addWidget(m_startupList, 1);
             refreshStartupItems();
 
@@ -8742,8 +8601,7 @@ private:
         }
 
         QStringList files = dir.entryList(
-            { "*.desktop", "*.desktop.disabled" },
-            QDir::Files, QDir::Name);
+            { "*.desktop" }, QDir::Files, QDir::Name);
         if (files.isEmpty()) {
             QListWidgetItem *it = new QListWidgetItem(
                 "No autostart entries — this is normal on a fresh install");
@@ -8760,8 +8618,7 @@ private:
             file.close();
 
             QString name = f;
-            name.remove(QRegularExpression("\\.disabled$"));
-            bool enabled = !f.endsWith(".disabled");
+            bool enabled = true;
             for (const QString &line : text.split('\n')) {
                 QString t = line.trimmed();
                 if (t.startsWith("Name="))
@@ -10565,12 +10422,6 @@ private:
                     QProcess::startDetached("gsettings",
                         { "set", "org.gnome.system.location",
                           "enabled", on ? "true" : "false" });
-                    // Also start/stop geoclue.service — the actual
-                    // location-lookup daemon
-                    QProcess::startDetached("pkexec",
-                        { "systemctl",
-                          on ? "start" : "stop",
-                          "geoclue.service" });
                 }));
 
             v->addWidget(c);
@@ -15415,8 +15266,7 @@ private:
         }
 
         // ---- Paths: if starts with / or ~ ----
-        if (spotCfg.spotFilesEnabled
-            && (q.startsWith("/") || q.startsWith("~"))) {
+        if (q.startsWith("/") || q.startsWith("~")) {
             QString expanded = q;
             if (expanded.startsWith("~"))
                 expanded.replace(0, 1, QDir::homePath());
@@ -15498,9 +15348,6 @@ private:
     }
 
     void addResult(const Result &r) {
-        auto &cfg = VisualConfigManager::instance().cfg();
-        if (m_results->count() >= cfg.spotMaxResults) return;
-
         QString display = QString("%1   %2")
             .arg(r.title, -30)
             .arg(r.subtitle);
@@ -18056,72 +17903,6 @@ static int runShell(int argc, char *argv[])
         }
     });
     configPoll->start();
-
-    // ---- Focus schedule: flip focusMode + dnd on window transitions ----
-    {
-        QTimer *focusTimer = new QTimer(&window);
-        focusTimer->setInterval(30000);   // check every 30s
-        bool *insideLast = new bool(false);
-        *insideLast = false;
-        QObject::connect(focusTimer, &QTimer::timeout,
-                         [insideLast]() {
-            auto &cfg = VisualConfigManager::instance().cfg();
-            if (!cfg.focusScheduleOn) {
-                *insideLast = false;
-                return;
-            }
-
-            int h = QDateTime::currentDateTime().time().hour();
-            int s = cfg.focusStartHour;
-            int e = cfg.focusEndHour;
-
-            // Inside window (handles overnight wrap when s > e)
-            bool inside;
-            if (s <= e)
-                inside = (h >= s && h < e);
-            else
-                inside = (h >= s || h < e);
-
-            if (inside == *insideLast) return;
-            *insideLast = inside;
-
-            if (inside) {
-                VisualConfigManager::instance().setAndSave(
-                    [](VisualConfig &c) {
-                        c.focusMode  = "work";
-                        c.dndEnabled = true;
-                    });
-            } else {
-                VisualConfigManager::instance().setAndSave(
-                    [](VisualConfig &c) {
-                        c.focusMode  = "off";
-                        c.dndEnabled = false;
-                    });
-            }
-        });
-        focusTimer->start();
-
-        // Immediately evaluate on startup
-        {
-            auto &cfg = VisualConfigManager::instance().cfg();
-            if (cfg.focusScheduleOn) {
-                int h = QDateTime::currentDateTime().time().hour();
-                int s = cfg.focusStartHour;
-                int e = cfg.focusEndHour;
-                bool inside = (s <= e)
-                    ? (h >= s && h < e)
-                    : (h >= s || h < e);
-                *insideLast = inside;
-                if (inside) {
-                    VisualConfigManager::instance().setAndSave(
-                        [](VisualConfig &c) {
-                            c.focusMode  = "work";
-                            c.dndEnabled = true;
-                        });
-                }
-            }
-        }
-    }
 
     // ---- Watch wallpaper.json (wallpaper switch from Settings) ----
     QString wpPath = WallpaperConfig::configPath();

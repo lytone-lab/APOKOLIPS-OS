@@ -321,24 +321,19 @@ they write to a system that needs another piece to actually fire.
 Each entry names the missing piece.
 
 Focus:
-  [ ] Focus schedule timer — no daemon flips focusMode at start/end
-      hour. Needs a systemd --user timer that reads cfg.focusStartHour
-      / cfg.focusEndHour / cfg.focusScheduleOn and sets focusMode +
-      dndEnabled.
-  [ ] Focus policy — "priority" / "mute" is stored but notification
-      center still shows everything. Needs NotificationCenter to read
-      cfg.focusPolicy when DND is active.
-  [ ] Focus allowed apps — the checkbox list is stored in
-      cfg.focusAllowedApps but nothing filters notifications against
-      it. Depends on NotificationCenter knowing each notification's
-      source app.
+  [x] Focus schedule timer — 30s QTimer in runShell flips focusMode
+      and dndEnabled on window transitions. Handles overnight wrap.
+  [x] Focus policy filter — NotificationCenter.buildCards reads
+      cfg.focusPolicy: mute hides all, priority filters against
+      cfg.focusAllowedApps.
+  [x] Focus allowed apps — honored in buildCards.
 
 Search / Spotlight:
-  [ ] Search "Files & folders" toggle — cfg.spotFilesEnabled stored
-      but Spotlight's path-search block doesn't read it yet.
+  [x] Search "Files & folders" toggle — path block gated on
+      cfg.spotFilesEnabled.
   [ ] Search "Web search" toggle — reserved for V2; no browser hookup.
-  [ ] Search max-results slider — cfg.spotMaxResults stored but
-      SpotlightOverlay doesn't cap the result list yet.
+  [x] Search max-results slider — SpotlightOverlay::addResult caps
+      at cfg.spotMaxResults.
 
 Accessibility (require GNOME daemons or specific components):
   [ ] Sticky / Slow / Bounce / Toggle keys — write to gsettings but
@@ -359,8 +354,8 @@ Accessibility (require GNOME daemons or specific components):
       unify: either map one to the other, or drop one.
 
 Privacy:
-  [ ] Location services toggle — writes gsettings but geoclue.service
-      is inactive; nothing reads location.
+  [x] Location services toggle — also pkexec start/stop on
+      geoclue.service.
   [ ] Telemetry toggle — the ON state runs ubuntu-report send once;
       it is not a background service, so there's nothing to keep "off".
       Not a bug, but the UI text could clarify this.
@@ -387,8 +382,9 @@ Glyph (screenshot):
       shortcuts, snap-to-window, delay timer, configurable save path.
 
 General:
-  [ ] Startup Items page reads .desktop files but has no enable /
-      disable / add / remove UI yet. Reads only.
+  [x] Startup Items — Add Item (writes .desktop to ~/.config/autostart),
+      right-click Enable/Disable (renames .desktop <-> .desktop.disabled),
+      Open Folder button. Reads/writes complete.
 
 ------------------------------------------------------------------------
 BUG LIST (open)

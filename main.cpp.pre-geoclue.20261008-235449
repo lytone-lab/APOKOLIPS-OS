@@ -10565,12 +10565,6 @@ private:
                     QProcess::startDetached("gsettings",
                         { "set", "org.gnome.system.location",
                           "enabled", on ? "true" : "false" });
-                    // Also start/stop geoclue.service — the actual
-                    // location-lookup daemon
-                    QProcess::startDetached("pkexec",
-                        { "systemctl",
-                          on ? "start" : "stop",
-                          "geoclue.service" });
                 }));
 
             v->addWidget(c);
