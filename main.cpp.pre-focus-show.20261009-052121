@@ -19268,71 +19268,9 @@ int main(int argc, char *argv[])
                                  [conn, wptr]() {
                     QByteArray data = conn->readAll();
                     if (data.contains("focus") && wptr) {
-                        qInfo() << "[settings-focus] received";
-
-                        // Force Qt to unmap + remap so it does not
-                        // early-out on show() because it still thinks
-                        // the surface is visible. Genie moved the
-                        // window into sway's scratchpad without Qt
-                        // knowing.
-                        wptr->hide();
-
-                        // 1) Re-show the surface through Qt
-                        wptr->show();
+                        wptr->showNormal();
                         wptr->raise();
                         wptr->activateWindow();
-
-                        // 2) Then tell sway to pull any matching
-                        //    scratchpad entry up + focus it.
-                        //    Run both synchronously so the surface
-                        //    is real before Qt draws.
-                        QProcess env;
-                        // criteria + command as ONE argument so swaymsg
-                        // parses it as a single command string.
-                        const QString cmd =
-                            "[app_id=\"apokolips-shell\"] "
-                            "scratchpad show";
-
-                        QProcess sc1;
-                        sc1.start("swaymsg", { cmd });
-                        sc1.waitForFinished(500);
-                        qInfo() << "[settings-focus] scratchpad show →"
-                                << sc1.exitCode()
-                                << sc1.readAllStandardOutput()
-                                << sc1.readAllStandardError();
-
-                        QProcess sc2;
-                        sc2.start("swaymsg", {
-                            "[app_id=\"apokolips-shell\"] focus" });
-                        sc2.waitForFinished(500);
-                        qInfo() << "[settings-focus] focus →"
-                                << sc2.exitCode()
-                                << sc2.readAllStandardOutput()
-                                << sc2.readAllStandardError();
-
-                        // Recenter in case the window drifted offscreen
-                        // after earlier moves / scratchpad round-trips.
-                        if (QScreen *s = QApplication::primaryScreen()) {
-                            QRect usable = s->availableGeometry();
-                            constexpr int dockExtent = 96;
-                            constexpr int bottomReserve = dockExtent + 14;
-                            constexpr int sideReserve = dockExtent + 22;
-                            int pos = VisualConfigManager::instance()
-                                          .cfg().dockPosition;
-                            if (pos == 0)
-                                usable.setHeight(usable.height() - bottomReserve);
-                            else if (pos == 1)
-                                usable.setLeft(usable.left() + sideReserve);
-                            else if (pos == 2)
-                                usable.setWidth(usable.width() - sideReserve);
-
-                            QSize target(qMin(1100, usable.width()),
-                                         qMin(700, usable.height()));
-                            wptr->resize(target);
-                            wptr->move(usable.center()
-                                       - QPoint(target.width() / 2,
-                                                target.height() / 2));
-                        }
                     }
                     conn->disconnectFromServer();
                 });

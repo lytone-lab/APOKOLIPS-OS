@@ -432,6 +432,29 @@ exceptions. This applies to AI #1, Manus, and any future AI.
   [ ] Persistence — user settings (folder, shuffle, etc.) survive
       restart via visual.json.
 
+  [ ] Genie + dock-click restore — if the app has been minimized via
+      genie (win+M) it lives in sway's scratchpad. A plain
+      `show()` / `raise()` from Qt will NOT recover it. The app's
+      dock-click / single-instance focus handler MUST do all of:
+
+        1. QProcess::startDetached("swaymsg",
+               { "[title=\"<Window Title>\"] scratchpad show" });
+        2. QProcess::startDetached("swaymsg",
+               { "[title=\"<Window Title>\"] focus" });
+        3. widget->show();
+        4. widget->raise();
+        5. widget->activateWindow();
+        6. Recenter via the dock-aware geometry helper
+
+      Apps that already have this: NONE (Settings in progress).
+      Apps that need it: Settings, Finder, Aperture, BoomTube,
+      Notes, Calculator, DemoWindow, any future shell app.
+
+  [ ] Single-instance launch — spawn once, then send a "focus"
+      message over QLocalSocket / QLocalServer on subsequent
+      launches. Socket lives at /tmp/apokolips-<app> (NOT
+      QLocalServer default path — we use explicit /tmp paths).
+
 If any of these is missing, the app is bug-listed, not shipped.
 
 ------------------------------------------------------------------------

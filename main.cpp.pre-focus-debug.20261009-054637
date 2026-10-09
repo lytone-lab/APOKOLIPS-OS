@@ -19268,47 +19268,20 @@ int main(int argc, char *argv[])
                                  [conn, wptr]() {
                     QByteArray data = conn->readAll();
                     if (data.contains("focus") && wptr) {
-                        qInfo() << "[settings-focus] received";
+                        // If the window was genie-minimized it lives
+                        // in sway's scratchpad — pull it back first.
+                        // scratchpad show also focuses and raises.
+                        QProcess::startDetached("swaymsg", {
+                            "[title=\"Apokolips Settings\"] "
+                            "scratchpad show" });
+                        QProcess::startDetached("swaymsg", {
+                            "[title=\"Apokolips Settings\"] focus" });
 
-                        // Force Qt to unmap + remap so it does not
-                        // early-out on show() because it still thinks
-                        // the surface is visible. Genie moved the
-                        // window into sway's scratchpad without Qt
-                        // knowing.
-                        wptr->hide();
-
-                        // 1) Re-show the surface through Qt
+                        // Then Qt-level un-hide, in case it was also
+                        // hidden by close()/minimize.
                         wptr->show();
                         wptr->raise();
                         wptr->activateWindow();
-
-                        // 2) Then tell sway to pull any matching
-                        //    scratchpad entry up + focus it.
-                        //    Run both synchronously so the surface
-                        //    is real before Qt draws.
-                        QProcess env;
-                        // criteria + command as ONE argument so swaymsg
-                        // parses it as a single command string.
-                        const QString cmd =
-                            "[app_id=\"apokolips-shell\"] "
-                            "scratchpad show";
-
-                        QProcess sc1;
-                        sc1.start("swaymsg", { cmd });
-                        sc1.waitForFinished(500);
-                        qInfo() << "[settings-focus] scratchpad show →"
-                                << sc1.exitCode()
-                                << sc1.readAllStandardOutput()
-                                << sc1.readAllStandardError();
-
-                        QProcess sc2;
-                        sc2.start("swaymsg", {
-                            "[app_id=\"apokolips-shell\"] focus" });
-                        sc2.waitForFinished(500);
-                        qInfo() << "[settings-focus] focus →"
-                                << sc2.exitCode()
-                                << sc2.readAllStandardOutput()
-                                << sc2.readAllStandardError();
 
                         // Recenter in case the window drifted offscreen
                         // after earlier moves / scratchpad round-trips.

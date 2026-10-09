@@ -8138,18 +8138,6 @@ public:
         setAutoFillBackground(false);
         buildUi();
 
-        // Build the first page immediately so we don't flash empty,
-        // then start background warming of the rest.
-        if (m_sidebarRows.size() > 0) {
-            ensurePageBuilt(0);
-            m_warmIndex = 1;
-        }
-        m_warmer = new QTimer(this);
-        m_warmer->setInterval(60);
-        QObject::connect(m_warmer, &QTimer::timeout,
-                         this, &SettingsWindow::warmNextPage);
-        QTimer::singleShot(400, this, [this]() { m_warmer->start(); });
-
         // Apply persisted text scale before choosing the final initial size.
         applyTextScale(VisualConfigManager::instance().cfg().shellTextScale);
 
@@ -8682,44 +8670,26 @@ private:
             row->setSelected(true);
         }
 
-        m_pageScrolls.append(scroll);
-        m_pageFactories.append(pageFactory);
-
-        row->onActivate = [this, idx]() {
-            ensurePageBuilt(idx);
+        row->onActivate = [this, idx, scroll, pageFactory]() {
+            // Lazy: build the page the first time this row is opened.
+            // Prevents 50+ QProcess spawns at Settings launch and
+            // avoids the heap corruption from eager page builds.
+            if (!m_lazyBuilt.contains(idx)) {
+                QWidget *page = pageFactory();
+                if (page) {
+                    page->setAutoFillBackground(false);
+                    page->setStyleSheet(
+                        "QWidget { background: transparent; }");
+                    scroll->takeWidget();     // drop placeholder
+                    scroll->setWidget(page);
+                }
+                m_lazyBuilt.insert(idx);
+            }
             for (Sigil::SidebarRow *r : m_sidebarRows)
                 r->setSelected(false);
             m_sidebarRows[idx]->setSelected(true);
             m_stack->setCurrentIndex(idx);
         };
-    }
-
-    // Build the page for a given section on demand, cache it, and swap
-    // it into the scroll area in place of the placeholder.
-    void ensurePageBuilt(int idx) {
-        if (idx < 0 || idx >= m_pageFactories.size()) return;
-        if (m_pageCache.contains(idx)) return;
-        QWidget *page = m_pageFactories[idx]();
-        if (!page) return;
-        page->setAutoFillBackground(false);
-        page->setStyleSheet("QWidget { background: transparent; }");
-        QScrollArea *scroll = m_pageScrolls[idx];
-        QWidget *old = scroll->takeWidget();
-        if (old) old->deleteLater();
-        scroll->setWidget(page);
-        m_pageCache.insert(idx, page);
-    }
-
-    // Background warmer — builds one page every 60 ms while the window
-    // is visible so idle time gets used and first click is instant.
-    void warmNextPage() {
-        if (!isVisible()) return;
-        if (m_warmIndex >= m_pageFactories.size()) {
-            if (m_warmer) m_warmer->stop();
-            return;
-        }
-        ensurePageBuilt(m_warmIndex);
-        ++m_warmIndex;
     }
 
     QWidget *makeAppearancePage() {
@@ -15599,11 +15569,7 @@ private:
     QPushButton *m_minBtn = nullptr;
     QPushButton *m_maxBtn = nullptr;
     QWidget *m_sidebar = nullptr;
-    QList<QScrollArea*> m_pageScrolls;
-    QList<std::function<QWidget*()>> m_pageFactories;
-    QHash<int, QWidget*> m_pageCache;
-    QTimer *m_warmer = nullptr;
-    int     m_warmIndex = 0;
+    QSet<int> m_lazyBuilt;
     QStackedWidget *m_stack = nullptr;
     QListWidget    *m_soundList    = nullptr;
     QListWidget    *m_btList       = nullptr;
@@ -19240,105 +19206,11 @@ int main(int argc, char *argv[])
     if (argc >= 2 && QString(argv[1]) == "--settings") {
         QApplication app(argc, argv);
         app.setApplicationName("Apokolips Settings");
-
-        // Single instance — if another Settings is already listening,
-        // just raise it and exit. Otherwise we become the server.
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-settings");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
+        // Prime the theme from the active wallpaper so the settings
+        // window inherits the same colours as the shell.
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         SettingsWindow w;
-
-        QLocalServer::removeServer("apokolips-settings");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-settings")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    QByteArray data = conn->readAll();
-                    if (data.contains("focus") && wptr) {
-                        qInfo() << "[settings-focus] received";
-
-                        // Force Qt to unmap + remap so it does not
-                        // early-out on show() because it still thinks
-                        // the surface is visible. Genie moved the
-                        // window into sway's scratchpad without Qt
-                        // knowing.
-                        wptr->hide();
-
-                        // 1) Re-show the surface through Qt
-                        wptr->show();
-                        wptr->raise();
-                        wptr->activateWindow();
-
-                        // 2) Then tell sway to pull any matching
-                        //    scratchpad entry up + focus it.
-                        //    Run both synchronously so the surface
-                        //    is real before Qt draws.
-                        QProcess env;
-                        // criteria + command as ONE argument so swaymsg
-                        // parses it as a single command string.
-                        const QString cmd =
-                            "[app_id=\"apokolips-shell\"] "
-                            "scratchpad show";
-
-                        QProcess sc1;
-                        sc1.start("swaymsg", { cmd });
-                        sc1.waitForFinished(500);
-                        qInfo() << "[settings-focus] scratchpad show →"
-                                << sc1.exitCode()
-                                << sc1.readAllStandardOutput()
-                                << sc1.readAllStandardError();
-
-                        QProcess sc2;
-                        sc2.start("swaymsg", {
-                            "[app_id=\"apokolips-shell\"] focus" });
-                        sc2.waitForFinished(500);
-                        qInfo() << "[settings-focus] focus →"
-                                << sc2.exitCode()
-                                << sc2.readAllStandardOutput()
-                                << sc2.readAllStandardError();
-
-                        // Recenter in case the window drifted offscreen
-                        // after earlier moves / scratchpad round-trips.
-                        if (QScreen *s = QApplication::primaryScreen()) {
-                            QRect usable = s->availableGeometry();
-                            constexpr int dockExtent = 96;
-                            constexpr int bottomReserve = dockExtent + 14;
-                            constexpr int sideReserve = dockExtent + 22;
-                            int pos = VisualConfigManager::instance()
-                                          .cfg().dockPosition;
-                            if (pos == 0)
-                                usable.setHeight(usable.height() - bottomReserve);
-                            else if (pos == 1)
-                                usable.setLeft(usable.left() + sideReserve);
-                            else if (pos == 2)
-                                usable.setWidth(usable.width() - sideReserve);
-
-                            QSize target(qMin(1100, usable.width()),
-                                         qMin(700, usable.height()));
-                            wptr->resize(target);
-                            wptr->move(usable.center()
-                                       - QPoint(target.width() / 2,
-                                                target.height() / 2));
-                        }
-                    }
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
