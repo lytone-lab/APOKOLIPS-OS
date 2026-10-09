@@ -355,6 +355,16 @@ Golden rule for AI features (future):
         - apokolips-terminal (after SigilTerm lands)
 
 
+  [ ] Desktop widgets v2 — REVERTED 2026-10-09. Attempt to make
+      independent floating Sonoma cards (WidgetCard + WidgetLayer)
+      caused a screen-wide "zoom" effect where everything (top bar,
+      dock, wallpaper) appeared enlarged. Sway scale = 1.0, Qt
+      devicePixelRatio = 1.0, no HiDPI env set. Root cause unknown.
+      Reverted to old stacked DesktopWidgets column.
+      Next attempt must: (1) reproduce in isolation, (2) verify with
+      a stripped-down shell before integrating, (3) confirm z-order
+      and geometry do not touch the top-bar/dock layout.
+
 ------------------------------------------------------------------------
 WIRING BACKLOG (saved but not yet acting)
 ------------------------------------------------------------------------
