@@ -466,17 +466,20 @@ BUG LIST (open)
      - Settings → Glyph page
   8. QString::arg missing argument warnings (harmless, in logs)
   9. Launcher Arc Reactor tile doesn't use reactor mark yet
- 10. Settings window — black fringe on rounded corners
+ 10. Shell windows — black fringe on rounded corners
      Wallpaper shows through at the outer antialiased edge as a dark
-     band. Tried:
-       - Source composition clear + direct fillPath  → no change
-       - setMask(QRegion(rounded path))              → no change
-     Remaining options:
-       - Drop WA_TranslucentBackground entirely; use an opaque backing
-       - Do the rounding at the compositor level (sway window rules)
-       - Accept it; corner artifacts are 1-2px and only visible
-         against bright wallpapers
-     Deferred — not blocking any feature.
+     band. Tried and FAILED:
+       - Source composition clear + direct fillPath
+       - setMask(QRegion(rounded path))
+       - AA saturation strokes (3 clipped stroke passes with opaque
+         section colors)
+     Root cause: client-side rounded corners + WA_TranslucentBackground
+     under sway. Antialiased edge pixels render over black instead of
+     wallpaper.
+     REAL FIX (V2): migrate shell windows to zwlr-layer-shell protocol
+     so the compositor handles the surface. Major rewrite. Deferred.
+
+     STATUS: accepted as a known V1 cosmetic limitation.
 
 ------------------------------------------------------------------------
 AI WORKING RULES (very important)
