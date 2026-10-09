@@ -19268,46 +19268,23 @@ int main(int argc, char *argv[])
                                  [conn, wptr]() {
                     QByteArray data = conn->readAll();
                     if (data.contains("focus") && wptr) {
-                        // If Qt already thinks the window is visible,
-                        // just raise it. No hide/show dance.
-                        const bool needsRemap = !wptr->isVisible();
+                        qInfo() << "[settings-focus] received";
 
-                        // If we are going to remap, recenter WHILE
-                        // HIDDEN so the user sees only one appearance
-                        // (no flicker from show → move).
-                        if (needsRemap) {
-                            if (QScreen *s = QApplication::primaryScreen()) {
-                                QRect usable = s->availableGeometry();
-                                constexpr int dockExtent = 96;
-                                constexpr int bottomReserve = dockExtent + 14;
-                                constexpr int sideReserve = dockExtent + 22;
-                                int pos = VisualConfigManager::instance()
-                                              .cfg().dockPosition;
-                                if (pos == 0)
-                                    usable.setHeight(usable.height()
-                                                     - bottomReserve);
-                                else if (pos == 1)
-                                    usable.setLeft(usable.left() + sideReserve);
-                                else if (pos == 2)
-                                    usable.setWidth(usable.width()
-                                                    - sideReserve);
+                        // Force Qt to unmap + remap so it does not
+                        // early-out on show() because it still thinks
+                        // the surface is visible. Genie moved the
+                        // window into sway's scratchpad without Qt
+                        // knowing.
+                        wptr->hide();
 
-                                QSize target(qMin(1100, usable.width()),
-                                             qMin(700, usable.height()));
-                                wptr->resize(target);
-                                wptr->move(usable.center()
-                                           - QPoint(target.width() / 2,
-                                                    target.height() / 2));
-                            }
-                        }
-
-                        // Bring it up. Single appearance.
+                        // 1) Re-show the surface through Qt
                         wptr->show();
                         wptr->raise();
                         wptr->activateWindow();
 
-                        // Ask sway to focus — injects SWAYSOCK so it
-                        // actually reaches the compositor.
+                        // 2) Tell sway to pull any matching scratchpad
+                        //    entry up + focus it. Must inject SWAYSOCK —
+                        //    the Settings process doesn't inherit it.
                         QString sock = discoverSwaySock();
                         if (sock.isEmpty())
                             sock = "/run/user/1000/sway-ipc.1000.1383.sock";
@@ -19316,11 +19293,44 @@ int main(int argc, char *argv[])
                             QProcessEnvironment::systemEnvironment();
                         env.insert("SWAYSOCK", sock);
 
-                        QProcess sp;
-                        sp.setProcessEnvironment(env);
-                        sp.start("swaymsg", {
-                            "[title=\"Apokolips Settings\"] focus" });
-                        sp.waitForFinished(500);
+                        auto runSway = [env](const QString &cmd) {
+                            QProcess sp;
+                            sp.setProcessEnvironment(env);
+                            sp.start("swaymsg", { cmd });
+                            sp.waitForFinished(800);
+                            qInfo() << "[settings-focus]" << cmd
+                                    << "→" << sp.exitCode()
+                                    << sp.readAllStandardOutput()
+                                    << sp.readAllStandardError();
+                        };
+
+                        runSway("[title=\"Apokolips Settings\"] "
+                                "scratchpad show");
+                        runSway("[title=\"Apokolips Settings\"] focus");
+
+                        // Recenter in case the window drifted offscreen
+                        // after earlier moves / scratchpad round-trips.
+                        if (QScreen *s = QApplication::primaryScreen()) {
+                            QRect usable = s->availableGeometry();
+                            constexpr int dockExtent = 96;
+                            constexpr int bottomReserve = dockExtent + 14;
+                            constexpr int sideReserve = dockExtent + 22;
+                            int pos = VisualConfigManager::instance()
+                                          .cfg().dockPosition;
+                            if (pos == 0)
+                                usable.setHeight(usable.height() - bottomReserve);
+                            else if (pos == 1)
+                                usable.setLeft(usable.left() + sideReserve);
+                            else if (pos == 2)
+                                usable.setWidth(usable.width() - sideReserve);
+
+                            QSize target(qMin(1100, usable.width()),
+                                         qMin(700, usable.height()));
+                            wptr->resize(target);
+                            wptr->move(usable.center()
+                                       - QPoint(target.width() / 2,
+                                                target.height() / 2));
+                        }
                     }
                     conn->disconnectFromServer();
                 });
