@@ -366,6 +366,14 @@ Golden rule for AI features (future):
       a stripped-down shell before integrating, (3) confirm z-order
       and geometry do not touch the top-bar/dock layout.
 
+  [ ] Configurable keyboard shortcuts — REVERTED 2026-10-09.
+      Tried moving all bindsyms to ~/.config/sway/apokolips-bindings
+      with an include. Include was ignored by sway (raw get_config
+      shows 0 bindsyms loaded). Bindings reverted to inline sway
+      config. Next attempt: figure out why include is being skipped
+      (absolute path tried, still failed). Do NOT retry without
+      understanding root cause.
+
 ------------------------------------------------------------------------
 WIRING BACKLOG (saved but not yet acting)
 ------------------------------------------------------------------------

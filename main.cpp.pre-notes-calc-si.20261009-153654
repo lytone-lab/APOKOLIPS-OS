@@ -3394,12 +3394,6 @@ private:
             else if (appName == "Node") {
                 args = { "--node" };
             }
-            else if (appName == "Notes") {
-                args = { "--notes" };
-            }
-            else if (appName == "Calculator") {
-                args = { "--calc" };
-            }
             else
                 args = { "--demo", appName, QString::number(offset) };
             QProcess::startDetached(
@@ -3621,7 +3615,7 @@ protected:
         else if (m_name == "Aperture")  matchId = "apokolips-aperture";
         else if (m_name == "Node")      matchId = "apokolips-node";
         else if (m_name == "myMach")    matchId = "apokolips-mymach";
-        else if (m_name == "Notes")     matchId = "apokolips-notes";
+        else if (m_name == "Notes")     matchId = "org.gnome.TextEditor";
         else if (m_name == "Mail")      matchId = "thunderbird";
         else if (m_name == "Files")     matchId = "org.gnome.Nautilus";
 
@@ -3674,8 +3668,7 @@ protected:
             program = QCoreApplication::applicationFilePath();
             args = { "--node" };
         } else if (m_name == "Notes") {
-            program = QCoreApplication::applicationFilePath();
-            args = { "--notes" };
+            program = "gnome-text-editor";
         } else if (m_name == "Mail") {
             program = "thunderbird";
         } else if (m_name == "Power") {
@@ -18879,59 +18872,8 @@ protected:
 private:
     void buildUi() {
         QVBoxLayout *v = new QVBoxLayout(this);
-        v->setContentsMargins(16, 16, 16, 16);
+        v->setContentsMargins(16, 48, 16, 16);
         v->setSpacing(8);
-
-        // Header — traffic lights on the left (standalone mode only)
-        if (!parentWidget()) {
-            QHBoxLayout *hdr = new QHBoxLayout;
-            hdr->setContentsMargins(0, 0, 0, 0);
-
-            auto mkLight = [](const QString &idle,
-                              const QString &hover) {
-                QPushButton *b = new QPushButton;
-                b->setFixedSize(13, 13);
-                b->setCursor(Qt::PointingHandCursor);
-                b->setStyleSheet(QString(
-                    "QPushButton { background: %1;"
-                    "  border: 1px solid rgba(0,0,0,60);"
-                    "  border-radius: 6px; }"
-                    "QPushButton:hover { background: %2; }")
-                    .arg(idle, hover));
-                return b;
-            };
-            QPushButton *closeBtn = mkLight("#7a2b25", "#ff5f57");
-            QPushButton *minBtn   = mkLight("#7a5b18", "#febc2e");
-            QPushButton *maxBtn   = mkLight("#155c1e", "#28c840");
-
-            hdr->addWidget(closeBtn);
-            hdr->addWidget(minBtn);
-            hdr->addWidget(maxBtn);
-
-            QLabel *title = new QLabel("Calculator");
-            title->setStyleSheet(
-                "color: rgb(240, 237, 232);"
-                "font-size: 13px; font-weight: 600;"
-                "background: transparent;");
-            hdr->addSpacing(8);
-            hdr->addWidget(title);
-            hdr->addStretch();
-
-            v->addLayout(hdr);
-
-            QObject::connect(closeBtn, &QPushButton::clicked,
-                             [this]() { close(); });
-            QObject::connect(minBtn, &QPushButton::clicked,
-                             [this]() { hide(); });
-            QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-                static bool zoomed = false;
-                if (zoomed)
-                    setShellWindowGeometry(this, QSize(320, 480));
-                else
-                    setGeometry(shellSafeArea());
-                zoomed = !zoomed;
-            });
-        }
 
         m_display = new QLabel("0");
         m_display->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -19094,45 +19036,11 @@ private:
         outer->setContentsMargins(16, 16, 16, 16);
         outer->setSpacing(12);
 
-        // Header — traffic lights left (macOS order)
+        // Header
         QHBoxLayout *hdr = new QHBoxLayout;
-
-        auto mkLight = [this](const QString &idle, const QString &hover) {
-            QPushButton *b = new QPushButton;
-            b->setFixedSize(13, 13);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setStyleSheet(QString(
-                "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60);"
-                "  border-radius: 6px; }"
-                "QPushButton:hover { background: %2; }")
-                .arg(idle, hover));
-            return b;
-        };
-        QPushButton *closeBtn = mkLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn   = mkLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn   = mkLight("#155c1e", "#28c840");
-        hdr->addWidget(closeBtn);
-        hdr->addWidget(minBtn);
-        hdr->addWidget(maxBtn);
-        hdr->addSpacing(10);
-
         m_title = new QLabel("Notes");
         hdr->addWidget(m_title);
         hdr->addStretch();
-
-        QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { close(); });
-        QObject::connect(minBtn, &QPushButton::clicked,
-                         [this]() { hide(); });
-        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-            static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(720, 520));
-            else
-                setGeometry(shellSafeArea());
-            zoomed = !zoomed;
-        });
 
         m_newBtn = new QPushButton("+ New");
         m_delBtn = new QPushButton("Delete");
@@ -20979,80 +20887,20 @@ int main(int argc, char *argv[])
 
     if (argc >= 2 && QString(argv[1]) == "--notes") {
         QApplication app(argc, argv);
-        app.setApplicationName("Notes");
         app.setDesktopFileName("apokolips-notes");
-
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-notes");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         NotesApp w;
-
-        QLocalServer::removeServer("apokolips-notes");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-notes")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    if (wptr)
-                        shellRestoreWindow(wptr, "Notes",
-                                           QSize(720, 520));
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
 
     if (argc >= 2 && QString(argv[1]) == "--calc") {
         QApplication app(argc, argv);
-        app.setApplicationName("Calculator");
         app.setDesktopFileName("apokolips-calculator");
-
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-calculator");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         CalculatorApp w;
-
-        QLocalServer::removeServer("apokolips-calculator");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-calculator")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    if (wptr)
-                        shellRestoreWindow(wptr, "Calculator",
-                                           QSize(320, 480));
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
