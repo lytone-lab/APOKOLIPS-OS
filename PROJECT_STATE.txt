@@ -284,7 +284,8 @@ DEFERRED / FUTURE
       - Iron Man style
   [ ] Windhawk / Compiz-style full skinning system (V2)
   [ ] Clipboard IPC fix (parked — see bug list)
-  [ ] SigilTerm — shell-owned terminal emulator with macOS traffic
+  [x] Node (was SigilTerm) — terminal emulator shipped.
+  (old) [ ] SigilTerm — shell-owned terminal emulator with macOS traffic
       lights. Replaces foot. Links to PTY (openpty/forkpty) + a
       VT100/ANSI parser (libvterm or custom). Tabs in v2. Registers
       as default Terminal. Estimated 2-3 sessions.
