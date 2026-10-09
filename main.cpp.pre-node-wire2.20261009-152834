@@ -2757,7 +2757,6 @@ static void drawFor(const QString &name, QPainter &p,
     else if (name == "Mail")      drawMail(p, r, c);
     else if (name == "Settings")  drawSettings(p, r, c);
     else if (name == "Power")     drawPower(p, r, c);
-    else if (name == "Node")      drawTerminal(p, r, c);
     else if (name == "Terminal")  drawTerminal(p, r, c);
     else if (name == "Glyph")     drawGlyph(p, r, c);
 }
@@ -2879,7 +2878,7 @@ static const QVector<AppEntry> &appRegistry() {
         { "notes",       "Notes",     "\xF0\x9F\x93\x9D",  true,  true  },
         { "mail",        "Mail",      "\xE2\x9C\x89",       true,  true  },
         { "settings",    "Settings",  "\xE2\x9A\x99",       true,  true  },
-        { "node",        "Node",      "\xF0\x9F\x92\xBB",  true,  true  },
+        { "terminal",    "Terminal",  "\xF0\x9F\x92\xBB",  true,  true  },
         { "power",       "Power",     "\xE2\x9A\xA1",       true,  true  },
         { "glyph",       "Glyph",     "\xE2\x97\x89",       false, true  },
         { "calculator",  "Calculator","\xF0\x9F\xA7\xAE",  false, false },
@@ -3391,8 +3390,10 @@ private:
                 else
                     args = { "--files", home + "/Pictures" };
             }
-            else if (appName == "Node") {
-                args = { "--node" };
+            else if (appName == "Terminal") {
+                QProcess::startDetached("foot");
+                hideLauncher();
+                return;
             }
             else
                 args = { "--demo", appName, QString::number(offset) };
@@ -3613,7 +3614,6 @@ protected:
         else if (m_name == "Settings")  matchId = "apokolips-shell";
         else if (m_name == "BoomTube")  matchId = "apokolips-boombube";
         else if (m_name == "Aperture")  matchId = "apokolips-aperture";
-        else if (m_name == "Node")      matchId = "apokolips-node";
         else if (m_name == "myMach")    matchId = "apokolips-mymach";
         else if (m_name == "Notes")     matchId = "org.gnome.TextEditor";
         else if (m_name == "Mail")      matchId = "thunderbird";
@@ -3664,9 +3664,8 @@ protected:
         } else if (m_name == "BoomTube") {
             program = QCoreApplication::applicationFilePath();
             args = { "--boomtube" };
-        } else if (m_name == "Node") {
-            program = QCoreApplication::applicationFilePath();
-            args = { "--node" };
+        } else if (m_name == "Terminal") {
+            program = "foot";
         } else if (m_name == "Notes") {
             program = "gnome-text-editor";
         } else if (m_name == "Mail") {
@@ -17122,8 +17121,6 @@ static QStringList desktopLaunchArgs(const QString &id) {
     if (id == "glyph")      return { "--glyph" };
     if (id == "calculator") return { "--calc" };
     if (id == "notes")      return { "--notes" };
-    if (id == "node")       return { "--node" };
-    if (id == "terminal")   return { "--node" };
     return { "--demo", id, "0" };
 }
 static void desktopIconsLaunchArg(const QString &) {}

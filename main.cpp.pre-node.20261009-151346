@@ -2757,7 +2757,6 @@ static void drawFor(const QString &name, QPainter &p,
     else if (name == "Mail")      drawMail(p, r, c);
     else if (name == "Settings")  drawSettings(p, r, c);
     else if (name == "Power")     drawPower(p, r, c);
-    else if (name == "Node")      drawTerminal(p, r, c);
     else if (name == "Terminal")  drawTerminal(p, r, c);
     else if (name == "Glyph")     drawGlyph(p, r, c);
 }
@@ -2879,7 +2878,7 @@ static const QVector<AppEntry> &appRegistry() {
         { "notes",       "Notes",     "\xF0\x9F\x93\x9D",  true,  true  },
         { "mail",        "Mail",      "\xE2\x9C\x89",       true,  true  },
         { "settings",    "Settings",  "\xE2\x9A\x99",       true,  true  },
-        { "node",        "Node",      "\xF0\x9F\x92\xBB",  true,  true  },
+        { "terminal",    "Terminal",  "\xF0\x9F\x92\xBB",  true,  true  },
         { "power",       "Power",     "\xE2\x9A\xA1",       true,  true  },
         { "glyph",       "Glyph",     "\xE2\x97\x89",       false, true  },
         { "calculator",  "Calculator","\xF0\x9F\xA7\xAE",  false, false },
@@ -3391,8 +3390,10 @@ private:
                 else
                     args = { "--files", home + "/Pictures" };
             }
-            else if (appName == "Node") {
-                args = { "--node" };
+            else if (appName == "Terminal") {
+                QProcess::startDetached("foot");
+                hideLauncher();
+                return;
             }
             else
                 args = { "--demo", appName, QString::number(offset) };
@@ -3613,7 +3614,6 @@ protected:
         else if (m_name == "Settings")  matchId = "apokolips-shell";
         else if (m_name == "BoomTube")  matchId = "apokolips-boombube";
         else if (m_name == "Aperture")  matchId = "apokolips-aperture";
-        else if (m_name == "Node")      matchId = "apokolips-node";
         else if (m_name == "myMach")    matchId = "apokolips-mymach";
         else if (m_name == "Notes")     matchId = "org.gnome.TextEditor";
         else if (m_name == "Mail")      matchId = "thunderbird";
@@ -3664,9 +3664,8 @@ protected:
         } else if (m_name == "BoomTube") {
             program = QCoreApplication::applicationFilePath();
             args = { "--boomtube" };
-        } else if (m_name == "Node") {
-            program = QCoreApplication::applicationFilePath();
-            args = { "--node" };
+        } else if (m_name == "Terminal") {
+            program = "foot";
         } else if (m_name == "Notes") {
             program = "gnome-text-editor";
         } else if (m_name == "Mail") {
@@ -8194,126 +8193,6 @@ protected:
         }
         QWidget::mousePressEvent(e);
     }
-};
-
-// =========================================================
-// NodeWindow — terminal emulator (QTermWidget inside Sigil chrome)
-// =========================================================
-class NodeWindow : public QWidget {
-public:
-    explicit NodeWindow(QWidget *parent = nullptr) : QWidget(parent) {
-        setWindowFlags(Qt::FramelessWindowHint);
-        setWindowTitle("Node");
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAutoFillBackground(false);
-        setShellWindowGeometry(this, QSize(900, 600));
-
-        QVBoxLayout *root = new QVBoxLayout(this);
-        root->setContentsMargins(0, 0, 0, 0);
-        root->setSpacing(0);
-
-        // ---- Header ----
-        QWidget *header = new QWidget;
-        header->setFixedHeight(42);
-        header->setAttribute(Qt::WA_NoSystemBackground, true);
-        QHBoxLayout *hh = new QHBoxLayout(header);
-        hh->setContentsMargins(16, 0, 16, 0);
-        hh->setSpacing(10);
-
-        auto makeLight = [](const QString &idle, const QString &hover) {
-            QPushButton *b = new QPushButton;
-            b->setFixedSize(13, 13);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setStyleSheet(QString(
-                "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60);"
-                "  border-radius: 6px; }"
-                "QPushButton:hover { background: %2; }")
-                .arg(idle, hover));
-            return b;
-        };
-        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
-
-        QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { close(); });
-        QObject::connect(minBtn, &QPushButton::clicked,
-                         [this]() { hide(); });
-        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-            static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(900, 600));
-            else
-                setGeometry(shellSafeArea());
-            zoomed = !zoomed;
-        });
-
-        hh->addWidget(closeBtn);
-        hh->addWidget(minBtn);
-        hh->addWidget(maxBtn);
-        hh->addSpacing(8);
-
-        QLabel *title = new QLabel("Node");
-        title->setStyleSheet(
-            "color: rgb(240, 237, 232);"
-            "font-size: 13px; font-weight: 600;"
-            "background: transparent;");
-        hh->addWidget(title);
-        hh->addStretch();
-
-        root->addWidget(header);
-
-        // ---- Terminal ----
-        m_term = new QTermWidget(0, this);
-        m_term->setColorScheme("WhiteOnBlack");
-        m_term->setScrollBarPosition(QTermWidget::ScrollBarRight);
-        m_term->setShellProgram("/bin/bash");
-        m_term->setWorkingDirectory(QDir::homePath());
-        m_term->startShellProgram();
-        root->addWidget(m_term, 1);
-    }
-
-protected:
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-
-        p.setCompositionMode(QPainter::CompositionMode_Source);
-        p.fillRect(rect(), Qt::transparent);
-        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-
-        QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
-        QPainterPath full;
-        full.addRoundedRect(body, 14, 14);
-
-        p.fillPath(full, QColor(20, 20, 22));
-
-        p.save();
-        p.setClipPath(full);
-        p.fillRect(QRect(0, 0, width(), 42), Sigil::headerBg());
-        p.restore();
-
-        p.setPen(QPen(Sigil::border(), 1));
-        p.drawLine(0, 42, width(), 42);
-
-        p.setPen(QPen(Sigil::border(), 1));
-        p.setBrush(Qt::NoBrush);
-        p.drawPath(full);
-    }
-
-    void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton && e->pos().y() < 42) {
-            if (QWindow *wh = window()->windowHandle()) {
-                if (wh->startSystemMove()) { e->accept(); return; }
-            }
-        }
-        QWidget::mousePressEvent(e);
-    }
-
-private:
-    QTermWidget *m_term = nullptr;
 };
 
 class SigilImageWindow : public QWidget {
@@ -17122,8 +17001,6 @@ static QStringList desktopLaunchArgs(const QString &id) {
     if (id == "glyph")      return { "--glyph" };
     if (id == "calculator") return { "--calc" };
     if (id == "notes")      return { "--notes" };
-    if (id == "node")       return { "--node" };
-    if (id == "terminal")   return { "--node" };
     return { "--demo", id, "0" };
 }
 static void desktopIconsLaunchArg(const QString &) {}
@@ -21124,48 +21001,6 @@ int main(int argc, char *argv[])
                         shellRestoreWindow(wptr,
                             "myMach",
                             QSize(900, 640));
-                    }
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
-        w.show();
-        return app.exec();
-    }
-
-    if (argc >= 2 && QString(argv[1]) == "--node") {
-        QApplication app(argc, argv);
-        app.setApplicationName("Node");
-        app.setDesktopFileName("apokolips-node");
-
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-node");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
-        ThemeManager::instance().setTheme(
-            WallpaperConfig::themeForId(WallpaperConfig::loadId()));
-        NodeWindow w;
-
-        QLocalServer::removeServer("apokolips-node");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-node")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    if (wptr) {
-                        shellRestoreWindow(wptr,
-                            "Node",
-                            QSize(900, 600));
                     }
                     conn->disconnectFromServer();
                 });
