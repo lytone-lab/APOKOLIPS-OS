@@ -448,9 +448,6 @@ struct VisualConfig {
     int     spotlightBarWidth  = 680;
     int     spotlightBarHeight = 260;
     int     launcherIconSize   = 52;      // 40 small / 52 medium / 64 large
-    QStringList dockApps;      // empty = registry default
-    QStringList launcherApps;  // empty = registry default
-    QStringList desktopApps;   // empty = ["mymach"]
     QString lockWallpaper      = "";   // empty = solid color
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -703,21 +700,6 @@ public:
                                         m_cfg.spotlightBarHeight);
         m_cfg.launcherIconSize  = getI("launcherIconSize",
                                        m_cfg.launcherIconSize);
-        if (o.contains("dockApps") && o["dockApps"].isArray()) {
-            m_cfg.dockApps.clear();
-            for (const QJsonValue &v : o["dockApps"].toArray())
-                m_cfg.dockApps << v.toString();
-        }
-        if (o.contains("launcherApps") && o["launcherApps"].isArray()) {
-            m_cfg.launcherApps.clear();
-            for (const QJsonValue &v : o["launcherApps"].toArray())
-                m_cfg.launcherApps << v.toString();
-        }
-        if (o.contains("desktopApps") && o["desktopApps"].isArray()) {
-            m_cfg.desktopApps.clear();
-            for (const QJsonValue &v : o["desktopApps"].toArray())
-                m_cfg.desktopApps << v.toString();
-        }
         m_cfg.shellFontFamily     = o.contains("shellFontFamily")
                                    ? o["shellFontFamily"].toString()
                                    : m_cfg.shellFontFamily;
@@ -914,21 +896,6 @@ public:
         o["spotlightBarWidth"]   = m_cfg.spotlightBarWidth;
         o["spotlightBarHeight"]  = m_cfg.spotlightBarHeight;
         o["launcherIconSize"]    = m_cfg.launcherIconSize;
-        {
-            QJsonArray arr;
-            for (const QString &s : m_cfg.dockApps)     arr << s;
-            o["dockApps"] = arr;
-        }
-        {
-            QJsonArray arr;
-            for (const QString &s : m_cfg.launcherApps) arr << s;
-            o["launcherApps"] = arr;
-        }
-        {
-            QJsonArray arr;
-            for (const QString &s : m_cfg.desktopApps)  arr << s;
-            o["desktopApps"] = arr;
-        }
         o["shellFontFamily"]     = m_cfg.shellFontFamily;
         o["shellMonoFontFamily"] = m_cfg.shellMonoFontFamily;
         o["shellBaseFontPt"]     = m_cfg.shellBaseFontPt;
@@ -2703,7 +2670,43 @@ static void drawPower(QPainter &p, const QRectF &r, const QColor &) {
                QPointF(ctr.x(), ctr.y() - r.width()*0.02));
 }
 
+// =========================================================
+// AppRegistry — single source of truth for every shell app.
+// Fields:
+//   id        — internal, matches --<mode> flag / .desktop basename
+//   label     — display name shown in launcher, dock, Spotlight
+//   glyph     — emoji fallback used for tray / launcher badges
+//   inDock    — default dock membership
+//   inLauncher— default launcher membership
+//   inFinder  — default Finder sidebar entry (if any)
+// =========================================================
+struct AppEntry {
+    const char *id;
+    const char *label;
+    const char *glyph;
+    bool inDock;
+    bool inLauncher;
+};
 
+static const QVector<AppEntry> &appRegistry() {
+    static const QVector<AppEntry> list = {
+        { "files",       "Finder",    "\xE2\x8C\x98",       true,  true  },
+        { "launchpad",   "Launchpad", "\xF0\x9F\x9A\x80",  true,  true  },
+        { "aperture",    "Aperture",  "\xE2\x9C\xA6",       true,  true  },
+        { "mymach",      "myMach",    "\xE2\x9A\x99",       true,  true  },
+        { "boombube",    "BoomTube",  "\xE2\x96\xB6",       true,  true  },
+        { "notes",       "Notes",     "\xF0\x9F\x93\x9D",  true,  true  },
+        { "mail",        "Mail",      "\xE2\x9C\x89",       true,  true  },
+        { "settings",    "Settings",  "\xE2\x9A\x99",       true,  true  },
+        { "terminal",    "Terminal",  "\xF0\x9F\x92\xBB",  true,  true  },
+        { "power",       "Power",     "\xE2\x9A\xA1",       true,  true  },
+        { "glyph",       "Glyph",     "\xE2\x97\x89",       false, true  },
+        { "calculator",  "Calculator","\xF0\x9F\xA7\xAE",  false, true  },
+        { "screensaver", "Screensaver","\xF0\x9F\x8C\x8C", false, true  },
+        { "snap",        "Snap Layouts","\xE2\x96\xA6",      false, true  },
+    };
+    return list;
+}
 
 static void drawFor(const QString &name, QPainter &p,
                     const QRectF &r, const QColor &c) {
@@ -2809,117 +2812,6 @@ static QPixmap render(const QString &name, int size, const QColor &color) {
 }
 
 } // namespace Icons
-
-// =========================================================
-// AppRegistry — single source of truth for every shell app.
-// Fields:
-//   id        — internal, matches --<mode> flag / .desktop basename
-//   label     — display name shown in launcher, dock, Spotlight
-//   glyph     — emoji fallback used for tray / launcher badges
-//   inDock    — default dock membership
-//   inLauncher— default launcher membership
-//   inFinder  — default Finder sidebar entry (if any)
-// =========================================================
-struct AppEntry {
-    const char *id;
-    const char *label;
-    const char *glyph;
-    bool inDock;
-    bool inLauncher;
-};
-
-static const QVector<AppEntry> &appRegistry() {
-    static const QVector<AppEntry> list = {
-        { "files",       "Finder",    "\xE2\x8C\x98",       true,  true  },
-        { "launchpad",   "Launchpad", "\xF0\x9F\x9A\x80",  true,  true  },
-        { "aperture",    "Aperture",  "\xE2\x9C\xA6",       true,  true  },
-        { "mymach",      "myMach",    "\xE2\x9A\x99",       true,  true  },
-        { "boombube",    "BoomTube",  "\xE2\x96\xB6",       true,  true  },
-        { "notes",       "Notes",     "\xF0\x9F\x93\x9D",  true,  true  },
-        { "mail",        "Mail",      "\xE2\x9C\x89",       true,  true  },
-        { "settings",    "Settings",  "\xE2\x9A\x99",       true,  true  },
-        { "terminal",    "Terminal",  "\xF0\x9F\x92\xBB",  true,  true  },
-        { "power",       "Power",     "\xE2\x9A\xA1",       true,  true  },
-        { "glyph",       "Glyph",     "\xE2\x97\x89",       false, true  },
-        { "calculator",  "Calculator","\xF0\x9F\xA7\xAE",  false, true  },
-        { "screensaver", "Screensaver","\xF0\x9F\x8C\x8C", false, true  },
-        { "snap",        "Snap Layouts","\xE2\x96\xA6",      false, true  },
-    };
-    return list;
-}
-
-// ---- Registry-derived queries ----
-static QString idForLabel(const QString &label) {
-    for (const auto &e : appRegistry())
-        if (label == QLatin1String(e.label)) return e.id;
-    return QString();
-}
-
-static QString labelForId(const QString &id) {
-    for (const auto &e : appRegistry())
-        if (id == QLatin1String(e.id)) return e.label;
-    return id;
-}
-
-static QString glyphForId(const QString &id) {
-    for (const auto &e : appRegistry())
-        if (id == QLatin1String(e.id)) return e.glyph;
-    return QStringLiteral("?");
-}
-
-static bool isInDock(const QString &id) {
-    auto &cfg = VisualConfigManager::instance().cfg();
-    if (!cfg.dockApps.isEmpty())
-        return cfg.dockApps.contains(id);
-    for (const auto &e : appRegistry())
-        if (id == QLatin1String(e.id)) return e.inDock;
-    return false;
-}
-
-static bool isInLauncher(const QString &id) {
-    auto &cfg = VisualConfigManager::instance().cfg();
-    if (!cfg.launcherApps.isEmpty())
-        return cfg.launcherApps.contains(id);
-    for (const auto &e : appRegistry())
-        if (id == QLatin1String(e.id)) return e.inLauncher;
-    return false;
-}
-
-static bool isOnDesktop(const QString &id) {
-    auto &cfg = VisualConfigManager::instance().cfg();
-    if (!cfg.desktopApps.isEmpty())
-        return cfg.desktopApps.contains(id);
-    return id == QLatin1String("mymach");
-}
-
-static void setInDock(const QString &id, bool on) {
-    VisualConfigManager::instance().setAndSave(
-        [id, on](VisualConfig &c) {
-            if (c.dockApps.isEmpty()) {
-                // Seed from registry defaults the first time
-                for (const auto &e : appRegistry())
-                    if (e.inDock) c.dockApps << e.id;
-            }
-            if (on) {
-                if (!c.dockApps.contains(id)) c.dockApps << id;
-            } else {
-                c.dockApps.removeAll(id);
-            }
-        });
-}
-
-static void setOnDesktop(const QString &id, bool on) {
-    VisualConfigManager::instance().setAndSave(
-        [id, on](VisualConfig &c) {
-            if (c.desktopApps.isEmpty()) c.desktopApps << "mymach";
-            if (on) {
-                if (!c.desktopApps.contains(id)) c.desktopApps << id;
-            } else {
-                c.desktopApps.removeAll(id);
-            }
-        });
-}
-
 
 class AppLauncher : public QWidget {
 public:
@@ -3301,65 +3193,6 @@ private:
                 QCoreApplication::applicationFilePath(),
                 args);
             hideLauncher();
-        });
-
-        // ---- Right-click guard: swallow non-left press/release so
-        //      QPushButton never fires clicked() on right-click, but
-        //      the context menu event still reaches our handler. ----
-        class RightClickGuard : public QObject {
-        public:
-            bool eventFilter(QObject *, QEvent *e) override {
-                if (e->type() == QEvent::MouseButtonPress
-                    || e->type() == QEvent::MouseButtonRelease) {
-                    auto *me = static_cast<QMouseEvent *>(e);
-                    if (me->button() != Qt::LeftButton) return true;
-                }
-                return false;
-            }
-        };
-        tile->installEventFilter(new RightClickGuard);
-
-        // ---- Right-click menu — Add to / Remove from Dock / Desktop ----
-        tile->setContextMenuPolicy(Qt::CustomContextMenu);
-        QObject::connect(tile, &QPushButton::customContextMenuRequested,
-                         [this, appName, tile](const QPoint &pos) {
-            QString id = idForLabel(appName);
-            if (id.isEmpty()) return;
-
-            bool inDock    = isInDock(id);
-            bool onDesktop = isOnDesktop(id);
-
-            QMenu menu;
-            menu.setStyleSheet(
-                "QMenu {"
-                "  background: rgb(24, 22, 30);"
-                "  border: 1px solid rgba(255,255,255,30);"
-                "  border-radius: 10px;"
-                "  padding: 6px;"
-                "  color: rgb(240, 237, 232);"
-                "  font-size: 13px;"
-                "}"
-                "QMenu::item {"
-                "  padding: 7px 24px 7px 16px;"
-                "  border-radius: 6px;"
-                "}"
-                "QMenu::item:selected {"
-                "  background: rgba(168, 50, 50, 90);"
-                "}");
-
-            QAction *dockAct = menu.addAction(
-                inDock ? "Remove from Dock" : "Add to Dock");
-            QAction *deskAct = menu.addAction(
-                onDesktop ? "Remove from Desktop" : "Add to Desktop");
-
-            QWidget *from = tile;
-            QAction *chosen = menu.exec(
-                from->mapToGlobal(pos));
-            if (chosen == dockAct) {
-                setInDock(id, !inDock);
-            } else if (chosen == deskAct) {
-                setOnDesktop(id, !onDesktop);
-            }
         });
 
         return tile;

@@ -3303,22 +3303,6 @@ private:
             hideLauncher();
         });
 
-        // ---- Right-click guard: swallow non-left press/release so
-        //      QPushButton never fires clicked() on right-click, but
-        //      the context menu event still reaches our handler. ----
-        class RightClickGuard : public QObject {
-        public:
-            bool eventFilter(QObject *, QEvent *e) override {
-                if (e->type() == QEvent::MouseButtonPress
-                    || e->type() == QEvent::MouseButtonRelease) {
-                    auto *me = static_cast<QMouseEvent *>(e);
-                    if (me->button() != Qt::LeftButton) return true;
-                }
-                return false;
-            }
-        };
-        tile->installEventFilter(new RightClickGuard);
-
         // ---- Right-click menu — Add to / Remove from Dock / Desktop ----
         tile->setContextMenuPolicy(Qt::CustomContextMenu);
         QObject::connect(tile, &QPushButton::customContextMenuRequested,
