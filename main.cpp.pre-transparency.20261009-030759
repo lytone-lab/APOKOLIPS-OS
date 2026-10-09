@@ -8264,48 +8264,7 @@ protected:
             p.drawLine(m_sidebar->width(), 42,
                        m_sidebar->width(), height() - 1);
 
-        // --- AA saturation: stroke the rounded outline with opaque
-        // colors so antialiased edge pixels never fade to transparent
-        // (which sway composites over black).
-        {
-            QPen satPen;
-            satPen.setWidthF(1.6);
-            satPen.setJoinStyle(Qt::RoundJoin);
-            satPen.setCapStyle(Qt::RoundCap);
-            p.setBrush(Qt::NoBrush);
-
-            // 1) Left column — sidebar color
-            if (m_sidebar) {
-                satPen.setColor(Sigil::sidebarBg());
-                p.setPen(satPen);
-                p.save();
-                p.setClipRect(QRect(0, 0,
-                                    m_sidebar->width(),
-                                    height()));
-                p.drawPath(full);
-                p.restore();
-            }
-
-            // 2) Top strip — header color
-            satPen.setColor(Sigil::headerBg());
-            p.setPen(satPen);
-            p.save();
-            p.setClipRect(QRect(0, 0, width(), 42));
-            p.drawPath(full);
-            p.restore();
-
-            // 3) Right side + bottom — content color
-            satPen.setColor(Sigil::contentBg());
-            p.setPen(satPen);
-            p.save();
-            int sx = m_sidebar ? m_sidebar->width() : 0;
-            p.setClipRect(QRect(sx, 42,
-                                width() - sx, height() - 42));
-            p.drawPath(full);
-            p.restore();
-        }
-
-        // Window outline (drawn last so the border stays crisp)
+        // Window outline
         p.setPen(QPen(Sigil::border(), 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(full);
@@ -8515,11 +8474,6 @@ private:
 
         sb->addStretch();
         sidebarScroll->setWidget(sidebarContent);
-        sidebarScroll->setAutoFillBackground(false);
-        sidebarScroll->setAttribute(Qt::WA_NoSystemBackground, true);
-        sidebarScroll->viewport()->setAutoFillBackground(false);
-        sidebarScroll->viewport()->setAttribute(Qt::WA_NoSystemBackground, true);
-        sidebarScroll->viewport()->setStyleSheet("background: transparent;");
         sidebarWrap->addWidget(sidebarScroll);
 
         // The parent paints this same content color within its rounded path.
@@ -8552,11 +8506,7 @@ private:
         // The SettingsWindow parent paints the opaque content color inside
         // its rounded surface. Keep the scroll wrapper and page transparent
         // so they cannot cover the rounded lower-right alpha corner.
-        scroll->setAutoFillBackground(false);
-        scroll->setAttribute(Qt::WA_NoSystemBackground, true);
         scroll->viewport()->setAutoFillBackground(false);
-        scroll->viewport()->setAttribute(Qt::WA_NoSystemBackground, true);
-        scroll->viewport()->setStyleSheet("background: transparent;");
         page->setAutoFillBackground(false);
         page->setStyleSheet("QWidget { background: transparent; }");
         scroll->setStyleSheet(

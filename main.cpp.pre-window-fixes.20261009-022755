@@ -1593,63 +1593,6 @@ public:
 // =========================================================
 // Demo window
 // =========================================================
-static QRect shellSafeArea()
-{
-    QScreen *screen = QApplication::primaryScreen();
-    if (!screen)
-        return QRect();
-
-    QRect area = screen->availableGeometry();
-    constexpr int dockExtent = 96; // Dock::setFixedHeight / setFixedWidth
-    constexpr int bottomReserve = dockExtent + 14; // bottom row margin
-    constexpr int sideReserve = dockExtent + 14 + 8; // edge margin + spacing
-    const int position = VisualConfigManager::instance().cfg().dockPosition;
-
-    if (position == 0)       // Bottom dock
-        area.setHeight(area.height() - bottomReserve);
-    else if (position == 1)  // Left dock
-        area.setLeft(area.left() + sideReserve);
-    else if (position == 2)  // Right dock
-        area.setWidth(area.width() - sideReserve);
-
-    if (area.width() <= 0 || area.height() <= 0)
-        area = screen->geometry();
-    return area;
-}
-
-static QRect shellWindowRect(const QSize &preferred,
-                             const QPoint &offset = QPoint(),
-                             bool centered = true)
-{
-    const QRect area = shellSafeArea();
-    if (area.isEmpty())
-        return QRect(QPoint(0, 0), preferred);
-
-    const QSize size = preferred.boundedTo(area.size());
-    QPoint topLeft = centered
-        ? area.center() - QPoint(size.width() / 2, size.height() / 2) + offset
-        : area.topLeft() + offset;
-    topLeft.setX(qBound(area.left(), topLeft.x(),
-                        area.x() + area.width() - size.width()));
-    topLeft.setY(qBound(area.top(), topLeft.y(),
-                        area.y() + area.height() - size.height()));
-    return QRect(topLeft, size);
-}
-
-static void setShellWindowGeometry(QWidget *window,
-                                   const QSize &preferred,
-                                   const QPoint &offset = QPoint(),
-                                   bool centered = true)
-{
-    if (!window)
-        return;
-    if (window->layout()) {
-        window->layout()->setSizeConstraint(QLayout::SetNoConstraint);
-        window->layout()->activate();
-    }
-    window->setGeometry(shellWindowRect(preferred, offset, centered));
-}
-
 class DemoWindow : public QWidget {
 public:
     DemoWindow(const QString &appName, int offset, QWidget *parent = nullptr)
@@ -1658,9 +1601,11 @@ public:
         setWindowTitle(appName);
         setWindowFlags(Qt::FramelessWindowHint);
         setAttribute(Qt::WA_TranslucentBackground, true);
-        setShellWindowGeometry(this, QSize(480, 320),
-                               QPoint(120 + offset * 30,
-                                      100 + offset * 30), false);
+        resize(480, 320);
+        if (QScreen *s = QApplication::primaryScreen()) {
+            QRect a = s->availableGeometry();
+            move(a.x() + 120 + offset * 30, a.y() + 100 + offset * 30);
+        }
 
         QVBoxLayout *layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
@@ -1735,9 +1680,6 @@ public:
 
             update();
         });
-        setShellWindowGeometry(this, QSize(480, 320),
-                               QPoint(120 + offset * 30,
-                                      100 + offset * 30), false);
     }
 
 protected:
@@ -3261,12 +3203,10 @@ protected:
         }
 
         qDebug() << "[dock] startDetached" << program << args;
-        qint64 launchedPid = 0;
-        const bool ok = QProcess::startDetached(
-            program, args, QString(), &launchedPid);
-        setPid(ok ? launchedPid : 0);
-        setRunning(ok && launchedPid > 0);
+        bool ok = QProcess::startDetached(program, args, QString(), &m_pid);
         qDebug() << "[dock] result:" << ok << "pid:" << m_pid;
+        m_running = true;
+        update();
     }
 
     void showPowerMenu(QPoint globalPos) {
@@ -4824,7 +4764,10 @@ public:
         setWindowTitle("Files");
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
-        setShellWindowGeometry(this, QSize(900, 560));
+        resize(900, 560);
+
+        if (QScreen *s = QApplication::primaryScreen())
+            move(s->availableGeometry().center() - QPoint(450, 280));
 
         // Render the current wallpaper, blurred, as glass backdrop
         buildBlurredBackdrop();
@@ -4882,7 +4825,6 @@ public:
 
         // List view by default
         setViewMode(false);
-        setShellWindowGeometry(this, QSize(900, 560));
 
         show();
         update();
@@ -4972,11 +4914,8 @@ protected:
         if (m_sidebar) {
             QColor sb(24, 24, 26);
             sb.setAlpha(255);
-            p.save();
-            p.setClipPath(path, Qt::IntersectClip);
             p.fillRect(QRect(0, TOP_TOTAL, m_sidebar->width(),
                              height() - TOP_TOTAL), sb);
-            p.restore();
         }
 
         // ---- Only the sidebar / content divider stays ----
@@ -5058,11 +4997,12 @@ private:
                          [this]() { hide(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(900, 560));
-            else
-                setGeometry(shellSafeArea());
+            QSize sz = zoomed ? QSize(900, 560) : QSize(1150, 720);
             zoomed = !zoomed;
+            resize(sz);
+            if (QScreen *s = QApplication::primaryScreen())
+                move(s->availableGeometry().center()
+                     - QPoint(sz.width()/2, sz.height()/2));
         });
         hh->addWidget(closeBtn);
         hh->addWidget(minBtn);
@@ -7294,7 +7234,13 @@ public:
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAutoFillBackground(false);
-        setShellWindowGeometry(this, QSize(1000, 700), QPoint(0, -20));
+        resize(1000, 700);
+
+        if (QScreen *s = QApplication::primaryScreen()) {
+            QRect g = s->availableGeometry();
+            move(g.x() + (g.width() - 1000) / 2,
+                 g.y() + (g.height() - 700) / 2 - 20);
+        }
 
         // ---- Outer layout ----
         QVBoxLayout *root = new QVBoxLayout(this);
@@ -7332,11 +7278,9 @@ public:
                          [this]() { hide(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(1000, 700), QPoint(0, -20));
-            else
-                setGeometry(shellSafeArea());
+            QSize sz = zoomed ? QSize(1000, 700) : QSize(1300, 900);
             zoomed = !zoomed;
+            resize(sz);
         });
 
         // macOS order: lights LEFT, title after
@@ -7461,7 +7405,6 @@ public:
         m_canvas->onPrev = [this]() { goPrev(); };
         m_canvas->onNext = [this]() { goNext(); };
         m_canvas->onClose = [this]() { close(); };
-        setShellWindowGeometry(this, QSize(1000, 700), QPoint(0, -20));
     }
 
 protected:
@@ -7591,7 +7534,13 @@ public:
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAutoFillBackground(false);
-        setShellWindowGeometry(this, QSize(1000, 700), QPoint(0, -20));
+        resize(1000, 700);
+
+        if (QScreen *s = QApplication::primaryScreen()) {
+            QRect g = s->availableGeometry();
+            move(g.x() + (g.width() - 1000) / 2,
+                 g.y() + (g.height() - 700) / 2 - 20);
+        }
 
         m_player    = new QMediaPlayer(this);
         m_audioOut  = new QAudioOutput(this);
@@ -7632,11 +7581,9 @@ public:
                          [this]() { hide(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(1000, 700), QPoint(0, -20));
-            else
-                setGeometry(shellSafeArea());
+            QSize sz = zoomed ? QSize(1000, 700) : QSize(1300, 900);
             zoomed = !zoomed;
+            resize(sz);
         });
 
         // macOS order: lights on the LEFT, then title
@@ -7934,7 +7881,6 @@ public:
             if (!folder.isEmpty() && QDir(folder).exists())
                 openFolder(folder);
         }
-        setShellWindowGeometry(this, QSize(1000, 700), QPoint(0, -20));
     }
 
 protected:
@@ -8122,51 +8068,21 @@ public:
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAutoFillBackground(false);
+        resize(1100, 700);
+        setMinimumSize(880, 620);
+
+        if (QScreen *s = QApplication::primaryScreen()) {
+            QRect g = s->availableGeometry();
+            // Center horizontally, bias slightly upward (above the dock)
+            int x = g.x() + (g.width()  - 1100) / 2;
+            int y = g.y() + (g.height() - 700)  / 2 - 20;
+            move(x, y);
+        }
+
         buildUi();
 
-        // Apply persisted text scale before choosing the final initial size.
+        // Apply persisted text scale
         applyTextScale(VisualConfigManager::instance().cfg().shellTextScale);
-
-        // Calculate the final geometry after the widget tree is complete,
-        // before main() shows the window. This prevents a layout-driven
-        // second resize after the first paint and keeps the dock unobstructed.
-        if (QScreen *s = QApplication::primaryScreen()) {
-            QRect usable = s->availableGeometry();
-            constexpr int dockExtent = 96; // Dock's fixed thickness
-            constexpr int bottomReserve = dockExtent + 14;
-            constexpr int sideReserve = dockExtent + 14 + 8;
-            const int dockPosition =
-                VisualConfigManager::instance().cfg().dockPosition;
-            if (dockPosition == 0) {       // Bottom dock
-                usable.setHeight(usable.height() - bottomReserve);
-            } else if (dockPosition == 1) { // Left dock
-                usable.setLeft(usable.left() + sideReserve);
-            } else if (dockPosition == 2) { // Right dock
-                usable.setWidth(usable.width() - sideReserve);
-            }
-
-            if (usable.width() < 1 || usable.height() < 1)
-                usable = s->geometry();
-
-            const QSize minSize(qMin(880, usable.width()),
-                                qMin(620, usable.height()));
-            setMinimumSize(minSize);
-            if (layout()) {
-                layout()->setSizeConstraint(QLayout::SetNoConstraint);
-                layout()->activate();
-            }
-
-            QSize initialSize(qMin(1100, usable.width()),
-                              qMin(700, usable.height()));
-            initialSize.setWidth(qMax(initialSize.width(), minSize.width()));
-            initialSize.setHeight(qMax(initialSize.height(), minSize.height()));
-            resize(initialSize);
-            move(usable.center() - QPoint(initialSize.width() / 2,
-                                          initialSize.height() / 2));
-        } else {
-            setMinimumSize(880, 620);
-            resize(1100, 700);
-        }
 
         // Subscribe AFTER buildUi so restyleAll can see the widgets
         ThemeManager::instance().subscribe([this](const Theme &t) {
@@ -8226,6 +8142,25 @@ protected:
         QWidget::mousePressEvent(e);
     }
 
+    void applyMask() {
+        // Hard-clip the window to a rounded rect so the compositor
+        // never paints outside — this is what kills the black fringe.
+        QPainterPath path;
+        path.addRoundedRect(QRectF(rect()), 14, 14);
+        QRegion region(path.toFillPolygon().toPolygon());
+        setMask(region);
+    }
+
+    void resizeEvent(QResizeEvent *e) override {
+        QWidget::resizeEvent(e);
+        applyMask();
+    }
+
+    void showEvent(QShowEvent *e) override {
+        QWidget::showEvent(e);
+        applyMask();
+    }
+
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
@@ -8264,48 +8199,7 @@ protected:
             p.drawLine(m_sidebar->width(), 42,
                        m_sidebar->width(), height() - 1);
 
-        // --- AA saturation: stroke the rounded outline with opaque
-        // colors so antialiased edge pixels never fade to transparent
-        // (which sway composites over black).
-        {
-            QPen satPen;
-            satPen.setWidthF(1.6);
-            satPen.setJoinStyle(Qt::RoundJoin);
-            satPen.setCapStyle(Qt::RoundCap);
-            p.setBrush(Qt::NoBrush);
-
-            // 1) Left column — sidebar color
-            if (m_sidebar) {
-                satPen.setColor(Sigil::sidebarBg());
-                p.setPen(satPen);
-                p.save();
-                p.setClipRect(QRect(0, 0,
-                                    m_sidebar->width(),
-                                    height()));
-                p.drawPath(full);
-                p.restore();
-            }
-
-            // 2) Top strip — header color
-            satPen.setColor(Sigil::headerBg());
-            p.setPen(satPen);
-            p.save();
-            p.setClipRect(QRect(0, 0, width(), 42));
-            p.drawPath(full);
-            p.restore();
-
-            // 3) Right side + bottom — content color
-            satPen.setColor(Sigil::contentBg());
-            p.setPen(satPen);
-            p.save();
-            int sx = m_sidebar ? m_sidebar->width() : 0;
-            p.setClipRect(QRect(sx, 42,
-                                width() - sx, height() - 42));
-            p.drawPath(full);
-            p.restore();
-        }
-
-        // Window outline (drawn last so the border stays crisp)
+        // Window outline
         p.setPen(QPen(Sigil::border(), 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(full);
@@ -8353,11 +8247,12 @@ private:
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             // Cage supports client-side resize; use that for zoom.
             static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(920, 620));
-            else
-                setGeometry(shellSafeArea());
+            QSize sz = zoomed ? QSize(920, 620) : QSize(1100, 700);
             zoomed = !zoomed;
+            this->resize(sz);
+            if (QScreen *s = QApplication::primaryScreen())
+                this->move(s->availableGeometry().center()
+                           - QPoint(sz.width()/2, sz.height()/2));
         });
 
         // Traffic lights go on the LEFT (macOS style)
@@ -8379,10 +8274,12 @@ private:
 
         m_sidebar = new QWidget;
         m_sidebar->setFixedWidth(220);
-        // The parent paints the sidebar color inside its rounded window path.
-        // Keep this child surface transparent so it cannot square off the
-        // parent's lower-left alpha corner.
         m_sidebar->setAutoFillBackground(false);
+        m_sidebar->setStyleSheet(QString(
+            "QWidget { background: rgb(%1, %2, %3); }")
+            .arg(Sigil::sidebarBg().red())
+            .arg(Sigil::sidebarBg().green())
+            .arg(Sigil::sidebarBg().blue()));
 
         QVBoxLayout *sidebarWrap = new QVBoxLayout(m_sidebar);
         sidebarWrap->setContentsMargins(0, 0, 0, 0);
@@ -8436,9 +8333,6 @@ private:
         });
 
         m_stack = new QStackedWidget;
-        m_stack->setAutoFillBackground(false);
-        m_stack->setStyleSheet(
-            "QStackedWidget { background: transparent; border: none; }");
 
         addSection(sb, "Appearance", QString::fromUtf8("\xE2\x9C\xA8"),
                    QColor(122, 106, 159), makeAppearancePage());
@@ -8515,16 +8409,13 @@ private:
 
         sb->addStretch();
         sidebarScroll->setWidget(sidebarContent);
-        sidebarScroll->setAutoFillBackground(false);
-        sidebarScroll->setAttribute(Qt::WA_NoSystemBackground, true);
-        sidebarScroll->viewport()->setAutoFillBackground(false);
-        sidebarScroll->viewport()->setAttribute(Qt::WA_NoSystemBackground, true);
-        sidebarScroll->viewport()->setStyleSheet("background: transparent;");
         sidebarWrap->addWidget(sidebarScroll);
 
-        // The parent paints this same content color within its rounded path.
-        // Leave the stack transparent so it does not cover the lower-right
-        // alpha corner with a rectangular child surface.
+        m_stack->setStyleSheet(QString(
+            "QStackedWidget { background: rgb(%1, %2, %3); }")
+            .arg(Sigil::contentBg().red())
+            .arg(Sigil::contentBg().green())
+            .arg(Sigil::contentBg().blue()));
 
         body->addWidget(m_sidebar);
         body->addWidget(m_stack, 1);
@@ -8549,16 +8440,19 @@ private:
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
         scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        // The SettingsWindow parent paints the opaque content color inside
-        // its rounded surface. Keep the scroll wrapper and page transparent
-        // so they cannot cover the rounded lower-right alpha corner.
-        scroll->setAutoFillBackground(false);
-        scroll->setAttribute(Qt::WA_NoSystemBackground, true);
+        // Opaque Sigil content color, no wallpaper bleed-through
+        QString sigilBg = QString("rgb(%1, %2, %3)")
+            .arg(Sigil::contentBg().red())
+            .arg(Sigil::contentBg().green())
+            .arg(Sigil::contentBg().blue());
+        scroll->setStyleSheet(QString(
+            "QScrollArea { background: %1; border: none; }"
+            "QScrollArea > QWidget > QWidget { background: %1; }")
+            .arg(sigilBg));
         scroll->viewport()->setAutoFillBackground(false);
-        scroll->viewport()->setAttribute(Qt::WA_NoSystemBackground, true);
-        scroll->viewport()->setStyleSheet("background: transparent;");
         page->setAutoFillBackground(false);
-        page->setStyleSheet("QWidget { background: transparent; }");
+        page->setStyleSheet(QString("QWidget { background: %1; }")
+                            .arg(sigilBg));
         scroll->setStyleSheet(
             "QScrollArea { background: transparent; border: none; }"
             "QScrollBar:vertical {"
@@ -16999,7 +16893,9 @@ public:
             setWindowTitle("Calculator");
             setWindowFlags(Qt::FramelessWindowHint);
             setAttribute(Qt::WA_TranslucentBackground, true);
-            setShellWindowGeometry(this, QSize(320, 480));
+            resize(320, 480);
+            if (QScreen *s = QApplication::primaryScreen())
+                move(s->availableGeometry().center() - QPoint(160, 240));
         }
 
         buildUi();
@@ -17012,8 +16908,6 @@ public:
             restyle();
             update();
         });
-        if (!parent)
-            setShellWindowGeometry(this, QSize(320, 480));
     }
 
     void toggle() { isVisible() ? hide() : show2(); }
@@ -17149,7 +17043,9 @@ public:
             setWindowTitle("Notes");
             setWindowFlags(Qt::FramelessWindowHint);
             setAttribute(Qt::WA_TranslucentBackground, true);
-            setShellWindowGeometry(this, QSize(720, 520));
+            resize(720, 520);
+            if (QScreen *s = QApplication::primaryScreen())
+                move(s->availableGeometry().center() - QPoint(360, 260));
         }
 
         m_dir = QDir::homePath() + "/.local/share/apokolips/notes";
@@ -17166,8 +17062,6 @@ public:
             update();
         });
         if (parent) hide();
-        else
-            setShellWindowGeometry(this, QSize(720, 520));
     }
 
     void toggle() { isVisible() ? hide() : show2(); }

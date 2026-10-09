@@ -8264,48 +8264,7 @@ protected:
             p.drawLine(m_sidebar->width(), 42,
                        m_sidebar->width(), height() - 1);
 
-        // --- AA saturation: stroke the rounded outline with opaque
-        // colors so antialiased edge pixels never fade to transparent
-        // (which sway composites over black).
-        {
-            QPen satPen;
-            satPen.setWidthF(1.6);
-            satPen.setJoinStyle(Qt::RoundJoin);
-            satPen.setCapStyle(Qt::RoundCap);
-            p.setBrush(Qt::NoBrush);
-
-            // 1) Left column — sidebar color
-            if (m_sidebar) {
-                satPen.setColor(Sigil::sidebarBg());
-                p.setPen(satPen);
-                p.save();
-                p.setClipRect(QRect(0, 0,
-                                    m_sidebar->width(),
-                                    height()));
-                p.drawPath(full);
-                p.restore();
-            }
-
-            // 2) Top strip — header color
-            satPen.setColor(Sigil::headerBg());
-            p.setPen(satPen);
-            p.save();
-            p.setClipRect(QRect(0, 0, width(), 42));
-            p.drawPath(full);
-            p.restore();
-
-            // 3) Right side + bottom — content color
-            satPen.setColor(Sigil::contentBg());
-            p.setPen(satPen);
-            p.save();
-            int sx = m_sidebar ? m_sidebar->width() : 0;
-            p.setClipRect(QRect(sx, 42,
-                                width() - sx, height() - 42));
-            p.drawPath(full);
-            p.restore();
-        }
-
-        // Window outline (drawn last so the border stays crisp)
+        // Window outline
         p.setPen(QPen(Sigil::border(), 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(full);
