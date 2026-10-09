@@ -19166,43 +19166,9 @@ int main(int argc, char *argv[])
     if (argc >= 2 && QString(argv[1]) == "--files") {
         QApplication app(argc, argv);
         app.setApplicationName("Apokolips Files");
-        app.setDesktopFileName("apokolips-files");
-
-        // Single-instance: forward to running Files if one exists.
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-files");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         FileExplorer w;
-
-        QLocalServer::removeServer("apokolips-files");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-files")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    QByteArray data = conn->readAll();
-                    if (wptr) {
-                        shellRestoreWindow(wptr,
-                            "Files",
-                            QSize(900, 560));
-                    }
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
