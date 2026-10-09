@@ -2705,44 +2705,6 @@ static void drawPower(QPainter &p, const QRectF &r, const QColor &) {
 
 
 
-static void drawGlyph(QPainter &p, const QRectF &r, const QColor &) {
-    p.setRenderHint(QPainter::Antialiasing, true);
-
-    QRectF frame = r.adjusted(r.width() * 0.16,
-                              r.height() * 0.16,
-                              -r.width() * 0.16,
-                              -r.height() * 0.16);
-
-    QPen bone(QColor(240, 237, 232, 210), 1.3);
-    bone.setStyle(Qt::DashLine);
-    bone.setDashPattern({3, 3});
-    p.setPen(bone);
-    p.setBrush(Qt::NoBrush);
-    p.drawRect(frame);
-
-    QColor ox(168, 50, 50);
-    QPen corner(ox, 2.6);
-    corner.setCapStyle(Qt::RoundCap);
-    p.setPen(corner);
-    qreal L = frame.width() * 0.34;
-
-    p.drawLine(frame.topLeft(), frame.topLeft() + QPointF(L, 0));
-    p.drawLine(frame.topLeft(), frame.topLeft() + QPointF(0, L));
-    p.drawLine(frame.topRight(), frame.topRight() + QPointF(-L, 0));
-    p.drawLine(frame.topRight(), frame.topRight() + QPointF(0, L));
-    p.drawLine(frame.bottomLeft(), frame.bottomLeft() + QPointF(L, 0));
-    p.drawLine(frame.bottomLeft(), frame.bottomLeft() + QPointF(0, -L));
-
-    QPointF br = frame.bottomRight();
-    QPolygonF caret;
-    caret << br + QPointF(-L * 0.85, 0)
-          << br
-          << br + QPointF(0, -L * 0.85);
-    p.setPen(Qt::NoPen);
-    p.setBrush(ox);
-    p.drawPolygon(caret);
-}
-
 static void drawFor(const QString &name, QPainter &p,
                     const QRectF &r, const QColor &c) {
     if (name == "Finder")         drawFinder(p, r, c);
@@ -2757,7 +2719,6 @@ static void drawFor(const QString &name, QPainter &p,
     else if (name == "Settings")  drawSettings(p, r, c);
     else if (name == "Power")     drawPower(p, r, c);
     else if (name == "Terminal")  drawTerminal(p, r, c);
-    else if (name == "Glyph")     drawGlyph(p, r, c);
 }
 
 // ---- Tray icon helpers (small, single-color) ----
@@ -3198,7 +3159,7 @@ private:
         // Pull from central registry — only entries flagged inLauncher.
         QVector<AppEntry> visible;
         for (const auto &e : appRegistry())
-            if (isInLauncher(QString::fromUtf8(e.id))) visible.append(e);
+            if (e.inLauncher) visible.append(e);
 
         // 4 fixed-width columns, each a vertical stack.
         QList<QVBoxLayout *> cols;
@@ -16873,42 +16834,6 @@ public:
         setCursor(Qt::PointingHandCursor);
         setMouseTracking(true);
         setAttribute(Qt::WA_Hover, true);
-
-        setContextMenuPolicy(Qt::CustomContextMenu);
-        QObject::connect(this, &QWidget::customContextMenuRequested,
-                         this, [this](const QPoint &pos) {
-            QMenu m(this);
-            m.setStyleSheet(
-                "QMenu {"
-                "  background: rgb(24, 22, 30);"
-                "  border: 1px solid rgba(255,255,255,30);"
-                "  border-radius: 10px;"
-                "  padding: 6px;"
-                "  color: rgb(240, 237, 232);"
-                "  font-size: 13px;"
-                "}"
-                "QMenu::item {"
-                "  padding: 7px 24px 7px 16px;"
-                "  border-radius: 6px;"
-                "}"
-                "QMenu::item:selected {"
-                "  background: rgba(168, 50, 50, 90);"
-                "}");
-
-            const QString id = m_id;
-            const bool inDock = isInDock(id);
-
-            QAction *rmDesk = m.addAction("Remove from Desktop");
-            QAction *dockAct = m.addAction(
-                inDock ? "Remove from Dock" : "Add to Dock");
-            m.addSeparator();
-            QAction *tidyAct = m.addAction("tidyUp");
-
-            QAction *chosen = m.exec(mapToGlobal(pos));
-            if (chosen == rmDesk) setOnDesktop(id, false);
-            else if (chosen == dockAct) setInDock(id, !inDock);
-            else if (chosen == tidyAct && m_onTidyUp) m_onTidyUp();
-        });
     }
 
     QString id() const { return m_id; }
@@ -16972,7 +16897,6 @@ protected:
 
 public:
     std::function<void(const QString&, const QPoint&)> onMoved;
-    std::function<void()>                              m_onTidyUp;
 
 private:
     QString m_id;
@@ -17013,21 +16937,12 @@ public:
         // Canvas does NOT block clicks in empty areas; only icons
         // respond. Children receive events normally.
         setMouseTracking(true);
-
-        setContextMenuPolicy(Qt::CustomContextMenu);
-        QObject::connect(this, &QWidget::customContextMenuRequested,
-                         this, [this](const QPoint &pos) {
-            showCanvasMenu(pos);
-        });
     }
 
     // Swallow presses on empty canvas so they don't reach the
     // wallpaper layer underneath, but do NOT consume them if they
     // land on a child (Qt handles that automatically).
     void mousePressEvent(QMouseEvent *e) override {
-        // Right-click should open our canvas context menu; left-click
-        // on empty space goes through to the wallpaper layer.
-        if (e->button() == Qt::RightButton) { e->accept(); return; }
         e->ignore();
     }
 
@@ -17052,39 +16967,6 @@ public:
 
     QList<DesktopIcon*> icons() const { return m_icons; }
 
-    void showCanvasMenu(const QPoint &pos) {
-        QMenu m(this);
-        m.setStyleSheet(
-            "QMenu {"
-            "  background: rgb(24, 22, 30);"
-            "  border: 1px solid rgba(255,255,255,30);"
-            "  border-radius: 10px;"
-            "  padding: 6px;"
-            "  color: rgb(240, 237, 232);"
-            "  font-size: 13px;"
-            "}"
-            "QMenu::item {"
-            "  padding: 7px 24px 7px 16px;"
-            "  border-radius: 6px;"
-            "}"
-            "QMenu::item:selected {"
-            "  background: rgba(168, 50, 50, 90);"
-            "}");
-
-        QAction *tidy = m.addAction("tidyUp");
-        QAction *refresh = m.addAction("Refresh Icons");
-
-        QAction *chosen = m.exec(mapToGlobal(pos));
-        if (chosen == tidy) tidyUp();
-        else if (chosen == refresh) rebuildIcons();
-    }
-
-    void tidyUp() {
-        VisualConfigManager::instance().setAndSave(
-            [](VisualConfig &c) { c.desktopIconPos.clear(); });
-        rebuildIcons();
-    }
-
     void rebuildIcons() {
         for (DesktopIcon *ic : m_icons) ic->deleteLater();
         m_icons.clear();
@@ -17095,38 +16977,18 @@ public:
         if (cfg.desktopApps.isEmpty()) ids = { "mymach" };
         else                          ids = cfg.desktopApps;
 
-        // Default grid — right column fills top-down, then wraps to
-        // the next column leftward when the column runs out of space.
-        // Uses SCREEN geometry, not our widget (which may be 0 during
-        // the first layout pass).
-        int screenW = 1200, screenH = 800;
-        if (QScreen *s = QApplication::primaryScreen()) {
-            screenW = s->availableGeometry().width();
-            screenH = s->availableGeometry().height();
-        }
-        const int iconH    = 116;   // slot step
-        const int iconW    = 116;
-        const int startX   = screenW - 130;
-        const int startY   = 40;
-        const int usableH  = screenH - startY - 110;   // leave room for dock
-        const int rowsMax  = qMax(1, usableH / iconH);
-
+        // Default position grid — right column, top-down
         int slot = 0;
         for (const QString &id : ids) {
             if (id.isEmpty()) continue;
 
-            int col = slot / rowsMax;
-            int row = slot % rowsMax;
-            int defX = startX - col * iconW;
-            int defY = startY + row * iconH;
-
             QPoint pos;
             if (cfg.desktopIconPos.contains(id)) {
                 QVariantMap mp = cfg.desktopIconPos[id].toMap();
-                pos = QPoint(mp.value("x", defX).toInt(),
-                             mp.value("y", defY).toInt());
+                pos = QPoint(mp.value("x", width() - 130).toInt(),
+                             mp.value("y", 40 + slot * 116).toInt());
             } else {
-                pos = QPoint(defX, defY);
+                pos = QPoint(width() - 130, 40 + slot * 116);
             }
 
             QString label = labelForId(id);
@@ -17177,18 +17039,13 @@ public:
                 };
 
             QString capId = id;
-            desktopIconsLaunchArg(capId);
-            int before = m_icons.size();
+            desktopIconsLaunchArg(capId);  // capture-safe helper below
             addIcon(id, label, paint,
                 [capId]() {
                     QProcess::startDetached(
                         QCoreApplication::applicationFilePath(),
                         desktopLaunchArgs(capId));
                 }, pos);
-            if (m_icons.size() > before) {
-                DesktopIcon *added = m_icons.last();
-                added->m_onTidyUp = [this]() { tidyUp(); };
-            }
             slot++;
         }
         update();
@@ -20429,7 +20286,6 @@ static int runShell(int argc, char *argv[])
                 });
         };
 
-        desktopIcons->rebuildIcons();     // render persisted desktop apps
         desktopIcons->show();
         desktopIcons->raise();
     }
@@ -20446,19 +20302,14 @@ static int runShell(int argc, char *argv[])
     refitCanvas();
     // Re-run after the event loop settles (layout has real sizes)
     QTimer::singleShot(0,   desktop, [refitCanvas]() { refitCanvas(); });
-    QTimer::singleShot(150, desktop, [refitCanvas, desktopIcons]() {
-        refitCanvas();
-        // Now that the canvas knows its size, re-run rebuildIcons so
-        // default positions use real coordinates instead of 0.
-        if (desktopIcons) desktopIcons->rebuildIcons();
-    });
+    QTimer::singleShot(150, desktop, [refitCanvas]() { refitCanvas(); });
 
     Dock *dock = new Dock;
     struct DockApp { const char *icon; const char *name; };
     {
         int i = 0;
         for (const auto &e : appRegistry()) {
-            if (!isInDock(QString::fromUtf8(e.id))) continue;
+            if (!e.inDock) continue;
             dock->addIcon(QString::fromUtf8(e.glyph), e.label, i++);
         }
     }

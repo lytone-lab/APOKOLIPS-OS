@@ -16873,42 +16873,6 @@ public:
         setCursor(Qt::PointingHandCursor);
         setMouseTracking(true);
         setAttribute(Qt::WA_Hover, true);
-
-        setContextMenuPolicy(Qt::CustomContextMenu);
-        QObject::connect(this, &QWidget::customContextMenuRequested,
-                         this, [this](const QPoint &pos) {
-            QMenu m(this);
-            m.setStyleSheet(
-                "QMenu {"
-                "  background: rgb(24, 22, 30);"
-                "  border: 1px solid rgba(255,255,255,30);"
-                "  border-radius: 10px;"
-                "  padding: 6px;"
-                "  color: rgb(240, 237, 232);"
-                "  font-size: 13px;"
-                "}"
-                "QMenu::item {"
-                "  padding: 7px 24px 7px 16px;"
-                "  border-radius: 6px;"
-                "}"
-                "QMenu::item:selected {"
-                "  background: rgba(168, 50, 50, 90);"
-                "}");
-
-            const QString id = m_id;
-            const bool inDock = isInDock(id);
-
-            QAction *rmDesk = m.addAction("Remove from Desktop");
-            QAction *dockAct = m.addAction(
-                inDock ? "Remove from Dock" : "Add to Dock");
-            m.addSeparator();
-            QAction *tidyAct = m.addAction("tidyUp");
-
-            QAction *chosen = m.exec(mapToGlobal(pos));
-            if (chosen == rmDesk) setOnDesktop(id, false);
-            else if (chosen == dockAct) setInDock(id, !inDock);
-            else if (chosen == tidyAct && m_onTidyUp) m_onTidyUp();
-        });
     }
 
     QString id() const { return m_id; }
@@ -16972,7 +16936,6 @@ protected:
 
 public:
     std::function<void(const QString&, const QPoint&)> onMoved;
-    std::function<void()>                              m_onTidyUp;
 
 private:
     QString m_id;
@@ -17013,21 +16976,12 @@ public:
         // Canvas does NOT block clicks in empty areas; only icons
         // respond. Children receive events normally.
         setMouseTracking(true);
-
-        setContextMenuPolicy(Qt::CustomContextMenu);
-        QObject::connect(this, &QWidget::customContextMenuRequested,
-                         this, [this](const QPoint &pos) {
-            showCanvasMenu(pos);
-        });
     }
 
     // Swallow presses on empty canvas so they don't reach the
     // wallpaper layer underneath, but do NOT consume them if they
     // land on a child (Qt handles that automatically).
     void mousePressEvent(QMouseEvent *e) override {
-        // Right-click should open our canvas context menu; left-click
-        // on empty space goes through to the wallpaper layer.
-        if (e->button() == Qt::RightButton) { e->accept(); return; }
         e->ignore();
     }
 
@@ -17051,39 +17005,6 @@ public:
     std::function<void(const QString&, const QPoint&)> m_onMoved;
 
     QList<DesktopIcon*> icons() const { return m_icons; }
-
-    void showCanvasMenu(const QPoint &pos) {
-        QMenu m(this);
-        m.setStyleSheet(
-            "QMenu {"
-            "  background: rgb(24, 22, 30);"
-            "  border: 1px solid rgba(255,255,255,30);"
-            "  border-radius: 10px;"
-            "  padding: 6px;"
-            "  color: rgb(240, 237, 232);"
-            "  font-size: 13px;"
-            "}"
-            "QMenu::item {"
-            "  padding: 7px 24px 7px 16px;"
-            "  border-radius: 6px;"
-            "}"
-            "QMenu::item:selected {"
-            "  background: rgba(168, 50, 50, 90);"
-            "}");
-
-        QAction *tidy = m.addAction("tidyUp");
-        QAction *refresh = m.addAction("Refresh Icons");
-
-        QAction *chosen = m.exec(mapToGlobal(pos));
-        if (chosen == tidy) tidyUp();
-        else if (chosen == refresh) rebuildIcons();
-    }
-
-    void tidyUp() {
-        VisualConfigManager::instance().setAndSave(
-            [](VisualConfig &c) { c.desktopIconPos.clear(); });
-        rebuildIcons();
-    }
 
     void rebuildIcons() {
         for (DesktopIcon *ic : m_icons) ic->deleteLater();
@@ -17177,18 +17098,13 @@ public:
                 };
 
             QString capId = id;
-            desktopIconsLaunchArg(capId);
-            int before = m_icons.size();
+            desktopIconsLaunchArg(capId);  // capture-safe helper below
             addIcon(id, label, paint,
                 [capId]() {
                     QProcess::startDetached(
                         QCoreApplication::applicationFilePath(),
                         desktopLaunchArgs(capId));
                 }, pos);
-            if (m_icons.size() > before) {
-                DesktopIcon *added = m_icons.last();
-                added->m_onTidyUp = [this]() { tidyUp(); };
-            }
             slot++;
         }
         update();
