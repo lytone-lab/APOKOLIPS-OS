@@ -15821,6 +15821,7 @@ protected:
             m_dragging = false;
             m_pressPos = e->globalPosition().toPoint();
             m_dragStart = pos();
+            grabMouse();
             e->accept();
         }
     }
@@ -15838,6 +15839,7 @@ protected:
 
     void mouseReleaseEvent(QMouseEvent *e) override {
         if (e->button() != Qt::LeftButton) return;
+        releaseMouse();
         if (!m_dragging && m_onActivate) m_onActivate();
         m_dragging = false;
     }
@@ -15903,7 +15905,6 @@ public:
 protected:
     void resizeEvent(QResizeEvent *e) override {
         QWidget::resizeEvent(e);
-        if (width() <= 0 || height() <= 0) return;
         // Keep icons inside bounds if canvas shrinks
         for (DesktopIcon *ic : m_icons) {
             QPoint p = ic->pos();
@@ -19023,9 +19024,8 @@ static int runShell(int argc, char *argv[])
     QWidget *middle = new QWidget;
     rootLayout->addWidget(middle, 1);
 
-    // ---- Desktop icon canvas (child of root, sits between top bar
-    //      and dock) ----
-    DesktopCanvas *desktopIcons = new DesktopCanvas(root);
+    // ---- Desktop icon canvas ----
+    DesktopCanvas *desktopIcons = new DesktopCanvas(desktop);
     {
         auto &cfg = VisualConfigManager::instance().cfg();
 
@@ -19103,23 +19103,10 @@ static int runShell(int argc, char *argv[])
                 });
         };
 
+        desktopIcons->setGeometry(desktop->rect());
         desktopIcons->show();
         desktopIcons->raise();
     }
-
-    // Keep the canvas sized to the middle strip (below top bar,
-    // above dock) whenever the shell relayouts.
-    auto refitCanvas = [desktopIcons, desktop, middle]() {
-        if (!desktopIcons || !desktop) return;
-        QPoint tl = desktop->mapTo(desktopIcons->parentWidget(),
-                                    QPoint(0, 0));
-        desktopIcons->setGeometry(QRect(tl, desktop->size()));
-        desktopIcons->raise();
-    };
-    refitCanvas();
-    // Re-run after the event loop settles (layout has real sizes)
-    QTimer::singleShot(0,   desktop, [refitCanvas]() { refitCanvas(); });
-    QTimer::singleShot(150, desktop, [refitCanvas]() { refitCanvas(); });
 
     Dock *dock = new Dock;
     struct DockApp { const char *icon; const char *name; };

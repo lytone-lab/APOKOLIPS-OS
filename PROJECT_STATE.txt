@@ -327,6 +327,14 @@ Golden rule for AI features (future):
   User opts in. No always-on mic. No cloud requirement.
   No forced button.
 
+  [ ] Desktop widgets — independent floating cards (Sonoma-style).
+      Currently DesktopWidgets is one stacked column on the right.
+      Desired: each widget (clock, CPU/RAM, weather, calendar,
+      sticky notes) is its own draggable card, position persisted in
+      visual.json, snap-to-grid optional.
+  [ ] Dock apps — decide final default lineup + which apps to build
+      ourselves. Discuss when reaching that to-do item.
+
 ------------------------------------------------------------------------
 WIRING BACKLOG (saved but not yet acting)
 ------------------------------------------------------------------------

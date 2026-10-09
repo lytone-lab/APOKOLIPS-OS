@@ -439,7 +439,6 @@ struct VisualConfig {
     QString boomtubeFolder     = "";
     bool    boomtubeShuffle    = false;
     QString boomtubeLoop       = "off";   // off | all | one
-    QVariantMap desktopIconPos;   // id -> {x, y}
     QString lockWallpaper      = "";   // empty = solid color
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -672,11 +671,6 @@ public:
         m_cfg.boomtubeLoop        = o.contains("boomtubeLoop")
                                    ? o["boomtubeLoop"].toString()
                                    : m_cfg.boomtubeLoop;
-        if (o.contains("desktopIconPos")
-            && o["desktopIconPos"].isObject()) {
-            m_cfg.desktopIconPos = o["desktopIconPos"].toObject()
-                                       .toVariantMap();
-        }
         m_cfg.shellFontFamily     = o.contains("shellFontFamily")
                                    ? o["shellFontFamily"].toString()
                                    : m_cfg.shellFontFamily;
@@ -853,8 +847,6 @@ public:
         o["boomtubeFolder"]      = m_cfg.boomtubeFolder;
         o["boomtubeShuffle"]     = m_cfg.boomtubeShuffle;
         o["boomtubeLoop"]        = m_cfg.boomtubeLoop;
-        o["desktopIconPos"]      = QJsonObject::fromVariantMap(
-                                       m_cfg.desktopIconPos);
         o["shellFontFamily"]     = m_cfg.shellFontFamily;
         o["shellMonoFontFamily"] = m_cfg.shellMonoFontFamily;
         o["shellBaseFontPt"]     = m_cfg.shellBaseFontPt;
@@ -15765,160 +15757,6 @@ private:
 
 } // namespace Weather
 
-// =========================================================
-// DesktopIcon — draggable Sigil tile that lives on the wallpaper
-// =========================================================
-class DesktopIcon : public QWidget {
-public:
-    DesktopIcon(const QString &id, const QString &label,
-                std::function<void(QPainter&, QRectF)> paint,
-                std::function<void()> onActivate,
-                QWidget *parent = nullptr)
-        : QWidget(parent), m_id(id), m_label(label),
-          m_paint(paint), m_onActivate(onActivate)
-    {
-        setFixedSize(96, 108);
-        setCursor(Qt::PointingHandCursor);
-        setMouseTracking(true);
-        setAttribute(Qt::WA_Hover, true);
-    }
-
-    QString id() const { return m_id; }
-
-protected:
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-
-        // No tile background — the mark floats free on the wallpaper.
-        QRectF tile((width() - 64) / 2.0, 6, 64, 64);
-
-        if (m_paint) {
-            QRectF inner = tile.adjusted(10, 10, -10, -10);
-            m_paint(p, inner);
-        }
-
-        // Label
-        QFont f = font();
-        f.setPixelSize(11);
-        p.setFont(f);
-        QColor labelCol(240, 237, 232, m_hover ? 255 : 220);
-        QPainterPath bg;
-        QRectF labelRect(4, 74, width() - 8, 22);
-        bg.addRoundedRect(labelRect, 5, 5);
-        p.fillPath(bg, QColor(0, 0, 0, m_hover ? 120 : 70));
-        p.setPen(labelCol);
-        p.drawText(QRect(0, 74, width(), 30),
-                   Qt::AlignHCenter | Qt::AlignTop,
-                   m_label);
-    }
-
-    void enterEvent(QEnterEvent *) override { m_hover = true;  update(); }
-    void leaveEvent(QEvent *)      override { m_hover = false; update(); }
-
-    void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton) {
-            m_dragging = false;
-            m_pressPos = e->globalPosition().toPoint();
-            m_dragStart = pos();
-            e->accept();
-        }
-    }
-
-    void mouseMoveEvent(QMouseEvent *e) override {
-        if (!(e->buttons() & Qt::LeftButton)) return;
-        QPoint delta = e->globalPosition().toPoint() - m_pressPos;
-        if (!m_dragging && delta.manhattanLength() > 6)
-            m_dragging = true;
-        if (m_dragging) {
-            move(m_dragStart + delta);
-            if (onMoved) onMoved(m_id, pos());
-        }
-    }
-
-    void mouseReleaseEvent(QMouseEvent *e) override {
-        if (e->button() != Qt::LeftButton) return;
-        if (!m_dragging && m_onActivate) m_onActivate();
-        m_dragging = false;
-    }
-
-public:
-    std::function<void(const QString&, const QPoint&)> onMoved;
-
-private:
-    QString m_id;
-    QString m_label;
-    std::function<void(QPainter&, QRectF)> m_paint;
-    std::function<void()> m_onActivate;
-    bool m_hover = false;
-    bool m_dragging = false;
-    QPoint m_pressPos;
-    QPoint m_dragStart;
-};
-
-// =========================================================
-// DesktopCanvas — transparent fullscreen overlay that hosts
-// desktop icons. Sits above the wallpaper, below top bar +
-// widgets + dock. Only intercepts clicks on icons.
-// =========================================================
-class DesktopCanvas : public QWidget {
-public:
-    DesktopCanvas(QWidget *parent = nullptr) : QWidget(parent) {
-        setObjectName("desktopCanvas");
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        // Canvas does NOT block clicks in empty areas; only icons
-        // respond. Children receive events normally.
-        setMouseTracking(true);
-    }
-
-    // Swallow presses on empty canvas so they don't reach the
-    // wallpaper layer underneath, but do NOT consume them if they
-    // land on a child (Qt handles that automatically).
-    void mousePressEvent(QMouseEvent *e) override {
-        e->ignore();
-    }
-
-    void addIcon(const QString &id, const QString &label,
-                 std::function<void(QPainter&, QRectF)> paint,
-                 std::function<void()> onActivate,
-                 const QPoint &pos)
-    {
-        DesktopIcon *icon = new DesktopIcon(id, label, paint,
-                                             onActivate, this);
-        icon->move(pos);
-        icon->show();
-        icon->raise();
-        m_icons.append(icon);
-
-        icon->onMoved = [this](const QString &iconId, const QPoint &p) {
-            if (m_onMoved) m_onMoved(iconId, p);
-        };
-    }
-
-    std::function<void(const QString&, const QPoint&)> m_onMoved;
-
-    QList<DesktopIcon*> icons() const { return m_icons; }
-
-protected:
-    void resizeEvent(QResizeEvent *e) override {
-        QWidget::resizeEvent(e);
-        if (width() <= 0 || height() <= 0) return;
-        // Keep icons inside bounds if canvas shrinks
-        for (DesktopIcon *ic : m_icons) {
-            QPoint p = ic->pos();
-            int maxX = width()  - ic->width();
-            int maxY = height() - ic->height();
-            p.setX(qBound(0, p.x(), qMax(0, maxX)));
-            p.setY(qBound(0, p.y(), qMax(0, maxY)));
-            ic->move(p);
-        }
-    }
-
-private:
-    QList<DesktopIcon*> m_icons;
-};
-
 class DesktopWidgets : public QWidget {
 public:
     explicit DesktopWidgets(QWidget *parent = nullptr) : QWidget(parent) {
@@ -19022,104 +18860,6 @@ static int runShell(int argc, char *argv[])
 
     QWidget *middle = new QWidget;
     rootLayout->addWidget(middle, 1);
-
-    // ---- Desktop icon canvas (child of root, sits between top bar
-    //      and dock) ----
-    DesktopCanvas *desktopIcons = new DesktopCanvas(root);
-    {
-        auto &cfg = VisualConfigManager::instance().cfg();
-
-        auto myMachPaint = [](QPainter &p, QRectF r) {
-            // Gear inside a monitor outline
-            QColor bone(240, 237, 232, 230);
-            QColor ox(168, 50, 50);
-
-            // Monitor
-            QRectF mon(r.left() + r.width() * 0.10,
-                       r.top()  + r.height() * 0.16,
-                       r.width() * 0.80,
-                       r.height() * 0.58);
-            QPen bp(bone, 1.4);
-            bp.setJoinStyle(Qt::RoundJoin);
-            p.setPen(bp);
-            p.setBrush(Qt::NoBrush);
-            p.drawRoundedRect(mon, 3, 3);
-
-            // Stand
-            QPointF standTop(mon.center().x(), mon.bottom());
-            p.drawLine(standTop,
-                       QPointF(mon.center().x(),
-                               mon.bottom() + r.height() * 0.08));
-            p.drawLine(QPointF(mon.center().x() - r.width() * 0.10,
-                               mon.bottom() + r.height() * 0.08),
-                       QPointF(mon.center().x() + r.width() * 0.10,
-                               mon.bottom() + r.height() * 0.08));
-
-            // Gear (oxblood)
-            QPointF gc = mon.center();
-            qreal outer = r.width() * 0.16;
-            qreal inner = r.width() * 0.09;
-            p.setPen(Qt::NoPen);
-            p.setBrush(ox);
-            p.drawEllipse(gc, outer, outer);
-
-            for (int i = 0; i < 8; ++i) {
-                qreal a = i * M_PI / 4.0;
-                QRectF tooth(gc.x() + std::cos(a) * outer - 1.5,
-                             gc.y() + std::sin(a) * outer - 1.5,
-                             3.0, 3.0);
-                p.drawEllipse(tooth);
-            }
-
-            // Gear hole
-            p.setBrush(bone);
-            p.drawEllipse(gc, inner, inner);
-        };
-
-        QPoint defaultPos(desktop->width() - 130, 40);
-        if (cfg.desktopIconPos.contains("mymach")) {
-            QVariantMap pos = cfg.desktopIconPos["mymach"].toMap();
-            defaultPos = QPoint(pos.value("x", defaultPos.x()).toInt(),
-                                pos.value("y", defaultPos.y()).toInt());
-        }
-
-        desktopIcons->addIcon(
-            "mymach", "myMach", myMachPaint,
-            []() {
-                QProcess::startDetached(
-                    QCoreApplication::applicationFilePath(),
-                    { "--mymach" });
-            },
-            defaultPos);
-
-        desktopIcons->m_onMoved =
-            [](const QString &id, const QPoint &p) {
-            VisualConfigManager::instance().setAndSave(
-                [id, p](VisualConfig &c) {
-                    QVariantMap m = c.desktopIconPos[id].toMap();
-                    m["x"] = p.x();
-                    m["y"] = p.y();
-                    c.desktopIconPos[id] = m;
-                });
-        };
-
-        desktopIcons->show();
-        desktopIcons->raise();
-    }
-
-    // Keep the canvas sized to the middle strip (below top bar,
-    // above dock) whenever the shell relayouts.
-    auto refitCanvas = [desktopIcons, desktop, middle]() {
-        if (!desktopIcons || !desktop) return;
-        QPoint tl = desktop->mapTo(desktopIcons->parentWidget(),
-                                    QPoint(0, 0));
-        desktopIcons->setGeometry(QRect(tl, desktop->size()));
-        desktopIcons->raise();
-    };
-    refitCanvas();
-    // Re-run after the event loop settles (layout has real sizes)
-    QTimer::singleShot(0,   desktop, [refitCanvas]() { refitCanvas(); });
-    QTimer::singleShot(150, desktop, [refitCanvas]() { refitCanvas(); });
 
     Dock *dock = new Dock;
     struct DockApp { const char *icon; const char *name; };

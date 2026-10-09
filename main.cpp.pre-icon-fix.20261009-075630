@@ -15790,9 +15790,17 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        // No tile background — the mark floats free on the wallpaper.
+        // Tile
         QRectF tile((width() - 64) / 2.0, 6, 64, 64);
+        QPainterPath tp;
+        tp.addRoundedRect(tile, 14, 14);
 
+        p.fillPath(tp, QColor(30, 30, 32, 230));
+        p.setPen(QPen(QColor(255, 255, 255, m_hover ? 90 : 40), 1.2));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(tp);
+
+        // Mark
         if (m_paint) {
             QRectF inner = tile.adjusted(10, 10, -10, -10);
             m_paint(p, inner);
@@ -15802,12 +15810,7 @@ protected:
         QFont f = font();
         f.setPixelSize(11);
         p.setFont(f);
-        QColor labelCol(240, 237, 232, m_hover ? 255 : 220);
-        QPainterPath bg;
-        QRectF labelRect(4, 74, width() - 8, 22);
-        bg.addRoundedRect(labelRect, 5, 5);
-        p.fillPath(bg, QColor(0, 0, 0, m_hover ? 120 : 70));
-        p.setPen(labelCol);
+        p.setPen(QColor(240, 237, 232, m_hover ? 255 : 210));
         p.drawText(QRect(0, 74, width(), 30),
                    Qt::AlignHCenter | Qt::AlignTop,
                    m_label);
@@ -15821,7 +15824,6 @@ protected:
             m_dragging = false;
             m_pressPos = e->globalPosition().toPoint();
             m_dragStart = pos();
-            e->accept();
         }
     }
 
@@ -15867,16 +15869,8 @@ public:
         setObjectName("desktopCanvas");
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAttribute(Qt::WA_TranslucentBackground, true);
-        // Canvas does NOT block clicks in empty areas; only icons
-        // respond. Children receive events normally.
-        setMouseTracking(true);
-    }
-
-    // Swallow presses on empty canvas so they don't reach the
-    // wallpaper layer underneath, but do NOT consume them if they
-    // land on a child (Qt handles that automatically).
-    void mousePressEvent(QMouseEvent *e) override {
-        e->ignore();
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        // Icons opt back IN to mouse events individually.
     }
 
     void addIcon(const QString &id, const QString &label,
@@ -15886,6 +15880,7 @@ public:
     {
         DesktopIcon *icon = new DesktopIcon(id, label, paint,
                                              onActivate, this);
+        icon->setAttribute(Qt::WA_TransparentForMouseEvents, false);
         icon->move(pos);
         icon->show();
         icon->raise();
@@ -15903,7 +15898,6 @@ public:
 protected:
     void resizeEvent(QResizeEvent *e) override {
         QWidget::resizeEvent(e);
-        if (width() <= 0 || height() <= 0) return;
         // Keep icons inside bounds if canvas shrinks
         for (DesktopIcon *ic : m_icons) {
             QPoint p = ic->pos();
@@ -19023,9 +19017,8 @@ static int runShell(int argc, char *argv[])
     QWidget *middle = new QWidget;
     rootLayout->addWidget(middle, 1);
 
-    // ---- Desktop icon canvas (child of root, sits between top bar
-    //      and dock) ----
-    DesktopCanvas *desktopIcons = new DesktopCanvas(root);
+    // ---- Desktop icon canvas ----
+    DesktopCanvas *desktopIcons = new DesktopCanvas(desktop);
     {
         auto &cfg = VisualConfigManager::instance().cfg();
 
@@ -19103,23 +19096,10 @@ static int runShell(int argc, char *argv[])
                 });
         };
 
+        desktopIcons->setGeometry(desktop->rect());
         desktopIcons->show();
         desktopIcons->raise();
     }
-
-    // Keep the canvas sized to the middle strip (below top bar,
-    // above dock) whenever the shell relayouts.
-    auto refitCanvas = [desktopIcons, desktop, middle]() {
-        if (!desktopIcons || !desktop) return;
-        QPoint tl = desktop->mapTo(desktopIcons->parentWidget(),
-                                    QPoint(0, 0));
-        desktopIcons->setGeometry(QRect(tl, desktop->size()));
-        desktopIcons->raise();
-    };
-    refitCanvas();
-    // Re-run after the event loop settles (layout has real sizes)
-    QTimer::singleShot(0,   desktop, [refitCanvas]() { refitCanvas(); });
-    QTimer::singleShot(150, desktop, [refitCanvas]() { refitCanvas(); });
 
     Dock *dock = new Dock;
     struct DockApp { const char *icon; const char *name; };
