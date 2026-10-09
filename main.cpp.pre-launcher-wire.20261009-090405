@@ -2798,11 +2798,7 @@ public:
         });
     }
 
-    void toggle() {
-        auto &cfg = VisualConfigManager::instance().cfg();
-        if (!cfg.launcherEnabled) return;
-        (isVisible() && m_opacity > 0.5) ? hideLauncher() : showLauncher();
-    }
+    void toggle() { (isVisible() && m_opacity > 0.5) ? hideLauncher() : showLauncher(); }
     void showLauncher() { raise(); show(); setFocus(); m_fadeTarget = 1.0; m_animTimer->start(); }
     void hideLauncher() { m_fadeTarget = 0.0; m_animTimer->start(); }
 
@@ -3001,14 +2997,8 @@ private:
     }
 
     QWidget *makeTile(const QString &icon, const QString &name, int index) {
-        const int iconSize =
-            VisualConfigManager::instance().cfg().launcherIconSize;
-        const int tileW = iconSize + 88;
-        const int tileH = iconSize + 58;
-        const int iconWidgetSize = iconSize + 12;
-
         QPushButton *tile = new QPushButton;
-        tile->setFixedSize(tileW, tileH);
+        tile->setFixedSize(140, 110);
         tile->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         tile->setCursor(Qt::PointingHandCursor);
         tile->setProperty("appName", name);
@@ -3021,10 +3011,10 @@ private:
         // Custom vector icon widget (replaces old emoji label)
         class TileIcon : public QWidget {
         public:
-            TileIcon(const QString &iconName, QWidget *parent = nullptr,
-                     int size = 64)
+            TileIcon(const QString &iconName, QWidget *parent = nullptr)
                 : QWidget(parent), m_name(iconName) {
-                setFixedSize(size, size);
+                // Reserve a stable 64px area; idle art is drawn at 52px.
+                setFixedSize(64, 64);
                 setAttribute(Qt::WA_TransparentForMouseEvents, true);
                 ThemeManager::instance().subscribe([this](const Theme &t) {
                     m_color = t.textPrimary;
@@ -3041,10 +3031,8 @@ private:
                 QPainter p(this);
                 p.setRenderHint(QPainter::Antialiasing);
                 QRectF artRect(rect());
-                if (!m_hovered) {
-                    int adj = int(width() * 0.09);
-                    artRect.adjust(adj, adj, -adj, -adj);
-                }
+                if (!m_hovered)
+                    artRect.adjust(6, 6, -6, -6);
                 if (m_name == "Glyph") {
                     drawGlyphMark(p, artRect);
                 } else {
@@ -3103,7 +3091,7 @@ private:
             bool m_hovered = false;
         };
 
-        TileIcon *ic = new TileIcon(name, nullptr, iconWidgetSize);
+        TileIcon *ic = new TileIcon(name);
 
         // Track hover on the button (the icon itself ignores mouse events).
         class TileHoverFilter final : public QObject {
@@ -17199,38 +17187,9 @@ public:
             update();
         });
         StyleManager::startPolling(this, [this]() { update(); });
-
-        // Live-apply size when visual.json changes
-        m_cfgWatch = new QTimer(this);
-        m_cfgWatch->setInterval(400);
-        QObject::connect(m_cfgWatch, &QTimer::timeout, this, [this]() {
-            QString path = []() {
-                QString dir = QStandardPaths::writableLocation(
-                                  QStandardPaths::ConfigLocation);
-                if (dir.isEmpty()) dir = QDir::homePath() + "/.config";
-                return dir + "/apokolips/visual.json";
-            }();
-            QFileInfo fi(path);
-            qint64 m = fi.exists()
-                ? fi.lastModified().toMSecsSinceEpoch() : 0;
-            if (m != m_cfgStamp) {
-                m_cfgStamp = m;
-                VisualConfigManager::instance().load();
-                if (isVisible()) {
-                    QResizeEvent ev(size(), size());
-                    QWidget::resizeEvent(&ev);
-                    update();
-                }
-            }
-        });
-        m_cfgWatch->start();
     }
 
-    void toggle() {
-        auto &cfg = VisualConfigManager::instance().cfg();
-        if (!cfg.spotlightEnabled) return;
-        isVisible() ? hideNow() : showNow();
-    }
+    void toggle() { isVisible() ? hideNow() : showNow(); }
 
     void showNow() {
         if (parentWidget()) setGeometry(parentWidget()->rect());
@@ -17487,9 +17446,8 @@ private:
 
     void resizeEvent(QResizeEvent *e) override {
         QWidget::resizeEvent(e);
-        auto &cfg = VisualConfigManager::instance().cfg();
-        int pw = qMin(cfg.spotlightBarWidth,  width() - 40);
-        int ph = qMin(cfg.spotlightBarHeight, height() - 60);
+        int pw = qMin(680, width() - 80);
+        int ph = qMin(480, height() - 120);
         m_panel->setGeometry((width() - pw) / 2,
                              (height() - ph) / 2,
                              pw, ph);
@@ -17499,8 +17457,6 @@ private:
     QLineEdit   *m_search  = nullptr;
     QListWidget *m_results = nullptr;
     QTimer      *m_scanTimer = nullptr;
-    QTimer      *m_cfgWatch  = nullptr;
-    qint64       m_cfgStamp  = 0;
     Theme        m_theme;
 };
 
@@ -20066,7 +20022,6 @@ static int runShell(int argc, char *argv[])
                     *lastDockPos = pos;
                     applyDockPosition(pos);
                 }
-
             }
             if (root) {
                 // Apply widget visibility — Settings writes visual.json,

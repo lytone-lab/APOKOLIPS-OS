@@ -17199,38 +17199,9 @@ public:
             update();
         });
         StyleManager::startPolling(this, [this]() { update(); });
-
-        // Live-apply size when visual.json changes
-        m_cfgWatch = new QTimer(this);
-        m_cfgWatch->setInterval(400);
-        QObject::connect(m_cfgWatch, &QTimer::timeout, this, [this]() {
-            QString path = []() {
-                QString dir = QStandardPaths::writableLocation(
-                                  QStandardPaths::ConfigLocation);
-                if (dir.isEmpty()) dir = QDir::homePath() + "/.config";
-                return dir + "/apokolips/visual.json";
-            }();
-            QFileInfo fi(path);
-            qint64 m = fi.exists()
-                ? fi.lastModified().toMSecsSinceEpoch() : 0;
-            if (m != m_cfgStamp) {
-                m_cfgStamp = m;
-                VisualConfigManager::instance().load();
-                if (isVisible()) {
-                    QResizeEvent ev(size(), size());
-                    QWidget::resizeEvent(&ev);
-                    update();
-                }
-            }
-        });
-        m_cfgWatch->start();
     }
 
-    void toggle() {
-        auto &cfg = VisualConfigManager::instance().cfg();
-        if (!cfg.spotlightEnabled) return;
-        isVisible() ? hideNow() : showNow();
-    }
+    void toggle() { isVisible() ? hideNow() : showNow(); }
 
     void showNow() {
         if (parentWidget()) setGeometry(parentWidget()->rect());
@@ -17499,8 +17470,6 @@ private:
     QLineEdit   *m_search  = nullptr;
     QListWidget *m_results = nullptr;
     QTimer      *m_scanTimer = nullptr;
-    QTimer      *m_cfgWatch  = nullptr;
-    qint64       m_cfgStamp  = 0;
     Theme        m_theme;
 };
 
@@ -20066,7 +20035,12 @@ static int runShell(int argc, char *argv[])
                     *lastDockPos = pos;
                     applyDockPosition(pos);
                 }
-
+                // Re-apply Spotlight geometry live on size change
+                if (spotlight) {
+                    QResizeEvent ev(spotlight->size(),
+                                    spotlight->size());
+                    QApplication::sendEvent(spotlight, &ev);
+                }
             }
             if (root) {
                 // Apply widget visibility — Settings writes visual.json,

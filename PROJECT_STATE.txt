@@ -335,6 +335,26 @@ Golden rule for AI features (future):
   [ ] Dock apps — decide final default lineup + which apps to build
       ourselves. Discuss when reaching that to-do item.
 
+  [ ] Spotlight — search only Apokolips apps. Hide GNOME / Ubuntu
+      system apps (org.gnome.*, ubuntu-*, snap-store, firefox unless
+      we want browsers). Mechanism: filter .desktop entries in
+      SpotlightOverlay's scan — allow only desktop files we own
+      (apokolips-* prefix) plus an explicit allowlist. Add to-do:
+      register a proper .desktop for every shell app so it is
+      searchable:
+        - apokolips-files (Finder)
+        - apokolips-settings
+        - apokolips-aperture
+        - apokolips-boombube
+        - apokolips-mymach
+        - apokolips-glyph
+        - apokolips-snap
+        - apokolips-screensaver
+        - apokolips-notes
+        - apokolips-calculator
+        - apokolips-terminal (after SigilTerm lands)
+
+
 ------------------------------------------------------------------------
 WIRING BACKLOG (saved but not yet acting)
 ------------------------------------------------------------------------

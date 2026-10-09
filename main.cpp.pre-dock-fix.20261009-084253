@@ -442,12 +442,6 @@ struct VisualConfig {
     bool    boomtubeShuffle    = false;
     QString boomtubeLoop       = "off";   // off | all | one
     QVariantMap desktopIconPos;   // id -> {x, y}
-    bool    launcherEnabled    = true;
-    bool    spotlightEnabled   = true;
-    bool    launcherHasSearch  = false;   // merge search into launcher
-    int     spotlightBarWidth  = 680;
-    int     spotlightBarHeight = 260;
-    int     launcherIconSize   = 52;      // 40 small / 52 medium / 64 large
     QString lockWallpaper      = "";   // empty = solid color
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -685,21 +679,6 @@ public:
             m_cfg.desktopIconPos = o["desktopIconPos"].toObject()
                                        .toVariantMap();
         }
-        m_cfg.launcherEnabled   = o.contains("launcherEnabled")
-                                ? o["launcherEnabled"].toBool(true)
-                                : m_cfg.launcherEnabled;
-        m_cfg.spotlightEnabled  = o.contains("spotlightEnabled")
-                                ? o["spotlightEnabled"].toBool(true)
-                                : m_cfg.spotlightEnabled;
-        m_cfg.launcherHasSearch = o.contains("launcherHasSearch")
-                                ? o["launcherHasSearch"].toBool(false)
-                                : m_cfg.launcherHasSearch;
-        m_cfg.spotlightBarWidth = getI("spotlightBarWidth",
-                                       m_cfg.spotlightBarWidth);
-        m_cfg.spotlightBarHeight = getI("spotlightBarHeight",
-                                        m_cfg.spotlightBarHeight);
-        m_cfg.launcherIconSize  = getI("launcherIconSize",
-                                       m_cfg.launcherIconSize);
         m_cfg.shellFontFamily     = o.contains("shellFontFamily")
                                    ? o["shellFontFamily"].toString()
                                    : m_cfg.shellFontFamily;
@@ -781,18 +760,6 @@ public:
             m_cfg.screensaverTimeoutMin = 120;
         if (m_cfg.shellBaseFontPt < 8)  m_cfg.shellBaseFontPt = 8;
         if (m_cfg.shellBaseFontPt > 18) m_cfg.shellBaseFontPt = 18;
-        if (m_cfg.spotlightBarWidth < 400)
-            m_cfg.spotlightBarWidth = 400;
-        if (m_cfg.spotlightBarWidth > 1400)
-            m_cfg.spotlightBarWidth = 1400;
-        if (m_cfg.spotlightBarHeight < 60)
-            m_cfg.spotlightBarHeight = 60;
-        if (m_cfg.spotlightBarHeight > 700)
-            m_cfg.spotlightBarHeight = 700;
-        if (m_cfg.launcherIconSize < 36)
-            m_cfg.launcherIconSize = 36;
-        if (m_cfg.launcherIconSize > 80)
-            m_cfg.launcherIconSize = 80;
         if (m_cfg.shellBaseFontPt < 8)  m_cfg.shellBaseFontPt = 8;
         if (m_cfg.shellBaseFontPt > 18) m_cfg.shellBaseFontPt = 18;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
@@ -890,12 +857,6 @@ public:
         o["boomtubeLoop"]        = m_cfg.boomtubeLoop;
         o["desktopIconPos"]      = QJsonObject::fromVariantMap(
                                        m_cfg.desktopIconPos);
-        o["launcherEnabled"]     = m_cfg.launcherEnabled;
-        o["spotlightEnabled"]    = m_cfg.spotlightEnabled;
-        o["launcherHasSearch"]   = m_cfg.launcherHasSearch;
-        o["spotlightBarWidth"]   = m_cfg.spotlightBarWidth;
-        o["spotlightBarHeight"]  = m_cfg.spotlightBarHeight;
-        o["launcherIconSize"]    = m_cfg.launcherIconSize;
         o["shellFontFamily"]     = m_cfg.shellFontFamily;
         o["shellMonoFontFamily"] = m_cfg.shellMonoFontFamily;
         o["shellBaseFontPt"]     = m_cfg.shellBaseFontPt;
@@ -2798,11 +2759,7 @@ public:
         });
     }
 
-    void toggle() {
-        auto &cfg = VisualConfigManager::instance().cfg();
-        if (!cfg.launcherEnabled) return;
-        (isVisible() && m_opacity > 0.5) ? hideLauncher() : showLauncher();
-    }
+    void toggle() { (isVisible() && m_opacity > 0.5) ? hideLauncher() : showLauncher(); }
     void showLauncher() { raise(); show(); setFocus(); m_fadeTarget = 1.0; m_animTimer->start(); }
     void hideLauncher() { m_fadeTarget = 0.0; m_animTimer->start(); }
 
@@ -2957,6 +2914,7 @@ private:
             { "\xE2\x8C\x98",       "Finder"    },
             { "\xF0\x9F\x9A\x80",  "Launchpad" },
             { "\xE2\x9C\xA6",       "Aperture"  },
+        { "\xE2\x9A\x99",       "myMach"    },
             { "\xE2\x9A\x99",       "myMach"    },
             { "\xE2\x96\xB6",       "BoomTube"  },
             { "\xF0\x9F\x93\x9D",  "Notes"     },
@@ -2981,17 +2939,21 @@ private:
             gridRow->addLayout(colLay);
         }
 
-        // Fluid grid — iterate over the full app array; column count
-        // is fixed at 4, but the number of rows is derived from the
-        // app count, so adding/removing apps never needs a code edit.
-        const int appCount = int(sizeof(apps) / sizeof(apps[0]));
-        const int COLS = 4;
-        for (int i = 0; i < appCount; ++i) {
+        // Row-major layout: apps 0-3 in row 1, apps 4-7 in row 2.
+        for (int i = 0; i < 8; ++i) {
             QWidget *tile = makeTile(QString::fromUtf8(apps[i].icon),
                                      apps[i].name, i);
-            cols[i % COLS]->addWidget(tile, 0,
-                                      Qt::AlignTop | Qt::AlignHCenter);
+            cols[i % 4]->addWidget(tile, 0,
+                                   Qt::AlignTop | Qt::AlignHCenter);
         }
+
+        // Row 3: Power in column 0, Glyph in column 1.
+        cols[0]->addWidget(
+            makeTile(QString::fromUtf8(apps[8].icon), apps[8].name, 8),
+            0, Qt::AlignTop | Qt::AlignHCenter);
+        cols[1]->addWidget(
+            makeTile(QString::fromUtf8(apps[9].icon), apps[9].name, 9),
+            0, Qt::AlignTop | Qt::AlignHCenter);
 
         pl->addLayout(gridRow);
         pl->addStretch();
@@ -3001,14 +2963,8 @@ private:
     }
 
     QWidget *makeTile(const QString &icon, const QString &name, int index) {
-        const int iconSize =
-            VisualConfigManager::instance().cfg().launcherIconSize;
-        const int tileW = iconSize + 88;
-        const int tileH = iconSize + 58;
-        const int iconWidgetSize = iconSize + 12;
-
         QPushButton *tile = new QPushButton;
-        tile->setFixedSize(tileW, tileH);
+        tile->setFixedSize(140, 110);
         tile->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         tile->setCursor(Qt::PointingHandCursor);
         tile->setProperty("appName", name);
@@ -3021,10 +2977,10 @@ private:
         // Custom vector icon widget (replaces old emoji label)
         class TileIcon : public QWidget {
         public:
-            TileIcon(const QString &iconName, QWidget *parent = nullptr,
-                     int size = 64)
+            TileIcon(const QString &iconName, QWidget *parent = nullptr)
                 : QWidget(parent), m_name(iconName) {
-                setFixedSize(size, size);
+                // Reserve a stable 64px area; idle art is drawn at 52px.
+                setFixedSize(64, 64);
                 setAttribute(Qt::WA_TransparentForMouseEvents, true);
                 ThemeManager::instance().subscribe([this](const Theme &t) {
                     m_color = t.textPrimary;
@@ -3041,10 +2997,8 @@ private:
                 QPainter p(this);
                 p.setRenderHint(QPainter::Antialiasing);
                 QRectF artRect(rect());
-                if (!m_hovered) {
-                    int adj = int(width() * 0.09);
-                    artRect.adjust(adj, adj, -adj, -adj);
-                }
+                if (!m_hovered)
+                    artRect.adjust(6, 6, -6, -6);
                 if (m_name == "Glyph") {
                     drawGlyphMark(p, artRect);
                 } else {
@@ -3103,7 +3057,7 @@ private:
             bool m_hovered = false;
         };
 
-        TileIcon *ic = new TileIcon(name, nullptr, iconWidgetSize);
+        TileIcon *ic = new TileIcon(name);
 
         // Track hover on the button (the icon itself ignores mouse events).
         class TileHoverFilter final : public QObject {
@@ -9131,12 +9085,6 @@ private:
         addSection(sb, "Search",
                    QString::fromUtf8("\xF0\x9F\x94\x8D"),
                    QColor(80, 120, 200), [this]() { return makeSearchPage(); });
-
-        addSection(sb, "Launcher & Spotlight",
-
-                   QString::fromUtf8("\xF0\x9F\x94\x8D"),
-
-                   QColor(168, 50, 50), [this]() { return makeLauncherSettingsPage(); });
         addSection(sb, "Focus",
                    QString::fromUtf8("\xF0\x9F\x8C\x99"),
                    QColor(122, 106, 159), [this]() { return makeFocusPage(); });
@@ -12125,205 +12073,6 @@ private:
                 "color: %1; font-size: 11px; background: transparent;")
                 .arg(Sigil::textDim().name()));
             cv->addWidget(hint);
-
-            v->addWidget(c);
-        }
-
-        v->addStretch();
-        return page;
-    }
-
-        QWidget *makeLauncherSettingsPage() {
-        QWidget *page = new QWidget;
-        page->setAutoFillBackground(false);
-        QVBoxLayout *v = new QVBoxLayout(page);
-        v->setContentsMargins(28, 24, 28, 28);
-        v->setSpacing(18);
-
-        v->addWidget(Sigil::sectionTitle("Launcher & Spotlight"));
-
-        auto &vc = VisualConfigManager::instance().cfg();
-
-        // ---- Modules card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("MODULES"));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Launcher",
-                "Grid of every installed app (Super+Space)",
-                vc.launcherEnabled,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.launcherEnabled = on; });
-                }));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Spotlight search",
-                "Type to find apps, files, calculations",
-                vc.spotlightEnabled,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.spotlightEnabled = on; });
-                }));
-
-            v->addWidget(c);
-        }
-
-        // ---- Merge card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("BEHAVIOUR"));
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Add a search field to the Launcher",
-                "Type inside the Launcher to filter apps in place",
-                vc.launcherHasSearch,
-                [](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) {
-                            c.launcherHasSearch = on; });
-                }));
-
-            v->addWidget(c);
-        }
-
-        // ---- Spotlight size card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(18);
-            cv->addWidget(Sigil::groupLabel("SPOTLIGHT SIZE"));
-
-            auto addSlider = [&](const QString &title,
-                                 const QString &sub,
-                                 int value, int lo, int hi,
-                                 const QString &suffix,
-                                 std::function<void(int)> onChange) {
-                QWidget *row = new QWidget;
-                QVBoxLayout *rv = new QVBoxLayout(row);
-                rv->setContentsMargins(0, 0, 0, 0);
-                rv->setSpacing(6);
-
-                QHBoxLayout *top = new QHBoxLayout;
-                QLabel *t = new QLabel(title);
-                t->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textPrimary().name()));
-                QLabel *val = new QLabel(QString::number(value) + suffix);
-                val->setStyleSheet(QString(
-                    "color: %1; font-size: 12px; background: transparent;")
-                    .arg(Sigil::textSecondary().name()));
-                val->setMinimumWidth(70);
-                val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-                top->addWidget(t);
-                top->addStretch();
-                top->addWidget(val);
-                rv->addLayout(top);
-
-                QSlider *sl = new QSlider(Qt::Horizontal);
-                sl->setRange(lo, hi);
-                sl->setValue(value);
-                sl->setStyleSheet(
-                    "QSlider::groove:horizontal { height: 4px;"
-                    "  background: rgba(255,255,255,25);"
-                    "  border-radius: 2px; }"
-                    "QSlider::handle:horizontal {"
-                    "  background: #ffffff; width: 14px; height: 14px;"
-                    "  margin: -5px 0; border-radius: 7px; }"
-                    "QSlider::sub-page:horizontal {"
-                    "  background: rgb(168,50,50);"
-                    "  border-radius: 2px; }");
-                m_sliders.append(sl);
-                QObject::connect(sl, &QSlider::valueChanged,
-                                 [val, suffix, onChange](int x) {
-                    val->setText(QString::number(x) + suffix);
-                    onChange(x);
-                });
-                rv->addWidget(sl);
-                QLabel *subLbl = new QLabel(sub);
-                subLbl->setStyleSheet(QString(
-                    "color: %1; font-size: 11px; background: transparent;")
-                    .arg(Sigil::textDim().name()));
-                rv->addWidget(subLbl);
-                cv->addWidget(row);
-            };
-
-            addSlider("Width", "Smaller values give a compact bar",
-                      vc.spotlightBarWidth, 400, 1400, " px",
-                      [](int x) {
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.spotlightBarWidth = x; });
-            });
-
-            addSlider("Height", "Shorter values hide preview rows",
-                      vc.spotlightBarHeight, 60, 700, " px",
-                      [](int x) {
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.spotlightBarHeight = x; });
-            });
-
-            v->addWidget(c);
-        }
-
-        // ---- Launcher icon size card ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(18);
-            cv->addWidget(Sigil::groupLabel("LAUNCHER ICON SIZE"));
-
-            QWidget *row = new QWidget;
-            QVBoxLayout *rv = new QVBoxLayout(row);
-            rv->setContentsMargins(0, 0, 0, 0);
-            rv->setSpacing(6);
-
-            QHBoxLayout *top = new QHBoxLayout;
-            QLabel *t = new QLabel("Icon size");
-            t->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *val = new QLabel(QString("%1 px").arg(vc.launcherIconSize));
-            val->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(Sigil::textSecondary().name()));
-            val->setMinimumWidth(70);
-            val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            top->addWidget(t);
-            top->addStretch();
-            top->addWidget(val);
-            rv->addLayout(top);
-
-            QSlider *sl = new QSlider(Qt::Horizontal);
-            sl->setRange(36, 80);
-            sl->setValue(vc.launcherIconSize);
-            sl->setStyleSheet(
-                "QSlider::groove:horizontal { height: 4px;"
-                "  background: rgba(255,255,255,25);"
-                "  border-radius: 2px; }"
-                "QSlider::handle:horizontal {"
-                "  background: #ffffff; width: 14px; height: 14px;"
-                "  margin: -5px 0; border-radius: 7px; }"
-                "QSlider::sub-page:horizontal {"
-                "  background: rgb(168,50,50);"
-                "  border-radius: 2px; }");
-            m_sliders.append(sl);
-            QObject::connect(sl, &QSlider::valueChanged,
-                             [val](int x) {
-                val->setText(QString("%1 px").arg(x));
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.launcherIconSize = x; });
-            });
-            rv->addWidget(sl);
-            cv->addWidget(row);
 
             v->addWidget(c);
         }
@@ -17199,38 +16948,9 @@ public:
             update();
         });
         StyleManager::startPolling(this, [this]() { update(); });
-
-        // Live-apply size when visual.json changes
-        m_cfgWatch = new QTimer(this);
-        m_cfgWatch->setInterval(400);
-        QObject::connect(m_cfgWatch, &QTimer::timeout, this, [this]() {
-            QString path = []() {
-                QString dir = QStandardPaths::writableLocation(
-                                  QStandardPaths::ConfigLocation);
-                if (dir.isEmpty()) dir = QDir::homePath() + "/.config";
-                return dir + "/apokolips/visual.json";
-            }();
-            QFileInfo fi(path);
-            qint64 m = fi.exists()
-                ? fi.lastModified().toMSecsSinceEpoch() : 0;
-            if (m != m_cfgStamp) {
-                m_cfgStamp = m;
-                VisualConfigManager::instance().load();
-                if (isVisible()) {
-                    QResizeEvent ev(size(), size());
-                    QWidget::resizeEvent(&ev);
-                    update();
-                }
-            }
-        });
-        m_cfgWatch->start();
     }
 
-    void toggle() {
-        auto &cfg = VisualConfigManager::instance().cfg();
-        if (!cfg.spotlightEnabled) return;
-        isVisible() ? hideNow() : showNow();
-    }
+    void toggle() { isVisible() ? hideNow() : showNow(); }
 
     void showNow() {
         if (parentWidget()) setGeometry(parentWidget()->rect());
@@ -17487,9 +17207,8 @@ private:
 
     void resizeEvent(QResizeEvent *e) override {
         QWidget::resizeEvent(e);
-        auto &cfg = VisualConfigManager::instance().cfg();
-        int pw = qMin(cfg.spotlightBarWidth,  width() - 40);
-        int ph = qMin(cfg.spotlightBarHeight, height() - 60);
+        int pw = qMin(680, width() - 80);
+        int ph = qMin(480, height() - 120);
         m_panel->setGeometry((width() - pw) / 2,
                              (height() - ph) / 2,
                              pw, ph);
@@ -17499,8 +17218,6 @@ private:
     QLineEdit   *m_search  = nullptr;
     QListWidget *m_results = nullptr;
     QTimer      *m_scanTimer = nullptr;
-    QTimer      *m_cfgWatch  = nullptr;
-    qint64       m_cfgStamp  = 0;
     Theme        m_theme;
 };
 
@@ -19921,7 +19638,6 @@ static int runShell(int argc, char *argv[])
         { "\xE2\x8C\x98",       "Finder"    },
         { "\xF0\x9F\x9A\x80",  "Launchpad" },
         { "\xE2\x9C\xA6",       "Aperture"  },
-        { "\xE2\x9A\x99",       "myMach"    },
         { "\xE2\x96\xB6",       "BoomTube"  },
         { "\xF0\x9F\x93\x9D",  "Notes"     },
         { "\xE2\x9C\x89",       "Mail"      },
@@ -20066,7 +19782,6 @@ static int runShell(int argc, char *argv[])
                     *lastDockPos = pos;
                     applyDockPosition(pos);
                 }
-
             }
             if (root) {
                 // Apply widget visibility — Settings writes visual.json,
