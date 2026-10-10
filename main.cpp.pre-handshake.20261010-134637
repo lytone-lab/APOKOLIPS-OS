@@ -3501,27 +3501,6 @@ private:
 
 static QString discoverSwaySock();
 
-// ---- Genie family handshake ----
-static void genieHandshakeReady(const QString &sockName)
-{
-    if (sockName.isEmpty()) return;
-    QLocalSocket sock;
-    sock.connectToServer(sockName);
-    if (sock.waitForConnected(400)) {
-        sock.write("ready");
-        sock.waitForBytesWritten(200);
-        sock.disconnectFromServer();
-    }
-}
-
-static QString genieMakeHandshakeName()
-{
-    return QString("apokolips-genie-ready-%1-%2")
-        .arg(QCoreApplication::applicationPid())
-        .arg(QDateTime::currentMSecsSinceEpoch());
-}
-
-
 // Map a sway app_id to the dock label the user clicks to restore.
 static QString dockNameForAppId(const QString &appId)
 {
@@ -3734,14 +3713,8 @@ static bool restoreGenieForDock(const QString &dockName)
                     QFile::remove(savedPng);
                     qDebug() << "[genie-reverse] real window shown:" << conId;
                 } else {
-                    // Stale conId — window was closed long ago.
-                    // Drop the entry + pixmap so the next click falls
-                    // through to launching a fresh instance.
-                    removeGenieWindow(conId);
-                    QFile::remove(savedPng);
-                    qWarning() << "[genie-reverse] stale state dropped;"
-                               << "conId=" << conId
-                               << "stdout=" << output
+                    qWarning() << "[genie-reverse] scratchpad show failed;"
+                               << "state retained; stdout=" << output
                                << "stderr=" << error;
                 }
 
@@ -19618,7 +19591,6 @@ class SuckOverlay : public QWidget {
 public:
     SuckOverlay(const QString &pngPath, QRect startRect,
                 QPoint dockGlobal, int durationOverrideMs = 0,
-                const QString &readySock = QString(),
                 QWidget *parent = nullptr)
         : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
     {
@@ -19657,11 +19629,8 @@ public:
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout,
                          this, &SuckOverlay::tick);
-        QTimer::singleShot(30, this, [this, readySock]() {
+        QTimer::singleShot(30, this, [this]() {
             if (m_timer) m_timer->start();
-            QTimer::singleShot(60, this, [readySock]() {
-                genieHandshakeReady(readySock);
-            });
         });
     }
 
@@ -19746,7 +19715,6 @@ class ScaleOverlay : public QWidget {
 public:
     ScaleOverlay(const QString &pngPath, QRect startRect,
                  QPoint dockGlobal, int durationOverrideMs = 0,
-                 const QString &readySock = QString(),
                  QWidget *parent = nullptr)
         : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
     {
@@ -19785,11 +19753,8 @@ public:
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout,
                          this, &ScaleOverlay::tick);
-        QTimer::singleShot(30, this, [this, readySock]() {
+        QTimer::singleShot(30, this, [this]() {
             if (m_timer) m_timer->start();
-            QTimer::singleShot(60, this, [readySock]() {
-                genieHandshakeReady(readySock);
-            });
         });
     }
 
@@ -19851,123 +19816,11 @@ private:
     int m_frames = 30;
 };
 
-class SuckOverlay : public QWidget {
-public:
-    SuckOverlay(const QString &pngPath, QRect startRect,
-                QPoint dockGlobal, int durationOverrideMs = 0,
-                QWidget *parent = nullptr)
-        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
-    {
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        setAttribute(Qt::WA_DeleteOnClose, true);
-
-        if (!m_pix.load(pngPath) || startRect.isEmpty()) {
-            qWarning() << "[suck] load failed:" << pngPath;
-            QTimer::singleShot(0, qApp, &QApplication::quit);
-            return;
-        }
-        QFile::remove(pngPath);
-
-        QScreen *screen = QApplication::screenAt(startRect.center());
-        if (!screen) screen = QApplication::primaryScreen();
-        const QRect screenRect =
-            screen ? screen->geometry() : QRect(0, 0, 1, 1);
-
-        setGeometry(screenRect);
-        m_origin = screenRect.topLeft();
-        m_start  = startRect.translated(-m_origin);
-        m_dock   = dockGlobal - m_origin;
-
-        const auto &cfg = VisualConfigManager::instance().cfg();
-        const int requestedMs = durationOverrideMs > 0
-            ? durationOverrideMs : cfg.genieDurationMs;
-        const int durationMs = qBound(128, requestedMs, 5000);
-        m_frames = qBound(8, (durationMs + 15) / 16, 313);
-
-        qDebug() << "[suck] durationMs=" << durationMs
-                 << "frames=" << m_frames;
-
-        m_timer = new QTimer(this);
-        m_timer->setInterval(16);
-        QObject::connect(m_timer, &QTimer::timeout,
-                         this, &SuckOverlay::tick);
-        QTimer::singleShot(30, this, [this]() {
-            if (m_timer) m_timer->start();
-        });
-    }
-
-protected:
-    void paintEvent(QPaintEvent *) override
-    {
-        if (m_pix.isNull() || m_start.isEmpty()
-            || width() <= 0 || height() <= 0) return;
-
-        QPainter p(this);
-        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-
-        const qreal raw = qBound<qreal>(
-            0.0, qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
-        const qreal e = raw * raw * (3.0 - 2.0 * raw);
-
-        const qreal fadeStart = 0.94;
-        const qreal opacity = e <= fadeStart
-            ? 1.0 : (1.0 - e) / (1.0 - fadeStart);
-        p.setOpacity(qBound<qreal>(0.0, opacity, 1.0));
-
-        constexpr int N = 48;
-        const qreal stripH = qreal(m_pix.height()) / N;
-        const qreal startTop    = m_start.top();
-        const qreal startCenterX= m_start.left() + m_start.width() * 0.5;
-        const qreal startW      = m_start.width();
-        const qreal startH      = m_start.height();
-        const qreal dockX       = m_dock.x();
-        const qreal dockY       = m_dock.y();
-
-        for (int i = 0; i < N; ++i) {
-            // s: 0 = top (fixed), 1 = bottom (peels to dock)
-            const qreal s  = qreal(i) / qreal(N - 1);
-            const qreal sp = s * e;
-
-            const qreal yBase = startTop + s * startH;
-            const qreal y     = yBase + (dockY - yBase) * sp;
-            const qreal cx    = startCenterX
-                              + (dockX - startCenterX) * sp;
-            const qreal w     = startW * (1.0 - sp * 0.98);
-
-            QRectF dst(cx - w * 0.5, y - stripH * 0.5,
-                       w, stripH * 1.05);
-            QRectF src(0.0, i * stripH, m_pix.width(), stripH);
-            p.drawPixmap(dst, m_pix, src);
-        }
-    }
-
-private:
-    void tick()
-    {
-        if (m_frame < m_frames - 1) { ++m_frame; update(); return; }
-        m_timer->stop();
-        update();
-        QTimer::singleShot(80, qApp, &QApplication::quit);
-    }
-
-    QPixmap m_pix;
-    QRect   m_start;
-    QPoint  m_dock;
-    QPoint  m_origin;
-    QTimer *m_timer = nullptr;
-    int     m_frame = 0;
-    int     m_frames = 30;
-};
-
 class GenieOverlay : public QWidget {
 public:
     GenieOverlay(const QString &pngPath, QRect startRect,
                  QPoint dockGlobal, bool reverse = false,
-                 int durationOverrideMs = 0,
-                 const QString &readySock = QString(),
-                 QWidget *parent = nullptr)
+                 int durationOverrideMs = 0, QWidget *parent = nullptr)
         : QWidget(parent, Qt::Window | Qt::FramelessWindowHint),
           m_reverse(reverse)
     {
@@ -20012,11 +19865,8 @@ public:
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout,
                          this, &GenieOverlay::tick);
-        QTimer::singleShot(30, this, [this, readySock]() {
+        QTimer::singleShot(30, this, [this]() {
             if (m_timer) m_timer->start();
-            QTimer::singleShot(60, this, [readySock]() {
-                genieHandshakeReady(readySock);
-            });
         });
     }
 
@@ -20456,11 +20306,6 @@ static int runShell(int argc, char *argv[])
                                                   : "--genie";
                     qDebug() << "[minimize] style=" << styleFlag;
 
-                    const QString readyName = genieMakeHandshakeName();
-                    QLocalServer::removeServer(readyName);
-                    QLocalServer *readyServer = new QLocalServer(root);
-                    readyServer->listen(readyName);
-
                     const QStringList overlayArgs{
                         styleFlag, png,
                         QString::number(target.rect.x()),
@@ -20468,8 +20313,7 @@ static int runShell(int argc, char *argv[])
                         QString::number(target.rect.width()),
                         QString::number(target.rect.height()),
                         QString::number(dockGlobal.x()),
-                        QString::number(dockGlobal.y()),
-                        "--ready-sock", readyName
+                        QString::number(dockGlobal.y())
                     };
 
                     qint64 overlayPid = 0;
@@ -20482,13 +20326,10 @@ static int runShell(int argc, char *argv[])
                     if (!overlayStarted) {
                         QFile::remove(png);
                         QFile::remove(retainedPixmap);
-                        readyServer->close();
-                        readyServer->deleteLater();
                         return;
                     }
 
-                    auto performScratchpadMove =
-                        [root, target, dockName, dockGlobal, retainedPixmap]() {
+                    QTimer::singleShot(500, root, [root, target, dockName, dockGlobal, retainedPixmap]() {
                         QProcess *move = new QProcess(root);
                         QProcessEnvironment env =
                             QProcessEnvironment::systemEnvironment();
@@ -20575,34 +20416,6 @@ static int runShell(int argc, char *argv[])
                         move->start("swaymsg",
                             { QString("[con_id=%1]").arg(target.conId),
                               "move", "scratchpad" });
-                    };
-
-                    QObject::connect(readyServer, &QLocalServer::newConnection,
-                                     [readyServer, performScratchpadMove]() {
-                        QLocalSocket *conn =
-                            readyServer->nextPendingConnection();
-                        if (!conn) return;
-                        QObject::connect(conn, &QLocalSocket::readyRead,
-                                         [conn, performScratchpadMove,
-                                          readyServer]() {
-                            QByteArray data = conn->readAll();
-                            if (data.contains("ready")) {
-                                qDebug() << "[genie] handshake ready";
-                                performScratchpadMove();
-                                readyServer->close();
-                                readyServer->deleteLater();
-                            }
-                            conn->disconnectFromServer();
-                        });
-                    });
-
-                    QTimer::singleShot(1500, root,
-                        [performScratchpadMove, readyServer]() {
-                        if (!readyServer->isListening()) return;
-                        qDebug() << "[genie] handshake timeout — moving";
-                        performScratchpadMove();
-                        readyServer->close();
-                        readyServer->deleteLater();
                     });
                 });
                 QString grimArg = QString("%1,%2 %3x%4")
@@ -21772,7 +21585,6 @@ int main(int argc, char *argv[])
         }
 
         int durationMs = 0;
-        QString readySock;
         for (int i = 9; i < argc; ++i) {
             const QString arg = QString::fromLocal8Bit(argv[i]);
             if (arg == "--ms" && i + 1 < argc) {
@@ -21784,8 +21596,6 @@ int main(int argc, char *argv[])
                     return 2;
                 }
                 durationMs = qBound(128, value, 5000);
-            } else if (arg == "--ready-sock" && i + 1 < argc) {
-                readySock = QString::fromLocal8Bit(argv[++i]);
             } else {
                 qWarning() << "[suck] unknown or incomplete option:" << arg;
                 return 2;
@@ -21798,8 +21608,7 @@ int main(int argc, char *argv[])
         app.setDesktopFileName("apokolips-genie");
 
         auto *suck = new SuckOverlay(
-            imagePath, QRect(x, y, w, h), QPoint(dx, dy),
-            durationMs, readySock);
+            imagePath, QRect(x, y, w, h), QPoint(dx, dy), durationMs);
         suck->show();
         return app.exec();
     }
@@ -21826,7 +21635,6 @@ int main(int argc, char *argv[])
         }
 
         int durationMs = 0;
-        QString readySock;
         for (int i = 9; i < argc; ++i) {
             const QString arg = QString::fromLocal8Bit(argv[i]);
             if (arg == "--ms" && i + 1 < argc) {
@@ -21838,8 +21646,6 @@ int main(int argc, char *argv[])
                     return 2;
                 }
                 durationMs = qBound(128, value, 5000);
-            } else if (arg == "--ready-sock" && i + 1 < argc) {
-                readySock = QString::fromLocal8Bit(argv[++i]);
             } else {
                 qWarning() << "[scale] unknown or incomplete option:" << arg;
                 return 2;
@@ -21852,42 +21658,8 @@ int main(int argc, char *argv[])
         app.setDesktopFileName("apokolips-genie");
 
         auto *scale = new ScaleOverlay(
-            imagePath, QRect(x, y, w, h), QPoint(dx, dy),
-            durationMs, readySock);
-        scale->show();
-        return app.exec();
-    }
-
-    if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--suck") {
-        const QString imagePath = QString::fromLocal8Bit(argv[2]);
-        bool ok[6] = {false,false,false,false,false,false};
-        const int x  = QString::fromLocal8Bit(argv[3]).toInt(&ok[0]);
-        const int y  = QString::fromLocal8Bit(argv[4]).toInt(&ok[1]);
-        const int w  = QString::fromLocal8Bit(argv[5]).toInt(&ok[2]);
-        const int h  = QString::fromLocal8Bit(argv[6]).toInt(&ok[3]);
-        const int dx = QString::fromLocal8Bit(argv[7]).toInt(&ok[4]);
-        const int dy = QString::fromLocal8Bit(argv[8]).toInt(&ok[5]);
-        for (bool v : ok) if (!v) return 2;
-        if (w <= 0 || h <= 0) return 2;
-
-        int durationMs = 0;
-        for (int i = 9; i < argc; ++i) {
-            const QString arg = QString::fromLocal8Bit(argv[i]);
-            if (arg == "--ms" && i + 1 < argc) {
-                bool valid = false;
-                const int value =
-                    QString::fromLocal8Bit(argv[++i]).toInt(&valid);
-                if (!valid) return 2;
-                durationMs = qBound(128, value, 5000);
-            } else return 2;
-        }
-
-        QApplication app(argc, argv);
-        app.setDesktopFileName("apokolips-genie");
-
-        auto *s = new SuckOverlay(
             imagePath, QRect(x, y, w, h), QPoint(dx, dy), durationMs);
-        s->show();
+        scale->show();
         return app.exec();
     }
 
@@ -21904,7 +21676,6 @@ int main(int argc, char *argv[])
 
         bool reverse = false;
         int durationMs = 0;
-        QString readySock;
 
         // Parse BEFORE constructing QApplication. Qt consumes
         // --reverse as one of its own arguments, so any parser
@@ -21920,9 +21691,6 @@ int main(int argc, char *argv[])
                     QString::fromLocal8Bit(argv[++i]).toInt(&ok);
                 if (!ok) return 2;
                 durationMs = qBound(128, value, 5000);
-            } else if (arg == "--ready-sock") {
-                if (i + 1 >= argc) return 2;
-                readySock = QString::fromLocal8Bit(argv[++i]);
             }
         }
 
@@ -21930,7 +21698,7 @@ int main(int argc, char *argv[])
         app.setDesktopFileName("apokolips-genie");
 
         auto *g = new GenieOverlay(
-            imagePath, start, dock, reverse, durationMs, readySock);
+            imagePath, start, dock, reverse, durationMs);
         g->show();
         return app.exec();
     }
