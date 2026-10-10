@@ -146,15 +146,15 @@ Rollback:
 
 **Known issues / next items:**
 
-- Animation start latency: ~200 ms warm. Optional fix: resident
-  animator daemon. Not urgent.
-- Keyboard bindings experiment: reverted. Needs redesign.
-- Super+Shift+R sway bind doesn't fire (only Ctrl+Shift+R in shell
-  works).
-- Rounded-corner fringe: fixed for Settings; patched for BoomTube /
-  myMach / Node / Aperture. Needs visual verification.
-- Genie option A rewrite: 4-6 bands instead of 220 strips.
+- **Strip seams visible** in genie animation. Interim fix: draw each
+  strip 1 px wider (overlap). Real fix: mesh warp (queued as Genie
+  option A).
+- **Super+Shift+R sway bind** doesn't fire. Config line needs fixing.
+- **Keyboard bindings** — Settings page for rebinding shortcuts.
+  Reverted experiment needs a redesign.
+- Genie option A rewrite: 4-6 bands, or full mesh for zero seams.
 - Terminal (foot) decorations: no title bar.
+- Customisation layer — Windhawk/Rainmeter-class knobs in Settings.
 
 ---
 
