@@ -79,6 +79,26 @@
 #include <cmath>
 
 // =========================================================
+// Animator daemon — forward declarations
+// The struct + entry points are used by the shell's minimize
+// path and startup code, both of which appear earlier in the
+// file than the daemon's function bodies.
+// =========================================================
+struct AnimRequest {
+    QString style;
+    QString png;
+    QRect   rect;
+    QPoint  dock;
+    bool    reverse = false;
+    int     durationMs = 0;
+    QString readySock;
+};
+
+static bool animatorDaemonRunning();
+static bool animatorRequest(const AnimRequest &req);
+static int  runAnimatorDaemon(int argc, char **argv);
+
+// =========================================================
 // Theme — colors that chrome widgets adapt to
 // =========================================================
 struct Theme {
@@ -3576,13 +3596,16 @@ public:
                         readyServer->deleteLater();
                         target->hide();
                     } else {
+                        qInfo() << "[hs] shell: connecting newConnection slot";
                         QObject::connect(readyServer, &QLocalServer::newConnection,
                                          [readyServer, target]() {
+                            qInfo() << "[hs] shell: newConnection fired";
                             QLocalSocket *conn = readyServer->nextPendingConnection();
-                            if (!conn) return;
+                            if (!conn) { qInfo() << "[hs] shell: no conn"; return; }
                             QObject::connect(conn, &QLocalSocket::readyRead,
                                              [conn, readyServer, target]() {
                                 QByteArray data = conn->readAll();
+                                qInfo() << "[hs] shell: readyRead got" << data;
                                 if (data.contains("ready") && target)
                                     target->hide();
                                 conn->disconnectFromServer();
@@ -3770,13 +3793,17 @@ static void shellCloseViaGenie(QWidget *w)
 // ---- Genie family handshake ----
 static void genieHandshakeReady(const QString &sockName)
 {
-    if (sockName.isEmpty()) return;
+    qInfo() << "[hs] send: entered, name=" << sockName;
+    if (sockName.isEmpty()) { qInfo() << "[hs] send: name empty, abort"; return; }
     QLocalSocket sock;
     sock.connectToServer(sockName);
     if (sock.waitForConnected(400)) {
         sock.write("ready");
         sock.waitForBytesWritten(200);
         sock.disconnectFromServer();
+        qInfo() << "[hs] send: OK";
+    } else {
+        qInfo() << "[hs] send: connect FAILED" << sock.errorString();
     }
 }
 
@@ -20111,6 +20138,8 @@ protected:
 
         if (!m_readyPinged && !m_readySock.isEmpty()) {
             m_readyPinged = true;
+            qInfo() << "[hs] overlay: first paint, will ping in 25ms, sock="
+                    << m_readySock;
             QTimer::singleShot(25, this, [this]() {
                 genieHandshakeReady(m_readySock);
             });
@@ -20174,7 +20203,10 @@ private:
 
         m_timer->stop();
         update();
-        QTimer::singleShot(80, qApp, &QApplication::quit);
+        // Close the widget, not the app — the daemon must survive
+        // between animations. quitOnLastWindowClosed still exits
+        // the standalone-spawned overlay process automatically.
+        QTimer::singleShot(80, this, [this]() { close(); });
     }
 
     QPixmap m_pix;
@@ -20250,6 +20282,8 @@ protected:
 
         if (!m_readyPinged && !m_readySock.isEmpty()) {
             m_readyPinged = true;
+            qInfo() << "[hs] overlay: first paint, will ping in 25ms, sock="
+                    << m_readySock;
             QTimer::singleShot(25, this, [this]() {
                 genieHandshakeReady(m_readySock);
             });
@@ -20295,7 +20329,10 @@ private:
 
         m_timer->stop();
         update();
-        QTimer::singleShot(80, qApp, &QApplication::quit);
+        // Close the widget, not the app — the daemon must survive
+        // between animations. quitOnLastWindowClosed still exits
+        // the standalone-spawned overlay process automatically.
+        QTimer::singleShot(80, this, [this]() { close(); });
     }
 
     QPixmap m_pix;
@@ -20374,6 +20411,15 @@ protected:
     {
         if (m_pix.isNull() || m_start.isEmpty()
             || width() <= 0 || height() <= 0) return;
+
+        if (!m_readyPinged && !m_readySock.isEmpty()) {
+            m_readyPinged = true;
+            qInfo() << "[hs] overlay: first paint, will ping in 25ms, sock="
+                    << m_readySock;
+            QTimer::singleShot(25, this, [this]() {
+                genieHandshakeReady(m_readySock);
+            });
+        }
 
         QPainter p(this);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
@@ -20470,7 +20516,10 @@ private:
         if (m_frame < m_frames - 1) { ++m_frame; update(); return; }
         m_timer->stop();
         update();
-        QTimer::singleShot(80, qApp, &QApplication::quit);
+        // Close the widget, not the app — the daemon must survive
+        // between animations. quitOnLastWindowClosed still exits
+        // the standalone-spawned overlay process automatically.
+        QTimer::singleShot(80, this, [this]() { close(); });
     }
 
     QPixmap m_pix;
@@ -20852,11 +20901,34 @@ static int runShell(int argc, char *argv[])
                     };
 
                     qint64 overlayPid = 0;
-                    const bool overlayStarted = QProcess::startDetached(
-                        QCoreApplication::applicationFilePath(),
-                        overlayArgs, QString(), &overlayPid);
-                    qDebug() << "[genie] overlay started first="
-                             << overlayStarted << "pid=" << overlayPid;
+                    bool overlayStarted = false;
+
+                    qInfo() << "[hs] shell: about to request overlay, readyName="
+                            << readyName;
+                    // Fast path: resident animator daemon.
+                    {
+                        AnimRequest req;
+                        req.style      = styleFlag.mid(2);  // "--x" -> "x"
+                        req.png        = png;
+                        req.rect       = target.rect;
+                        req.dock       = dockGlobal;
+                        req.reverse    = false;
+                        req.durationMs = 0;   // config default
+                        req.readySock  = readyName;
+                        if (animatorRequest(req)) {
+                            overlayStarted = true;
+                            qDebug() << "[genie] sent to daemon";
+                        }
+                    }
+
+                    // Fallback: fresh process (daemon not running yet).
+                    if (!overlayStarted) {
+                        overlayStarted = QProcess::startDetached(
+                            QCoreApplication::applicationFilePath(),
+                            overlayArgs, QString(), &overlayPid);
+                        qDebug() << "[genie] spawned fresh process pid="
+                                 << overlayPid;
+                    }
 
                     if (!overlayStarted) {
                         QFile::remove(png);
@@ -21532,14 +21604,34 @@ static int runShell(int argc, char *argv[])
         qInfo() << "[genie] state wiped on startup";
     }
 
+    // Start the resident animator daemon once. It lives independently
+    // of the shell — restarts of the shell reattach to the same daemon.
+    if (!animatorDaemonRunning()) {
+        qint64 animPid = 0;
+        const bool started = QProcess::startDetached(
+            QCoreApplication::applicationFilePath(),
+            { QStringLiteral("--animator-daemon") },
+            QString(), &animPid);
+        qInfo() << "[animator] spawned daemon pid=" << animPid
+                << "ok=" << started;
+    } else {
+        qInfo() << "[animator] daemon already running";
+    }
+
     // Every 5 s, drop state entries whose conIds sway no longer knows
     // about. Fixes: red-light close leaves a phantom entry, next dock
     // click wastes an animation on a dead conId.
     {
         QTimer *pruneTimer = new QTimer(root);
         pruneTimer->setInterval(5000);
-        QObject::connect(pruneTimer, &QTimer::timeout,
-                         []() { pruneStaleGenieState(); });
+        QObject::connect(pruneTimer, &QTimer::timeout, []() {
+            pruneStaleGenieState();
+            if (!animatorDaemonRunning()) {
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { QStringLiteral("--animator-daemon") });
+            }
+        });
         pruneTimer->start();
     }
 
@@ -22197,8 +22289,130 @@ static int runShell(int argc, char *argv[])
     return app.exec();
 }
 
+
+// =========================================================
+// Animator daemon — resident process that plays overlay
+// animations on request. Eliminates the ~200 ms per-spawn
+// Qt-app boot cost: first frame lands in ~10-20 ms.
+// =========================================================
+static QString animatorSocketName()
+{
+    return QStringLiteral("apokolips-animator");
+}
+
+static bool animatorDaemonRunning()
+{
+    QLocalSocket sock;
+    sock.connectToServer(animatorSocketName());
+    return sock.waitForConnected(80);
+}
+
+// Returns true if the daemon accepted the request. Returns false if
+// the daemon isn't reachable — caller should fall back to spawning.
+static bool animatorRequest(const AnimRequest &req)
+{
+    QLocalSocket sock;
+    sock.connectToServer(animatorSocketName());
+    if (!sock.waitForConnected(80)) return false;
+
+    QJsonObject o;
+    o["style"]   = req.style;
+    o["png"]     = req.png;
+    o["x"]       = req.rect.x();
+    o["y"]       = req.rect.y();
+    o["w"]       = req.rect.width();
+    o["h"]       = req.rect.height();
+    o["dx"]      = req.dock.x();
+    o["dy"]      = req.dock.y();
+    o["reverse"] = req.reverse;
+    o["ms"]      = req.durationMs;
+    o["ready"]   = req.readySock;
+
+    const QByteArray payload =
+        QJsonDocument(o).toJson(QJsonDocument::Compact);
+    sock.write(payload);
+    if (!sock.waitForBytesWritten(80)) return false;
+    sock.disconnectFromServer();
+    return true;
+}
+
+// Runs inside the daemon process. Never returns until the process dies.
+static int runAnimatorDaemon(int argc, char **argv)
+{
+    QApplication app(argc, argv);
+    app.setApplicationName("Apokolips Animator");
+    app.setDesktopFileName("apokolips-animator");
+
+    // Closing the last overlay widget must NOT quit the daemon —
+    // the daemon lives between animations.
+    app.setQuitOnLastWindowClosed(false);
+
+    QLocalServer::removeServer(animatorSocketName());
+    QLocalServer server;
+    if (!server.listen(animatorSocketName())) {
+        qWarning() << "[animator] listen failed:" << server.errorString();
+        return 1;
+    }
+    qInfo() << "[animator] listening on" << animatorSocketName();
+
+    QObject::connect(&server, &QLocalServer::newConnection, [&server]() {
+        while (QLocalSocket *conn = server.nextPendingConnection()) {
+            QObject::connect(conn, &QLocalSocket::readyRead,
+                             [conn]() {
+                const QByteArray data = conn->readAll();
+                conn->disconnectFromServer();
+                if (data.isEmpty()) return;
+
+                QJsonDocument doc = QJsonDocument::fromJson(data);
+                if (!doc.isObject()) return;
+                const QJsonObject o = doc.object();
+
+                const QString style = o.value("style").toString("genie");
+                const QString png   = o.value("png").toString();
+                const QRect rect(o.value("x").toInt(), o.value("y").toInt(),
+                                 o.value("w").toInt(), o.value("h").toInt());
+                const QPoint dock(o.value("dx").toInt(),
+                                  o.value("dy").toInt());
+                const bool reverse = o.value("reverse").toBool(false);
+                const int  ms      = o.value("ms").toInt(0);
+                const QString ready = o.value("ready").toString();
+
+                if (png.isEmpty() || !QFile::exists(png)) {
+                    qWarning() << "[animator] missing png:" << png;
+                    return;
+                }
+
+                QWidget *w = nullptr;
+                if (style == "scale")
+                    w = new ScaleOverlay(png, rect, dock, ms, ready,
+                                         reverse);
+                else if (style == "suck")
+                    w = new SuckOverlay(png, rect, dock, ms, ready,
+                                        reverse);
+                else
+                    w = new GenieOverlay(png, rect, dock, reverse, ms,
+                                         ready);
+
+                w->setAttribute(Qt::WA_DeleteOnClose, true);
+                w->show();
+                qInfo() << "[animator] playing" << style
+                        << "reverse=" << reverse << "ms=" << ms;
+            });
+        }
+    });
+
+    return app.exec();
+}
+
 int main(int argc, char *argv[])
 {
+    // Daemon mode must be checked before any other dispatch — it's the
+    // only mode that never exits during normal operation.
+    if (argc >= 2 && QString::fromLocal8Bit(argv[1])
+                     == QLatin1String("--animator-daemon")) {
+        return runAnimatorDaemon(argc, argv);
+    }
+
     if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--suck") {
         const QString imagePath = QString::fromLocal8Bit(argv[2]);
         bool ok[6] = {false, false, false, false, false, false};
