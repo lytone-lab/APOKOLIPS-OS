@@ -414,6 +414,14 @@ Golden rule for AI features (future):
   [ ] Strip count / duration / stagger / curve defaults — revisit
       once user sees all three side by side.
 
+  [ ] Dock hover interference — hovered dock icons visually clash
+      with the dock's inner boundary in the Skeuomorphism UI style.
+      Outer icon ring/glow appears to cut into or overlap the dock
+      panel edge. Check DockIcon::paintEvent + StyleRenderer::
+      drawPanel for Skeuomorphism — likely needs an inner padding
+      or clip adjustment only when style == Skeuomorphism.
+      Not visible in Glass / Neumorphism / Claymorphism.
+
 ------------------------------------------------------------------------
 WIRING BACKLOG (saved but not yet acting)
 ------------------------------------------------------------------------

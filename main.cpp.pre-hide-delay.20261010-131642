@@ -19816,116 +19816,6 @@ private:
     int m_frames = 30;
 };
 
-class SuckOverlay : public QWidget {
-public:
-    SuckOverlay(const QString &pngPath, QRect startRect,
-                QPoint dockGlobal, int durationOverrideMs = 0,
-                QWidget *parent = nullptr)
-        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
-    {
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        setAttribute(Qt::WA_DeleteOnClose, true);
-
-        if (!m_pix.load(pngPath) || startRect.isEmpty()) {
-            qWarning() << "[suck] load failed:" << pngPath;
-            QTimer::singleShot(0, qApp, &QApplication::quit);
-            return;
-        }
-        QFile::remove(pngPath);
-
-        QScreen *screen = QApplication::screenAt(startRect.center());
-        if (!screen) screen = QApplication::primaryScreen();
-        const QRect screenRect =
-            screen ? screen->geometry() : QRect(0, 0, 1, 1);
-
-        setGeometry(screenRect);
-        m_origin = screenRect.topLeft();
-        m_start  = startRect.translated(-m_origin);
-        m_dock   = dockGlobal - m_origin;
-
-        const auto &cfg = VisualConfigManager::instance().cfg();
-        const int requestedMs = durationOverrideMs > 0
-            ? durationOverrideMs : cfg.genieDurationMs;
-        const int durationMs = qBound(128, requestedMs, 5000);
-        m_frames = qBound(8, (durationMs + 15) / 16, 313);
-
-        qDebug() << "[suck] durationMs=" << durationMs
-                 << "frames=" << m_frames;
-
-        m_timer = new QTimer(this);
-        m_timer->setInterval(16);
-        QObject::connect(m_timer, &QTimer::timeout,
-                         this, &SuckOverlay::tick);
-        QTimer::singleShot(30, this, [this]() {
-            if (m_timer) m_timer->start();
-        });
-    }
-
-protected:
-    void paintEvent(QPaintEvent *) override
-    {
-        if (m_pix.isNull() || m_start.isEmpty()
-            || width() <= 0 || height() <= 0) return;
-
-        QPainter p(this);
-        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-
-        const qreal raw = qBound<qreal>(
-            0.0, qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
-        const qreal e = raw * raw * (3.0 - 2.0 * raw);
-
-        const qreal fadeStart = 0.94;
-        const qreal opacity = e <= fadeStart
-            ? 1.0 : (1.0 - e) / (1.0 - fadeStart);
-        p.setOpacity(qBound<qreal>(0.0, opacity, 1.0));
-
-        constexpr int N = 48;
-        const qreal stripH = qreal(m_pix.height()) / N;
-        const qreal startTop    = m_start.top();
-        const qreal startCenterX= m_start.left() + m_start.width() * 0.5;
-        const qreal startW      = m_start.width();
-        const qreal startH      = m_start.height();
-        const qreal dockX       = m_dock.x();
-        const qreal dockY       = m_dock.y();
-
-        for (int i = 0; i < N; ++i) {
-            // s: 0 = top (fixed), 1 = bottom (peels to dock)
-            const qreal s  = qreal(i) / qreal(N - 1);
-            const qreal sp = s * e;
-
-            const qreal yBase = startTop + s * startH;
-            const qreal y     = yBase + (dockY - yBase) * sp;
-            const qreal cx    = startCenterX
-                              + (dockX - startCenterX) * sp;
-            const qreal w     = startW * (1.0 - sp * 0.98);
-
-            QRectF dst(cx - w * 0.5, y - stripH * 0.5,
-                       w, stripH * 1.05);
-            QRectF src(0.0, i * stripH, m_pix.width(), stripH);
-            p.drawPixmap(dst, m_pix, src);
-        }
-    }
-
-private:
-    void tick()
-    {
-        if (m_frame < m_frames - 1) { ++m_frame; update(); return; }
-        m_timer->stop();
-        update();
-        QTimer::singleShot(80, qApp, &QApplication::quit);
-    }
-
-    QPixmap m_pix;
-    QRect   m_start;
-    QPoint  m_dock;
-    QPoint  m_origin;
-    QTimer *m_timer = nullptr;
-    int     m_frame = 0;
-    int     m_frames = 30;
-};
-
 class GenieOverlay : public QWidget {
 public:
     GenieOverlay(const QString &pngPath, QRect startRect,
@@ -20439,7 +20329,7 @@ static int runShell(int argc, char *argv[])
                         return;
                     }
 
-                    QTimer::singleShot(500, root, [root, target, dockName, dockGlobal, retainedPixmap]() {
+                    QTimer::singleShot(150, root, [root, target, dockName, dockGlobal, retainedPixmap]() {
                         QProcess *move = new QProcess(root);
                         QProcessEnvironment env =
                             QProcessEnvironment::systemEnvironment();
@@ -21770,39 +21660,6 @@ int main(int argc, char *argv[])
         auto *scale = new ScaleOverlay(
             imagePath, QRect(x, y, w, h), QPoint(dx, dy), durationMs);
         scale->show();
-        return app.exec();
-    }
-
-    if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--suck") {
-        const QString imagePath = QString::fromLocal8Bit(argv[2]);
-        bool ok[6] = {false,false,false,false,false,false};
-        const int x  = QString::fromLocal8Bit(argv[3]).toInt(&ok[0]);
-        const int y  = QString::fromLocal8Bit(argv[4]).toInt(&ok[1]);
-        const int w  = QString::fromLocal8Bit(argv[5]).toInt(&ok[2]);
-        const int h  = QString::fromLocal8Bit(argv[6]).toInt(&ok[3]);
-        const int dx = QString::fromLocal8Bit(argv[7]).toInt(&ok[4]);
-        const int dy = QString::fromLocal8Bit(argv[8]).toInt(&ok[5]);
-        for (bool v : ok) if (!v) return 2;
-        if (w <= 0 || h <= 0) return 2;
-
-        int durationMs = 0;
-        for (int i = 9; i < argc; ++i) {
-            const QString arg = QString::fromLocal8Bit(argv[i]);
-            if (arg == "--ms" && i + 1 < argc) {
-                bool valid = false;
-                const int value =
-                    QString::fromLocal8Bit(argv[++i]).toInt(&valid);
-                if (!valid) return 2;
-                durationMs = qBound(128, value, 5000);
-            } else return 2;
-        }
-
-        QApplication app(argc, argv);
-        app.setDesktopFileName("apokolips-genie");
-
-        auto *s = new SuckOverlay(
-            imagePath, QRect(x, y, w, h), QPoint(dx, dy), durationMs);
-        s->show();
         return app.exec();
     }
 
