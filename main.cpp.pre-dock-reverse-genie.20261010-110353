@@ -71,7 +71,6 @@
 #include <QStorageInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QSaveFile>
 #include <QStandardPaths>
 #include <QFileSystemWatcher>
 #include <functional>
@@ -3489,238 +3488,6 @@ private:
 // DockIcon + Dock
 // =========================================================
 
-
-static QString discoverSwaySock();
-
-// Map a sway app_id to the dock label the user clicks to restore.
-static QString dockNameForAppId(const QString &appId)
-{
-    if (appId == "apokolips-files")       return "Finder";
-    if (appId == "apokolips-shell")       return "Settings"; // ambiguous
-    if (appId == "apokolips-aperture")    return "Aperture";
-    if (appId == "apokolips-boombube")    return "BoomTube";
-    if (appId == "apokolips-node")        return "Node";
-    if (appId == "apokolips-mymach")      return "myMach";
-    if (appId == "apokolips-notes")       return "Notes";
-    if (appId == "apokolips-calculator")  return "Calculator";
-    if (appId == "thunderbird")           return "Mail";
-    if (appId == "org.gnome.Nautilus")    return "Finder";
-    return {};
-}
-
-
-static QString genieStateFilePath()
-{
-    return QDir::tempPath() + "/apokolips-genie-state.json";
-}
-
-static QJsonArray readGenieWindows()
-{
-    QFile file(genieStateFilePath());
-    if (!file.open(QIODevice::ReadOnly))
-        return {};
-
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    if (!doc.isObject())
-        return {};
-
-    return doc.object().value("windows").toArray();
-}
-
-static bool writeGenieWindows(const QJsonArray &windows)
-{
-    QSaveFile file(genieStateFilePath());
-    if (!file.open(QIODevice::WriteOnly))
-        return false;
-
-    QJsonObject root;
-    root["windows"] = windows;
-    const QByteArray bytes =
-        QJsonDocument(root).toJson(QJsonDocument::Compact);
-
-    if (file.write(bytes) != bytes.size())
-        return false;
-
-    return file.commit();
-}
-
-static bool upsertGenieWindow(const QJsonObject &entry)
-{
-    const int conId = entry.value("conId").toInt(-1);
-    if (conId <= 0)
-        return false;
-
-    QJsonArray updated;
-    const QJsonArray current = readGenieWindows();
-
-    for (const QJsonValue &value : current) {
-        const QJsonObject old = value.toObject();
-        if (old.value("conId").toInt(-1) != conId)
-            updated.append(old);
-    }
-
-    updated.append(entry);
-    return writeGenieWindows(updated);
-}
-
-static bool removeGenieWindow(int conId)
-{
-    if (!QFile::exists(genieStateFilePath()))
-        return true;
-
-    QJsonArray updated;
-    const QJsonArray current = readGenieWindows();
-
-    for (const QJsonValue &value : current) {
-        const QJsonObject old = value.toObject();
-        if (old.value("conId").toInt(-1) != conId)
-            updated.append(old);
-    }
-
-    return writeGenieWindows(updated);
-}
-
-static bool restoreGenieForDock(const QString &dockName)
-{
-    if (dockName.isEmpty())
-        return false;
-
-    const QJsonArray windows = readGenieWindows();
-    QJsonObject entry;
-
-    qDebug() << "[genie-restore] lookup dockName=" << dockName
-             << "entries=" << windows.size();
-
-    // Restore the most recently minimized matching window.
-    for (int i = windows.size() - 1; i >= 0; --i) {
-        const QJsonObject candidate = windows.at(i).toObject();
-        if (candidate.value("dockName").toString() == dockName) {
-            entry = candidate;
-            break;
-        }
-    }
-
-    if (entry.isEmpty())
-        return false;
-
-    const int conId = entry.value("conId").toInt(-1);
-    const QString savedPng = entry.value("pixmap").toString();
-    const QJsonArray rect = entry.value("startRect").toArray();
-    const QJsonArray dock = entry.value("dockPt").toArray();
-
-    if (conId <= 0 || !QFile::exists(savedPng)
-        || rect.size() != 4 || dock.size() != 2) {
-        qWarning() << "[genie-reverse] invalid saved state for" << dockName;
-        return false;
-    }
-
-    const int x = rect.at(0).toInt();
-    const int y = rect.at(1).toInt();
-    const int w = rect.at(2).toInt();
-    const int h = rect.at(3).toInt();
-    const int dx = dock.at(0).toInt();
-    const int dy = dock.at(1).toInt();
-
-    if (w <= 0 || h <= 0)
-        return false;
-
-    const QString reversePng =
-        QDir::tempPath()
-        + QString("/genie-reverse-%1-%2.png")
-              .arg(conId)
-              .arg(QDateTime::currentMSecsSinceEpoch());
-
-    // GenieOverlay deletes the image it loads, so animate a temporary copy.
-    if (!QFile::copy(savedPng, reversePng)) {
-        qWarning() << "[genie-reverse] could not copy" << savedPng;
-        return false;
-    }
-
-    const int durationMs = qBound(
-        128, VisualConfigManager::instance().cfg().genieDurationMs, 5000);
-
-    const QStringList args{
-        "--genie", reversePng,
-        QString::number(x), QString::number(y),
-        QString::number(w), QString::number(h),
-        QString::number(dx), QString::number(dy),
-        "--reverse", "--ms", QString::number(durationMs)
-    };
-
-    qint64 overlayPid = 0;
-    const bool started = QProcess::startDetached(
-        QCoreApplication::applicationFilePath(),
-        args, QString(), &overlayPid);
-
-    if (!started) {
-        QFile::remove(reversePng);
-        qWarning() << "[genie-reverse] overlay failed to start";
-        return false;
-    }
-
-    qDebug() << "[genie-reverse] started" << dockName
-             << "conId=" << conId
-             << "durationMs=" << durationMs
-             << "pid=" << overlayPid;
-
-    // Show the real container near the end, while the full-size overlay
-    // still covers it. Keep the saved record if sway reports a failure.
-    QTimer::singleShot(durationMs + 55, qApp, [conId, savedPng]() {
-        const QString sock = discoverSwaySock();
-        if (sock.isEmpty()) {
-            qWarning() << "[genie-reverse] no SWAYSOCK; state retained";
-            return;
-        }
-
-        QProcess *sway = new QProcess(qApp);
-        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        env.insert("SWAYSOCK", sock);
-        sway->setProcessEnvironment(env);
-
-        QObject::connect(
-            sway,
-            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            [sway, conId, savedPng](int code, QProcess::ExitStatus status) {
-                const QByteArray output = sway->readAllStandardOutput();
-                const QByteArray error = sway->readAllStandardError();
-
-                bool shown = false;
-                if (code == 0 && status == QProcess::NormalExit) {
-                    const QJsonDocument reply =
-                        QJsonDocument::fromJson(output);
-                    if (reply.isArray()) {
-                        for (const QJsonValue &value : reply.array()) {
-                            if (value.toObject()
-                                    .value("success").toBool()) {
-                                shown = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (shown) {
-                    removeGenieWindow(conId);
-                    QFile::remove(savedPng);
-                    qDebug() << "[genie-reverse] real window shown:" << conId;
-                } else {
-                    qWarning() << "[genie-reverse] scratchpad show failed;"
-                               << "state retained; stdout=" << output
-                               << "stderr=" << error;
-                }
-
-                sway->deleteLater();
-            });
-
-        sway->start("swaymsg", {
-            QString("[con_id=%1]").arg(conId),
-            "scratchpad", "show"
-        });
-    });
-
-    return true;
-}
-
 class DockIcon : public QWidget {
 public:
     DockIcon(const QString &icon, const QString &name, int index,
@@ -3844,10 +3611,6 @@ protected:
         // Clear this app's notification badge when launched
         BadgeRegistry::clear(m_name);
         update();
-
-        // Restore a matching Genie-minimized window instead of relaunching it.
-        if (restoreGenieForDock(m_name))
-            return;
 
         // If the app is already running, focus its window instead of
         // spawning a duplicate. Use swaymsg to raise the matching app_id.
@@ -19997,7 +19760,7 @@ static int runShell(int argc, char *argv[])
                 sh->setProcessEnvironment(env2);
                 QObject::connect(sh,
                     QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                    [sh, png, target, dockPt, dockName, root](int code, QProcess::ExitStatus) {
+                    [sh, png, target, dockPt, root](int code, QProcess::ExitStatus) {
                     qDebug() << "[genie] grim finished code=" << code
                              << "png exists=" << QFile::exists(png);
                     sh->deleteLater();
@@ -20006,19 +19769,6 @@ static int runShell(int argc, char *argv[])
                     // Show the captured window image first. Keep its first
                     // frame still, then move Files into scratchpad.
                     const QPoint dockGlobal = root->mapToGlobal(dockPt);
-
-                    // Keep a separate copy: the forward overlay removes its PNG.
-                    const QString retainedPixmap =
-                        QDir::tempPath()
-                        + QString("/apokolips-genie-%1-%2.png")
-                              .arg(target.conId)
-                              .arg(QDateTime::currentMSecsSinceEpoch());
-                    if (!QFile::copy(png, retainedPixmap)) {
-                        qWarning() << "[genie] could not retain screenshot";
-                        QFile::remove(png);
-                        return;
-                    }
-
                     const QStringList overlayArgs{
                         "--genie", png,
                         QString::number(target.rect.x()),
@@ -20038,18 +19788,16 @@ static int runShell(int argc, char *argv[])
 
                     if (!overlayStarted) {
                         QFile::remove(png);
-                        QFile::remove(retainedPixmap);
                         return;
                     }
 
-                    QTimer::singleShot(150, root, [root, target, dockName, dockGlobal, retainedPixmap]() {
+                    QTimer::singleShot(150, root, [root, target]() {
                         QProcess *move = new QProcess(root);
                         QProcessEnvironment env =
                             QProcessEnvironment::systemEnvironment();
                         const QString sock = discoverSwaySock();
                         if (sock.isEmpty()) {
                             qDebug() << "[genie] no SWAYSOCK for scratchpad move";
-                            QFile::remove(retainedPixmap);
                             move->deleteLater();
                             return;
                         }
@@ -20060,7 +19808,7 @@ static int runShell(int argc, char *argv[])
                             move,
                             QOverload<int, QProcess::ExitStatus>::of(
                                 &QProcess::finished),
-                            [move, target, dockName, dockGlobal, retainedPixmap](int code, QProcess::ExitStatus status) {
+                            [move](int code, QProcess::ExitStatus status) {
                                 const QByteArray out =
                                     move->readAllStandardOutput();
                                 const QByteArray err =
@@ -20069,60 +19817,6 @@ static int runShell(int argc, char *argv[])
                                          << code << status
                                          << "stdout=" << out
                                          << "stderr=" << err;
-
-                                bool moved = false;
-                                if (code == 0 &&
-                                    status == QProcess::NormalExit) {
-                                    const QJsonDocument reply =
-                                        QJsonDocument::fromJson(out);
-                                    if (reply.isArray()) {
-                                        for (const QJsonValue &value :
-                                             reply.array()) {
-                                            if (value.toObject()
-                                                    .value("success").toBool()) {
-                                                moved = true;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (moved) {
-                                    QJsonObject entry;
-                                    entry["conId"] = target.conId;
-                                    entry["appId"] = target.appId;
-                                    entry["title"] = target.title;
-                                    // Derive the dock label from the app_id
-                                    // since Super+M is not tied to a tile.
-                                    QString effectiveDock = dockName;
-                                    if (effectiveDock.isEmpty())
-                                        effectiveDock =
-                                            dockNameForAppId(target.appId);
-                                    entry["dockName"] = effectiveDock;
-                                    entry["startRect"] = QJsonArray{
-                                        target.rect.x(), target.rect.y(),
-                                        target.rect.width(),
-                                        target.rect.height()
-                                    };
-                                    entry["dockPt"] = QJsonArray{
-                                        dockGlobal.x(), dockGlobal.y()
-                                    };
-                                    entry["pixmap"] = retainedPixmap;
-
-                                    if (!upsertGenieWindow(entry)) {
-                                        qWarning()
-                                            << "[genie] state save failed for"
-                                            << target.conId;
-                                        QFile::remove(retainedPixmap);
-                                    } else {
-                                        qDebug()
-                                            << "[genie] saved reverse state for"
-                                            << target.conId << dockName;
-                                    }
-                                } else {
-                                    QFile::remove(retainedPixmap);
-                                }
-
                                 move->deleteLater();
                             });
 

@@ -3492,23 +3492,6 @@ private:
 
 static QString discoverSwaySock();
 
-// Map a sway app_id to the dock label the user clicks to restore.
-static QString dockNameForAppId(const QString &appId)
-{
-    if (appId == "apokolips-files")       return "Finder";
-    if (appId == "apokolips-shell")       return "Settings"; // ambiguous
-    if (appId == "apokolips-aperture")    return "Aperture";
-    if (appId == "apokolips-boombube")    return "BoomTube";
-    if (appId == "apokolips-node")        return "Node";
-    if (appId == "apokolips-mymach")      return "myMach";
-    if (appId == "apokolips-notes")       return "Notes";
-    if (appId == "apokolips-calculator")  return "Calculator";
-    if (appId == "thunderbird")           return "Mail";
-    if (appId == "org.gnome.Nautilus")    return "Finder";
-    return {};
-}
-
-
 static QString genieStateFilePath()
 {
     return QDir::tempPath() + "/apokolips-genie-state.json";
@@ -3587,9 +3570,6 @@ static bool restoreGenieForDock(const QString &dockName)
 
     const QJsonArray windows = readGenieWindows();
     QJsonObject entry;
-
-    qDebug() << "[genie-restore] lookup dockName=" << dockName
-             << "entries=" << windows.size();
 
     // Restore the most recently minimized matching window.
     for (int i = windows.size() - 1; i >= 0; --i) {
@@ -20092,13 +20072,7 @@ static int runShell(int argc, char *argv[])
                                     entry["conId"] = target.conId;
                                     entry["appId"] = target.appId;
                                     entry["title"] = target.title;
-                                    // Derive the dock label from the app_id
-                                    // since Super+M is not tied to a tile.
-                                    QString effectiveDock = dockName;
-                                    if (effectiveDock.isEmpty())
-                                        effectiveDock =
-                                            dockNameForAppId(target.appId);
-                                    entry["dockName"] = effectiveDock;
+                                    entry["dockName"] = dockName;
                                     entry["startRect"] = QJsonArray{
                                         target.rect.x(), target.rect.y(),
                                         target.rect.width(),
