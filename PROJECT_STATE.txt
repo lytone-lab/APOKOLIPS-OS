@@ -374,6 +374,19 @@ Golden rule for AI features (future):
       (absolute path tried, still failed). Do NOT retry without
       understanding root cause.
 
+  [x] G1a — Reverse genie CLI (--reverse --ms parsed before
+      QApplication so Qt doesn't eat the flag).
+  [x] G1b — Dock click restores minimized windows: state file at
+      /tmp/apokolips-genie-state.json, dock-name mapping
+      (apokolips-files→Finder, apokolips-notes→Notes), reverse
+      overlay plays, real window shown at end.
+
+  POLISH BACKLOG (after G2/G3/G4):
+  [ ] Tune genie smoothness, fluidness, motion. Separate pass after
+      all three styles (genie/scale/suck) work.
+  [ ] Strip count / duration / stagger / curve defaults — revisit
+      once user sees all three side by side.
+
 ------------------------------------------------------------------------
 WIRING BACKLOG (saved but not yet acting)
 ------------------------------------------------------------------------
