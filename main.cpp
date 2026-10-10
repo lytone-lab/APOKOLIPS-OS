@@ -4007,8 +4007,11 @@ static bool restoreGenieForDock(const QString &dockName)
     const int durationMs = qBound(
         128, VisualConfigManager::instance().cfg().genieDurationMs, 5000);
 
+    // Use the user's selected minimize style for the reverse too.
+    // Previously hardcoded to --genie, which meant Suck/Scale users
+    // saw genie strips on dock-click restore.
     const QStringList args{
-        "--genie", reversePng,
+        minimizeStyleFlag(), reversePng,
         QString::number(x), QString::number(y),
         QString::number(w), QString::number(h),
         QString::number(dx), QString::number(dy),
@@ -20459,7 +20462,6 @@ protected:
             : 1.0 - (t - fadeStart) / (1.0 - fadeStart);
         p.setOpacity(qBound<qreal>(0.0, opacity, 1.0));
 
-        constexpr qreal overlap = 1.0;
         constexpr qreal minSize = 0.12;
 
         for (int i = 0; i < m_strips; ++i) {
@@ -20482,6 +20484,10 @@ protected:
                 lerp(sourceCrossCenter, dockCross, eased);
             const qreal dstCrossSize =
                 lerp(crossExtent, minSize, easedCross);
+
+            // Overlap must scale with strip size — a fixed 1px leaves
+            // visible seams when bands are compressed near the dock.
+            const qreal overlap = qMax<qreal>(2.5, dstAxisSize * 0.35);
 
             QRectF dst;
             if (sideDock) {
