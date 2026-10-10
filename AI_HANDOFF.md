@@ -256,12 +256,15 @@ guessed anchor.
 
 ## 10. Immediate next steps
 
-1. Verify rounded corners on BoomTube, myMach, Node, Aperture.
-2. Super+Shift+R sway bind — fix config line.
-3. Keyboard bindings — Settings page that writes `swaymsg bindsym`.
-4. Animator daemon — kill the last ~200 ms overlay latency.
-5. Genie option A rewrite — 4-6 bands.
-6. Customisation layer — Windhawk/Rainmeter-class knobs in Settings.
+1. Keyboard bindings — Settings page that writes `swaymsg bindsym`.
+2. Restore path via animator daemon — minimize already uses it,
+   restore still spawns a fresh process (~200 ms).
+3. Genie quadToQuad rewrite — borrow Suck's technique, keep the
+   genie silhouette. Eliminates strips in genie entirely.
+4. Terminal (foot) decorations — sway-side title bar.
+5. Customisation layer — Windhawk/Rainmeter-class knobs in Settings.
+6. Settings polish — wallpaper solid color + local file; display
+   refresh/scale/Night Shift; sound input + per-app volume.
 
 ---
 
