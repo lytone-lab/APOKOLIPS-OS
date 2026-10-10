@@ -3810,6 +3810,12 @@ static QString genieStateFilePath()
     return QDir::tempPath() + "/apokolips-genie-state.json";
 }
 
+
+// Periodic prune — drops state entries whose conIds no longer exist
+// in sway's tree. Prevents a closed app (red light) from leaving a
+// phantom entry that wastes an animation on the next dock click.
+
+
 static QJsonArray readGenieWindows()
 {
     QFile file(genieStateFilePath());
@@ -3838,6 +3844,45 @@ static bool writeGenieWindows(const QJsonArray &windows)
         return false;
 
     return file.commit();
+}
+
+static void pruneStaleGenieState()
+{
+    const QJsonArray current = readGenieWindows();
+    if (current.isEmpty()) return;
+
+    QProcess sp;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    const QString sock = discoverSwaySock();
+    if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+    sp.setProcessEnvironment(env);
+    sp.start("swaymsg", { "-t", "get_tree" });
+    if (!sp.waitForFinished(800)) return;
+    const QString raw = QString::fromUtf8(sp.readAllStandardOutput());
+    if (raw.isEmpty()) return;
+
+    QSet<int> live;
+    QRegularExpression re(QString::fromLatin1("\"id\"\\s*:\\s*(\\d+)"));
+    auto it = re.globalMatch(raw);
+    while (it.hasNext())
+        live.insert(it.next().captured(1).toInt());
+    if (live.isEmpty()) return;
+
+    QJsonArray kept;
+    bool changed = false;
+    for (const QJsonValue &v : current) {
+        const QJsonObject entry = v.toObject();
+        const int conId = entry.value("conId").toInt(-1);
+        if (conId > 0 && !live.contains(conId)) {
+            const QString png = entry.value("png").toString();
+            if (!png.isEmpty()) QFile::remove(png);
+            changed = true;
+            qInfo() << "[genie-prune] dropped stale conId" << conId;
+            continue;
+        }
+        kept.append(entry);
+    }
+    if (changed) writeGenieWindows(kept);
 }
 
 static bool upsertGenieWindow(const QJsonObject &entry)
@@ -10071,7 +10116,7 @@ private:
         QPushButton *maxBtn = makeLight("#155c1e", "#28c840");
 
         QObject::connect(m_closeBtn, &QPushButton::clicked,
-                         [this]() { close(); });
+                         [this]() { shellCloseViaGenie(this); });
         QObject::connect(minBtn, &QPushButton::clicked,
                          []() { shellMinimizeFocusedWindow(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
@@ -19986,11 +20031,9 @@ public:
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout,
                          this, &SuckOverlay::tick);
-        QTimer::singleShot(30, this, [this, readySock]() {
+        m_readySock = readySock;
+        QTimer::singleShot(30, this, [this]() {
             if (m_timer) m_timer->start();
-            QTimer::singleShot(60, this, [readySock]() {
-                genieHandshakeReady(readySock);
-            });
         });
     }
 
@@ -20000,6 +20043,13 @@ protected:
         if (m_pix.isNull() || m_start.isEmpty()
             || width() <= 0 || height() <= 0)
             return;
+
+        if (!m_readyPinged && !m_readySock.isEmpty()) {
+            m_readyPinged = true;
+            QTimer::singleShot(25, this, [this]() {
+                genieHandshakeReady(m_readySock);
+            });
+        }
 
         QPainter p(this);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
@@ -20072,7 +20122,8 @@ private:
     bool m_reverse = false;
     QString m_readySock;
     bool    m_paintPinged = false;
-};
+
+    bool    m_readyPinged = false;};
 
 class ScaleOverlay : public QWidget {
 public:
@@ -20119,11 +20170,9 @@ public:
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout,
                          this, &ScaleOverlay::tick);
-        QTimer::singleShot(30, this, [this, readySock]() {
+        m_readySock = readySock;
+        QTimer::singleShot(30, this, [this]() {
             if (m_timer) m_timer->start();
-            QTimer::singleShot(60, this, [readySock]() {
-                genieHandshakeReady(readySock);
-            });
         });
     }
 
@@ -20133,6 +20182,13 @@ protected:
         if (m_pix.isNull() || m_start.isEmpty()
             || width() <= 0 || height() <= 0)
             return;
+
+        if (!m_readyPinged && !m_readySock.isEmpty()) {
+            m_readyPinged = true;
+            QTimer::singleShot(25, this, [this]() {
+                genieHandshakeReady(m_readySock);
+            });
+        }
 
         QPainter p(this);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
@@ -20187,7 +20243,8 @@ private:
     bool m_reverse = false;
     QString m_readySock;
     bool    m_paintPinged = false;
-};
+
+    bool    m_readyPinged = false;};
 
 
 class GenieOverlay : public QWidget {
@@ -20241,11 +20298,9 @@ public:
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout,
                          this, &GenieOverlay::tick);
-        QTimer::singleShot(30, this, [this, readySock]() {
+        m_readySock = readySock;
+        QTimer::singleShot(30, this, [this]() {
             if (m_timer) m_timer->start();
-            QTimer::singleShot(60, this, [readySock]() {
-                genieHandshakeReady(readySock);
-            });
         });
     }
 
@@ -20367,7 +20422,8 @@ private:
     bool m_reverse = false;
     QString m_readySock;
     bool    m_paintPinged = false;
-};
+
+    bool    m_readyPinged = false;};
 
 static int runShell(int argc, char *argv[])
 {
@@ -21411,6 +21467,17 @@ static int runShell(int argc, char *argv[])
         qInfo() << "[genie] state wiped on startup";
     }
 
+    // Every 5 s, drop state entries whose conIds sway no longer knows
+    // about. Fixes: red-light close leaves a phantom entry, next dock
+    // click wastes an animation on a dead conId.
+    {
+        QTimer *pruneTimer = new QTimer(root);
+        pruneTimer->setInterval(5000);
+        QObject::connect(pruneTimer, &QTimer::timeout,
+                         []() { pruneStaleGenieState(); });
+        pruneTimer->start();
+    }
+
     ClipboardPanel *clipboardPanel = new ClipboardPanel(root);
 
     // IPC — second instance connects and sends "toggle"
@@ -21782,24 +21849,46 @@ static int runShell(int argc, char *argv[])
         desktop->show();
         dock->raise();
 
-        // The desktop-icon canvas (a sibling overlay) sized itself to
-        // the OLD desktop rect. After the grid reflow it must be
-        // resized to the new desktop geometry — otherwise it sits on
-        // top of the dock and swallows its mouse events.
-        if (QWidget *canvas = middle->findChild<QWidget *>("desktopCanvas")) {
-            if (QWidget *parent = canvas->parentWidget()) {
-                QPoint tl = desktop->mapTo(parent, QPoint(0, 0));
-                canvas->setGeometry(QRect(tl, desktop->size()));
-            }
-        }
-        // Same for the floating widget layer.
-        if (QWidget *wl = middle->findChild<QWidget *>("widgetLayer")) {
-            if (QWidget *parent = wl->parentWidget()) {
-                QPoint tl = desktop->mapTo(parent, QPoint(0, 0));
-                wl->setGeometry(QRect(tl, desktop->size()));
-            }
-        }
-        dock->raise();
+        // The desktop-icon canvas is a sibling overlay sized to the
+        // OLD desktop rect. Layout changes are lazy — the desktop's
+        // new geometry doesn't exist yet at this line. So we must
+        // defer the refit to the next event-loop turn, after Qt has
+        // laid out the grid. Without this the canvas stays on top of
+        // the dock and swallows its mouse events → dock "freezes".
+        QPointer<QWidget> desktopGuard(desktop);
+        QPointer<QWidget> dockGuard(dock);
+        QPointer<QGridLayout> gridGuard(middleGrid);
+        QPointer<QWidget> middleGuard(middle);
+        QTimer::singleShot(0, middle, [=]() {
+            if (!gridGuard || !middleGuard) return;
+            gridGuard->activate();
+
+            auto refit = [&](const char *name) {
+                QWidget *overlay = middleGuard->findChild<QWidget *>(name);
+                if (!overlay && middleGuard->window())
+                    overlay = middleGuard->window()->
+                              findChild<QWidget *>(name);
+                if (!overlay) {
+                    qInfo() << "[dock-reflow] overlay not found:" << name;
+                    return;
+                }
+                QWidget *par = overlay->parentWidget();
+                if (!par || !desktopGuard) return;
+                QPoint tl = desktopGuard->mapTo(par, QPoint(0, 0));
+                QRect  g  = QRect(tl, desktopGuard->size());
+                qInfo() << "[dock-reflow]" << name
+                        << "old=" << overlay->geometry()
+                        << "desktop=" << desktopGuard->geometry()
+                        << "new=" << g;
+                overlay->setGeometry(g);
+            };
+            refit("desktopCanvas");
+            refit("widgetLayer");
+
+            if (dockGuard) dockGuard->raise();
+            if (desktopGuard) desktopGuard->update();
+            if (dockGuard) dockGuard->update();
+        });
     };
 
     int *lastDockPos = new int(VisualConfigManager::instance()
