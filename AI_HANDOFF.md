@@ -1,6 +1,8 @@
 # APOKOLIPS-OS — AI Handoff
 
 **Read this file first. It replaces reading a long chat history.**
+**Then read TEAM_PROTOCOL.md — the working arrangement.**
+**Then read ARCHITECTURE_NOTES.md — the design critique + roadmap.**
 **Then read PROJECT_STATE.txt for the bug list.**
 **Then `git log --oneline -20` for the recent commit trail.**
 
