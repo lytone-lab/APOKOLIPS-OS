@@ -19294,11 +19294,8 @@ private:
 class GenieOverlay : public QWidget {
 public:
     GenieOverlay(const QString &pngPath, QRect startRect,
-                 QPoint dockGlobal, bool reverse = false,
-                 bool loop = false, int msOverride = 0,
-                 QWidget *parent = nullptr)
-        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint),
-          m_reverse(reverse), m_loop(loop)
+                 QPoint dockGlobal, QWidget *parent = nullptr)
+        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
     {
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
@@ -19327,9 +19324,7 @@ public:
         m_curve    = qBound(0.3, cfg.genieCurve, 2.0);
         m_fadeFrom = qBound(0.5, cfg.genieFadeStart, 1.0);
 
-        int effectiveMs = (msOverride > 0) ? msOverride
-                                            : cfg.genieDurationMs;
-        int frames = qBound(8, effectiveMs / 16, 500);
+        int frames = qBound(8, cfg.genieDurationMs / 16, 94);
         m_frames = frames;
 
         m_timer = new QTimer(this);
@@ -19350,10 +19345,9 @@ protected:
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
         const bool isLastFrame = (m_frame >= m_frames - 1);
-        qreal t = isLastFrame ? 1.0
+        const qreal t = isLastFrame ? 1.0
             : qBound<qreal>(
                 0.0, qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
-        if (m_reverse) t = 1.0 - t;
 
         auto smoothStep = [](qreal v) {
             v = qBound<qreal>(0.0, v, 1.0);
@@ -19456,11 +19450,6 @@ private:
             update();
             return;
         }
-        if (m_loop) {
-            m_frame = 0;
-            update();
-            return;
-        }
         m_timer->stop();
         update();
         QTimer::singleShot(80, qApp, &QApplication::quit);
@@ -19472,8 +19461,6 @@ private:
     QPoint  m_origin;
     QTimer *m_timer = nullptr;
     int     m_frame = 0;
-    bool    m_reverse = false;
-    bool    m_loop    = false;
 
     int    m_frames   = 30;
     int    m_strips   = 140;
@@ -20985,19 +20972,7 @@ int main(int argc, char *argv[])
         QRect start(QString(argv[3]).toInt(), QString(argv[4]).toInt(),
                     QString(argv[5]).toInt(), QString(argv[6]).toInt());
         QPoint dock(QString(argv[7]).toInt(), QString(argv[8]).toInt());
-
-        bool reverse = false, loop = false;
-        int  msOverride = 0;
-        for (int i = 9; i < argc; ++i) {
-            QString a = QString::fromUtf8(argv[i]);
-            if      (a == "--reverse") reverse = true;
-            else if (a == "--loop")    loop    = true;
-            else if (a == "--ms" && i + 1 < argc)
-                msOverride = QString(argv[++i]).toInt();
-        }
-
-        GenieOverlay *g = new GenieOverlay(QString(argv[2]), start, dock,
-                                            reverse, loop, msOverride);
+        GenieOverlay *g = new GenieOverlay(QString(argv[2]), start, dock);
         g->show();
         return app.exec();
     }
