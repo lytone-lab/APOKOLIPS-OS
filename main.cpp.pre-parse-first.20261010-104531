@@ -20971,22 +20971,19 @@ static int runShell(int argc, char *argv[])
 int main(int argc, char *argv[])
 {
     if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--genie") {
-        const QString imagePath = QString::fromLocal8Bit(argv[2]);
-        const QRect start(
-            QString::fromLocal8Bit(argv[3]).toInt(),
-            QString::fromLocal8Bit(argv[4]).toInt(),
-            QString::fromLocal8Bit(argv[5]).toInt(),
-            QString::fromLocal8Bit(argv[6]).toInt());
-        const QPoint dock(
-            QString::fromLocal8Bit(argv[7]).toInt(),
-            QString::fromLocal8Bit(argv[8]).toInt());
+        QApplication app(argc, argv);
+        app.setDesktopFileName("apokolips-genie");
+
+        QRect start(QString::fromLocal8Bit(argv[3]).toInt(),
+                    QString::fromLocal8Bit(argv[4]).toInt(),
+                    QString::fromLocal8Bit(argv[5]).toInt(),
+                    QString::fromLocal8Bit(argv[6]).toInt());
+        QPoint dock(QString::fromLocal8Bit(argv[7]).toInt(),
+                    QString::fromLocal8Bit(argv[8]).toInt());
 
         bool reverse = false;
         int durationMs = 0;
 
-        // Parse BEFORE constructing QApplication. Qt consumes
-        // --reverse as one of its own arguments, so any parser
-        // created after QApplication never sees it.
         for (int i = 9; i < argc; ++i) {
             const QString arg = QString::fromLocal8Bit(argv[i]);
             if (arg == "--reverse") {
@@ -21001,11 +20998,9 @@ int main(int argc, char *argv[])
             }
         }
 
-        QApplication app(argc, argv);
-        app.setDesktopFileName("apokolips-genie");
-
         auto *g = new GenieOverlay(
-            imagePath, start, dock, reverse, durationMs);
+            QString::fromLocal8Bit(argv[2]), start, dock,
+            reverse, durationMs);
         g->show();
         return app.exec();
     }

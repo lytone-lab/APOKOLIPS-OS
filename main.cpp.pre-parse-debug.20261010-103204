@@ -19291,23 +19291,14 @@ private:
 // GenieOverlay — window-shrinks-into-dock animation
 // Screenshot-based illusion (sway gives us no live texture)
 // =========================================================
-static double genieTimelineProgress(int frame, int frameCount, bool reverse)
-{
-    const double denominator = frameCount > 1
-        ? static_cast<double>(frameCount - 1) : 1.0;
-    double forward = static_cast<double>(frame) / denominator;
-    if (forward < 0.0) forward = 0.0;
-    if (forward > 1.0) forward = 1.0;
-    return reverse ? 1.0 - forward : forward;
-}
-
 class GenieOverlay : public QWidget {
 public:
     GenieOverlay(const QString &pngPath, QRect startRect,
                  QPoint dockGlobal, bool reverse = false,
-                 int durationOverrideMs = 0, QWidget *parent = nullptr)
+                 bool loop = false, int msOverride = 0,
+                 QWidget *parent = nullptr)
         : QWidget(parent, Qt::Window | Qt::FramelessWindowHint),
-          m_reverse(reverse)
+          m_reverse(reverse), m_loop(loop)
     {
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
@@ -19323,28 +19314,23 @@ public:
 
         QScreen *screen = QApplication::screenAt(startRect.center());
         if (!screen) screen = QApplication::primaryScreen();
-        const QRect screenRect =
-            screen ? screen->geometry() : QRect(0, 0, 1, 1);
-
+        QRect screenRect = screen ? screen->geometry() : QRect(0, 0, 1, 1);
         setGeometry(screenRect);
         m_origin = screenRect.topLeft();
-        m_start = startRect.translated(-m_origin);
-        m_dock = dockGlobal - m_origin;
+        m_start  = startRect.translated(-m_origin);
+        m_dock   = dockGlobal - m_origin;
 
-        const auto &cfg = VisualConfigManager::instance().cfg();
-        m_strips = qBound(40, cfg.genieStrips, 320);
-        m_stagger = qBound(0.0, cfg.genieStagger, 0.8);
-        m_curve = qBound(0.3, cfg.genieCurve, 2.0);
+        // Read live genie config
+        auto &cfg = VisualConfigManager::instance().cfg();
+        m_strips   = qBound(40, cfg.genieStrips, 320);
+        m_stagger  = qBound(0.0, cfg.genieStagger, 0.8);
+        m_curve    = qBound(0.3, cfg.genieCurve, 2.0);
         m_fadeFrom = qBound(0.5, cfg.genieFadeStart, 1.0);
 
-        const int requestedMs = durationOverrideMs > 0
-            ? durationOverrideMs : cfg.genieDurationMs;
-        const int durationMs = qBound(128, requestedMs, 5000);
-        m_frames = qBound(8, (durationMs + 15) / 16, 313);
-
-        qDebug() << "[genie] reverse=" << m_reverse
-                 << "durationMs=" << durationMs
-                 << "frames=" << m_frames;
+        int effectiveMs = (msOverride > 0) ? msOverride
+                                            : cfg.genieDurationMs;
+        int frames = qBound(8, effectiveMs / 16, 500);
+        m_frames = frames;
 
         m_timer = new QTimer(this);
         m_timer->setInterval(16);
@@ -19356,16 +19342,20 @@ public:
     }
 
 protected:
-    void paintEvent(QPaintEvent *) override
-    {
+    void paintEvent(QPaintEvent *) override {
         if (m_pix.isNull() || m_start.isEmpty()
             || width() <= 0 || height() <= 0) return;
 
         QPainter p(this);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-        const qreal t = genieTimelineProgress(
-            m_frame, m_frames, m_reverse);
+        const bool isLastFrame = (m_frame >= m_frames - 1);
+        qreal t = isLastFrame ? 1.0
+            : qBound<qreal>(
+                0.0, qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
+        if (m_reverse) t = 1.0 - t;
+        qDebug() << "[genie-debug]" << "frame=" << m_frame
+                 << "rev=" << m_reverse << "t=" << t;
 
         auto smoothStep = [](qreal v) {
             v = qBound<qreal>(0.0, v, 1.0);
@@ -19375,23 +19365,25 @@ protected:
             return a + (b - a) * k;
         };
 
-        const qreal leftGap = m_dock.x();
-        const qreal rightGap = width() - m_dock.x();
-        const qreal topGap = m_dock.y();
+        const qreal leftGap   = m_dock.x();
+        const qreal rightGap  = width() - m_dock.x();
+        const qreal topGap    = m_dock.y();
         const qreal bottomGap = height() - m_dock.y();
         const bool sideDock =
             qMin(leftGap, rightGap) < qMin(topGap, bottomGap);
         const bool positive = sideDock
-            ? (m_dock.x() >= width() * 0.5)
+            ? (m_dock.x() >= width()  * 0.5)
             : (m_dock.y() >= height() * 0.5);
 
-        const qreal axisStart = sideDock ? m_start.x() : m_start.y();
+        const qreal axisStart  = sideDock ? m_start.x()  : m_start.y();
         const qreal axisExtent = sideDock ? m_start.width() : m_start.height();
-        const qreal crossStart = sideDock ? m_start.y() : m_start.x();
-        const qreal crossExtent = sideDock ? m_start.height() : m_start.width();
-        const qreal dockAxis = sideDock ? m_dock.x() : m_dock.y();
-        const qreal dockCross = sideDock ? m_dock.y() : m_dock.x();
+        const qreal crossStart = sideDock ? m_start.y()  : m_start.x();
+        const qreal crossExtent= sideDock ? m_start.height(): m_start.width();
+        const qreal dockAxis   = sideDock ? m_dock.x()   : m_dock.y();
+        const qreal dockCross  = sideDock ? m_dock.y()   : m_dock.x();
         const qreal sourceCrossCenter = crossStart + crossExtent * 0.5;
+
+        const int stripCount = m_strips;
 
         const qreal fadeStart = qMin<qreal>(0.98, m_fadeFrom + 0.03);
         const qreal opacity = t <= fadeStart
@@ -19402,75 +19394,94 @@ protected:
         constexpr qreal overlap = 1.0;
         constexpr qreal minSize = 0.12;
 
-        for (int i = 0; i < m_strips; ++i) {
-            const qreal f0 = qreal(i) / m_strips;
-            const qreal f1 = qreal(i + 1) / m_strips;
+        for (int i = 0; i < stripCount; ++i) {
+            const qreal f0 = qreal(i)     / stripCount;
+            const qreal f1 = qreal(i + 1) / stripCount;
             const qreal fm = (f0 + f1) * 0.5;
 
-            const qreal order = positive ? fm : (1.0 - fm);
-            const qreal delay = (1.0 - order) * m_stagger;
+            const qreal s = positive ? fm : (1.0 - fm);
+            const qreal delay  = (1.0 - s) * m_stagger;
             const qreal localT = qBound<qreal>(
                 0.0, (t - delay) / (1.0 - delay), 1.0);
-            const qreal eased = smoothStep(localT);
-            const qreal easedCross = std::pow(eased, m_curve);
+            const qreal e = smoothStep(localT);
 
-            const qreal srcAxisCenter = axisStart + fm * axisExtent;
-            const qreal srcAxisSize = (f1 - f0) * axisExtent;
-            const qreal dstAxisCenter = lerp(srcAxisCenter, dockAxis, eased);
-            const qreal dstAxisSize = lerp(srcAxisSize, minSize, eased);
-            const qreal dstCrossCenter =
-                lerp(sourceCrossCenter, dockCross, eased);
-            const qreal dstCrossSize =
-                lerp(crossExtent, minSize, easedCross);
+            // Narrower curve: front-load the cross-axis shrink
+            const qreal eCross = std::pow(e, m_curve);
+
+            const qreal srcAxisCenter  = axisStart + fm * axisExtent;
+            const qreal srcAxisSize    = (f1 - f0) * axisExtent;
+            const qreal srcCrossCenter = sourceCrossCenter;
+            const qreal srcCrossSize   = crossExtent;
+
+            const qreal tgtAxisCenter  = dockAxis;
+            const qreal tgtAxisSize    = minSize;
+            const qreal tgtCrossCenter = dockCross;
+            const qreal tgtCrossSize   = minSize;
+
+            const qreal drawAxisCenter  = lerp(srcAxisCenter,  tgtAxisCenter,  e);
+            const qreal drawAxisSize    = lerp(srcAxisSize,    tgtAxisSize,    e);
+            const qreal drawCrossCenter = lerp(srcCrossCenter, tgtCrossCenter, e);
+            const qreal drawCrossSize   = lerp(srcCrossSize,   tgtCrossSize,   eCross);
 
             QRectF dst;
             if (sideDock) {
-                dst = QRectF(
-                    dstAxisCenter - (dstAxisSize + overlap) * 0.5,
-                    dstCrossCenter - dstCrossSize * 0.5,
-                    dstAxisSize + overlap,
-                    dstCrossSize);
+                dst = QRectF(drawAxisCenter - (drawAxisSize + overlap) * 0.5,
+                             drawCrossCenter - drawCrossSize * 0.5,
+                             drawAxisSize + overlap,
+                             drawCrossSize);
             } else {
-                dst = QRectF(
-                    dstCrossCenter - dstCrossSize * 0.5,
-                    dstAxisCenter - (dstAxisSize + overlap) * 0.5,
-                    dstCrossSize,
-                    dstAxisSize + overlap);
+                dst = QRectF(drawCrossCenter - drawCrossSize * 0.5,
+                             drawAxisCenter - (drawAxisSize + overlap) * 0.5,
+                             drawCrossSize,
+                             drawAxisSize + overlap);
             }
 
-            QRectF src;
+            QRectF srcR;
             if (sideDock) {
-                src = QRectF(f0 * m_pix.width(), 0.0,
-                             (f1 - f0) * m_pix.width(), m_pix.height());
+                srcR = QRectF(f0 * m_pix.width(), 0.0,
+                              (f1 - f0) * m_pix.width(),
+                              qreal(m_pix.height()));
             } else {
-                src = QRectF(0.0, f0 * m_pix.height(),
-                             m_pix.width(), (f1 - f0) * m_pix.height());
+                srcR = QRectF(0.0, f0 * m_pix.height(),
+                              qreal(m_pix.width()),
+                              (f1 - f0) * m_pix.height());
             }
-            p.drawPixmap(dst, m_pix, src);
+
+            p.drawPixmap(dst, m_pix, srcR);
         }
     }
 
 private:
-    void tick()
-    {
-        if (m_frame < m_frames - 1) { ++m_frame; update(); return; }
+    void tick() {
+        if (m_frame < m_frames - 1) {
+            ++m_frame;
+            update();
+            return;
+        }
+        if (m_loop) {
+            m_frame = 0;
+            update();
+            return;
+        }
         m_timer->stop();
         update();
         QTimer::singleShot(80, qApp, &QApplication::quit);
     }
 
     QPixmap m_pix;
-    QRect m_start;
-    QPoint m_dock;
-    QPoint m_origin;
+    QRect   m_start;
+    QPoint  m_dock;
+    QPoint  m_origin;
     QTimer *m_timer = nullptr;
-    int m_frame = 0;
-    int m_frames = 30;
-    int m_strips = 140;
-    qreal m_stagger = 0.35;
-    qreal m_curve = 0.65;
-    qreal m_fadeFrom = 0.95;
-    bool m_reverse = false;
+    int     m_frame = 0;
+    bool    m_reverse = false;
+    bool    m_loop    = false;
+
+    int    m_frames   = 30;
+    int    m_strips   = 140;
+    qreal  m_stagger  = 0.35;
+    qreal  m_curve    = 0.65;
+    qreal  m_fadeFrom = 0.95;
 };
 
 static int runShell(int argc, char *argv[])
@@ -20970,42 +20981,25 @@ static int runShell(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
-    if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--genie") {
-        const QString imagePath = QString::fromLocal8Bit(argv[2]);
-        const QRect start(
-            QString::fromLocal8Bit(argv[3]).toInt(),
-            QString::fromLocal8Bit(argv[4]).toInt(),
-            QString::fromLocal8Bit(argv[5]).toInt(),
-            QString::fromLocal8Bit(argv[6]).toInt());
-        const QPoint dock(
-            QString::fromLocal8Bit(argv[7]).toInt(),
-            QString::fromLocal8Bit(argv[8]).toInt());
-
-        bool reverse = false;
-        int durationMs = 0;
-
-        // Parse BEFORE constructing QApplication. Qt consumes
-        // --reverse as one of its own arguments, so any parser
-        // created after QApplication never sees it.
-        for (int i = 9; i < argc; ++i) {
-            const QString arg = QString::fromLocal8Bit(argv[i]);
-            if (arg == "--reverse") {
-                reverse = true;
-            } else if (arg == "--ms") {
-                if (i + 1 >= argc) return 2;
-                bool ok = false;
-                const int value =
-                    QString::fromLocal8Bit(argv[++i]).toInt(&ok);
-                if (!ok) return 2;
-                durationMs = qBound(128, value, 5000);
-            }
-        }
-
+    if (argc >= 9 && QString(argv[1]) == "--genie") {
         QApplication app(argc, argv);
         app.setDesktopFileName("apokolips-genie");
+        QRect start(QString(argv[3]).toInt(), QString(argv[4]).toInt(),
+                    QString(argv[5]).toInt(), QString(argv[6]).toInt());
+        QPoint dock(QString(argv[7]).toInt(), QString(argv[8]).toInt());
 
-        auto *g = new GenieOverlay(
-            imagePath, start, dock, reverse, durationMs);
+        bool reverse = false, loop = false;
+        int  msOverride = 0;
+        for (int i = 9; i < argc; ++i) {
+            QString a = QString::fromUtf8(argv[i]);
+            if      (a == "--reverse") reverse = true;
+            else if (a == "--loop")    loop    = true;
+            else if (a == "--ms" && i + 1 < argc)
+                msOverride = QString(argv[++i]).toInt();
+        }
+
+        GenieOverlay *g = new GenieOverlay(QString(argv[2]), start, dock,
+                                            reverse, loop, msOverride);
         g->show();
         return app.exec();
     }
