@@ -422,6 +422,29 @@ Golden rule for AI features (future):
       or clip adjustment only when style == Skeuomorphism.
       Not visible in Glass / Neumorphism / Claymorphism.
 
+  VISION REMINDER — customisation layer
+  --------------------------------------
+  Long-term: Apokolips OS ships a Windhawk + Rainmeter–class
+  customisation layer. Users adjust:
+    - window chrome / title bar
+    - taskbar / top bar / dock
+    - start menu / launcher layout
+    - desktop widgets
+    - shell animations
+    - system sounds
+    - accent / theme
+  Build order: finish core shell first, then start layering
+  user-editable customisation. Some items land along the way.
+  Every customization must go through the Settings app —
+  nothing hidden behind config files only.
+
+  ANIMATION QUEUE (post-G7):
+    [ ] Thanos Snap — window dissolves into particle dust that
+        drifts right and fades. ~2 sessions. Particle system +
+        custom paint. Overlay class pattern like genie/scale/suck.
+    [ ] Genie option A — 4-6 bands, smooth + pour (queued)
+    [ ] Real mesh warp genie (option C) — V2
+
   HANDOFF LOG 2026-10-10 end-of-session
   --------------------------------------
   Handshake + minimize style dropdown + stale-state cleanup all
