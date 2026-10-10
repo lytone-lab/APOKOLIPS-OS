@@ -422,6 +422,15 @@ Golden rule for AI features (future):
       or clip adjustment only when style == Skeuomorphism.
       Not visible in Glass / Neumorphism / Claymorphism.
 
+  HANDOFF LOG 2026-10-10 end-of-session
+  --------------------------------------
+  Handshake + minimize style dropdown + stale-state cleanup all
+  committed. Shell stable, no SEGV.
+  Next: G5, G6, G7, then Genie-option-A rewrite.
+  Backups: main.cpp.pre-crash-fix2.* is the last known-good
+  before this session's cleanup; main.cpp.pre-handshake.* is the
+  last known-good before handshake.
+
 ------------------------------------------------------------------------
 WIRING BACKLOG (saved but not yet acting)
 ------------------------------------------------------------------------
