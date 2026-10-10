@@ -2,3 +2,7 @@ build/
 *.o
 .cache/
 compile_commands.json
+
+main.cpp.pre-*
+*.pre-*
+CMakeLists.txt.pre-*

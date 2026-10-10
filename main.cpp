@@ -5946,6 +5946,50 @@ public:
         });
         StyleManager::startPolling(this, [this]() { update(); });
 
+        // Finder runs in its own process; the in-process subscribe
+        // above only fires for writes that happen *inside this process*.
+        // Settings writes visual.json from a different process, so we
+        // watch the file itself and reload on change.
+        {
+            QString cfgPath = QStandardPaths::writableLocation(
+                                  QStandardPaths::ConfigLocation);
+            if (cfgPath.isEmpty())
+                cfgPath = QDir::homePath() + "/.config";
+            cfgPath += "/apokolips/visual.json";
+
+            QFileSystemWatcher *watcher = new QFileSystemWatcher(this);
+            if (QFile::exists(cfgPath)) watcher->addPath(cfgPath);
+            else {
+                // Watch the directory until the file appears.
+                QFileSystemWatcher *dirWatch =
+                    new QFileSystemWatcher(this);
+                dirWatch->addPath(QFileInfo(cfgPath).absolutePath());
+                QObject::connect(dirWatch,
+                    &QFileSystemWatcher::directoryChanged,
+                    watcher, [watcher, cfgPath]() {
+                        if (QFile::exists(cfgPath)
+                            && !watcher->files().contains(cfgPath))
+                            watcher->addPath(cfgPath);
+                    });
+            }
+            QObject::connect(watcher, &QFileSystemWatcher::fileChanged,
+                             this, [this, cfgPath, watcher]() {
+                VisualConfigManager::instance().load();
+                update();
+                // Some editors replace the file; watcher drops it. Re-add.
+                if (!watcher->files().contains(cfgPath)
+                    && QFile::exists(cfgPath))
+                    watcher->addPath(cfgPath);
+            });
+        }
+
+        // Keep the in-process subscribe too — it fires when Settings
+        // is opened from inside this same shell process.
+        VisualConfigManager::instance().subscribe(
+            [this](const VisualConfig &) {
+                update();
+            });
+
         // ---- Keyboard shortcuts ----
         auto sc = [this](const QString &key,
                          std::function<void()> fn) {
@@ -8440,7 +8484,9 @@ public:
         setShellWindowGeometry(this, QSize(900, 640));
 
         QVBoxLayout *root = new QVBoxLayout(this);
-        root->setContentsMargins(0, 0, 0, 0);
+        // Bottom margin = rounded-corner radius. Keeps child
+        // widgets from painting over the rounded bottom corners.
+        root->setContentsMargins(0, 0, 0, 16);
         root->setSpacing(0);
 
         QWidget *header = new QWidget;
@@ -8862,7 +8908,9 @@ public:
         setShellWindowGeometry(this, QSize(900, 600));
 
         QVBoxLayout *root = new QVBoxLayout(this);
-        root->setContentsMargins(0, 0, 0, 0);
+        // Bottom margin = rounded-corner radius. Keeps child
+        // widgets from painting over the rounded bottom corners.
+        root->setContentsMargins(0, 0, 0, 16);
         root->setSpacing(0);
 
         // ---- Header ----
@@ -8982,7 +9030,9 @@ public:
 
         // ---- Outer layout ----
         QVBoxLayout *root = new QVBoxLayout(this);
-        root->setContentsMargins(0, 0, 0, 0);
+        // Bottom margin = rounded-corner radius. Keeps child
+        // widgets from painting over the rounded bottom corners.
+        root->setContentsMargins(0, 0, 0, 16);
         root->setSpacing(0);
 
         // ---- Header (drag + traffic lights) ----
@@ -9284,7 +9334,9 @@ public:
 
         // ---- Root layout ----
         QVBoxLayout *root = new QVBoxLayout(this);
-        root->setContentsMargins(0, 0, 0, 0);
+        // Bottom margin = rounded-corner radius. Keeps child
+        // widgets from painting over the rounded bottom corners.
+        root->setContentsMargins(0, 0, 0, 16);
         root->setSpacing(0);
 
         // ---- Header (drag + traffic lights) ----
@@ -10051,6 +10103,7 @@ protected:
                 p.setClipRect(QRect(0, 0,
                                     m_sidebar->width(),
                                     height()));
+                p.setClipPath(full, Qt::IntersectClip);
                 p.drawPath(full);
                 p.restore();
             }
@@ -10060,6 +10113,7 @@ protected:
             p.setPen(satPen);
             p.save();
             p.setClipRect(QRect(0, 0, width(), 42));
+            p.setClipPath(full, Qt::IntersectClip);
             p.drawPath(full);
             p.restore();
 
@@ -10070,20 +10124,31 @@ protected:
             int sx = m_sidebar ? m_sidebar->width() : 0;
             p.setClipRect(QRect(sx, 42,
                                 width() - sx, height() - 42));
+            p.setClipPath(full, Qt::IntersectClip);
             p.drawPath(full);
             p.restore();
         }
 
-        // Window outline (drawn last so the border stays crisp)
+        // Window outline (drawn last so the border stays crisp).
+        // Use an INSET path so the 1px pen stays fully inside the
+        // opaque body — drawing on `full` directly bled the outer
+        // 0.5px of the pen onto transparent corner pixels, which
+        // the compositor rendered as a black fringe.
+        QRectF borderRect = QRectF(rect()).adjusted(1.0, 1.0, -1.0, -1.0);
+        QPainterPath borderPath;
+        borderPath.addRoundedRect(borderRect, 13, 13);
         p.setPen(QPen(Sigil::border(), 1));
         p.setBrush(Qt::NoBrush);
-        p.drawPath(full);
+        p.drawPath(borderPath);
     }
 
 private:
     void buildUi() {
         QVBoxLayout *root = new QVBoxLayout(this);
-        root->setContentsMargins(0, 0, 0, 0);
+        // Bottom margin = rounded-corner radius. Keeps child
+        // widgets from painting their opaque backgrounds over
+        // the bottom corners of the rounded body.
+        root->setContentsMargins(0, 0, 0, 16);
         root->setSpacing(0);
 
         // Header strip (draggable)
