@@ -3501,15 +3501,6 @@ private:
 
 static QString discoverSwaySock();
 
-// Yellow traffic light on any shell window — ask the shell to run
-// its full minimize animation on the currently focused window.
-static void shellMinimizeFocusedWindow()
-{
-    QProcess::startDetached("bash", { "-c",
-        "pkill -RTMIN -f 'apokolips-shell/build/apokolips-shell$'" });
-}
-
-
 // ---- Genie family handshake ----
 static void genieHandshakeReady(const QString &sockName)
 {
@@ -5800,7 +5791,7 @@ private:
         QObject::connect(closeBtn, &QPushButton::clicked,
                          [this]() { close(); deleteLater(); });
         QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
+                         [this]() { hide(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             static bool zoomed = false;
             if (zoomed)
@@ -8106,7 +8097,7 @@ public:
         QObject::connect(closeBtn, &QPushButton::clicked,
                          [this]() { close(); });
         QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
+                         [this]() { hide(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             static bool zoomed = false;
             if (zoomed)
@@ -8529,7 +8520,7 @@ public:
         QObject::connect(closeBtn, &QPushButton::clicked,
                          [this]() { close(); });
         QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
+                         [this]() { hide(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             static bool zoomed = false;
             if (zoomed)
@@ -8650,7 +8641,7 @@ public:
         QObject::connect(closeBtn, &QPushButton::clicked,
                          [this]() { close(); });
         QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
+                         [this]() { hide(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             static bool zoomed = false;
             if (zoomed)
@@ -8950,7 +8941,7 @@ public:
         QObject::connect(closeBtn, &QPushButton::clicked,
                          [this]() { close(); });
         QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
+                         [this]() { hide(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             static bool zoomed = false;
             if (zoomed)
@@ -9755,7 +9746,7 @@ private:
         QObject::connect(m_closeBtn, &QPushButton::clicked,
                          [this]() { this->close(); this->deleteLater(); });
         QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
+                         [this]() { this->hide(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             // Cage supports client-side resize; use that for zoom.
             static bool zoomed = false;
@@ -19244,7 +19235,7 @@ private:
             QObject::connect(closeBtn, &QPushButton::clicked,
                              [this]() { close(); });
             QObject::connect(minBtn, &QPushButton::clicked,
-                             []() { shellMinimizeFocusedWindow(); });
+                             [this]() { hide(); });
             QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
                 static bool zoomed = false;
                 if (zoomed)
@@ -19446,7 +19437,7 @@ private:
         QObject::connect(closeBtn, &QPushButton::clicked,
                          [this]() { close(); });
         QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
+                         [this]() { hide(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
             static bool zoomed = false;
             if (zoomed)
