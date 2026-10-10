@@ -381,6 +381,33 @@ Golden rule for AI features (future):
       (apokolips-files→Finder, apokolips-notes→Notes), reverse
       overlay plays, real window shown at end.
 
+  GENIE FAMILY STATUS (2026-10-10)
+  ---------------------------------
+  [x] G1a — Reverse genie CLI
+  [x] G1b — Dock click restores minimized windows
+  [x] G2 — Scale minimize animation
+  [x] G3 — Suck minimize animation (Manus silhouette version)
+        Single-quad morph. Smooth. Has stretch smear — user accepts.
+  [ ] G4 — Settings dropdown: Minimize windows using
+        (Genie / Scale / Suck). Wire to cfg.minimizeStyle.
+  [ ] G5 — Yellow/green traffic lights trigger animation
+  [ ] G6 — Every app launches grow-from-dock / closes shrink-to-dock
+  [ ] G7 — Dock-position-aware animations (Left/Right/Bottom)
+
+  QUEUED REWRITE — Genie option A (after G7)
+  -------------------------------------------
+  Current genie uses 100-220 strips with per-strip stagger. Works
+  but strips are visible. Manus's Suck (single quad) is smoother.
+  Rewrite genie to use 4-6 large vertical bands, each a quad with
+  slight time delay. Retains "pour" effect, smooths visuals.
+  Backup main.cpp before patch. Revert if worse than current.
+
+  V2 BACKLOG — Real mesh warp for genie
+  -------------------------------------
+  Replace band approach with true vertex-mesh warp (OpenGL /
+  QSGMaterial). Zero stretch smear, zero seams, full texture
+  fidelity through the warp. Multi-session work.
+
   POLISH BACKLOG (after G2/G3/G4):
   [ ] Tune genie smoothness, fluidness, motion. Separate pass after
       all three styles (genie/scale/suck) work.
