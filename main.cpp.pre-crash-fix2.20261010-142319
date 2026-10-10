@@ -20378,12 +20378,8 @@ static int runShell(int argc, char *argv[])
                         return;
                     }
 
-                    bool *moveDone = new bool(false);
                     auto performScratchpadMove =
-                        [root, target, dockName, dockGlobal,
-                         retainedPixmap, moveDone]() {
-                        if (*moveDone) return;
-                        *moveDone = true;
+                        [root, target, dockName, dockGlobal, retainedPixmap]() {
                         QProcess *move = new QProcess(root);
                         QProcessEnvironment env =
                             QProcessEnvironment::systemEnvironment();
@@ -20484,8 +20480,8 @@ static int runShell(int argc, char *argv[])
                             if (data.contains("ready")) {
                                 qDebug() << "[genie] handshake ready";
                                 performScratchpadMove();
-                                if (readyServer->isListening())
-                                    readyServer->close();
+                                readyServer->close();
+                                readyServer->deleteLater();
                             }
                             conn->disconnectFromServer();
                         });
@@ -20496,8 +20492,8 @@ static int runShell(int argc, char *argv[])
                         if (!readyServer->isListening()) return;
                         qDebug() << "[genie] handshake timeout — moving";
                         performScratchpadMove();
-                        if (readyServer->isListening())
-                            readyServer->close();
+                        readyServer->close();
+                        readyServer->deleteLater();
                     });
                 });
                 QString grimArg = QString("%1,%2 %3x%4")
