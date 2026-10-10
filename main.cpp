@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QPointer>
 #include <qtermwidget.h>
 #include <QHostInfo>
 #include <QThread>
@@ -3501,12 +3502,268 @@ private:
 
 static QString discoverSwaySock();
 
+// Maps the user's minimizeStyle config to the CLI flag.
+static QString minimizeStyleFlag()
+{
+    VisualConfigManager::instance().load();
+    const QString s = VisualConfigManager::instance().cfg().minimizeStyle;
+    if (s == "scale") return "--scale";
+    if (s == "suck")  return "--suck";
+    return "--genie";
+}
+
+// ---- G6 forward decls ----
+static QString genieMakeHandshakeName();
+static QPixmap grabWidget(QWidget *w);
+
+static QPoint extractFromDockArg();
+static void   shellAnimateDockIn(QWidget *w, const QPoint &dockPt);
+static void   shellScaleToDock(QWidget *w);
+
+// =========================================================
+// G6 — dock open/close animations for our own apps
+// =========================================================
+static QPixmap grabWidget(QWidget *w)
+{
+    if (!w) return QPixmap();
+    if (w->layout()) w->layout()->activate();
+    w->ensurePolished();
+    return w->grab();
+}
+
+static QPoint extractFromDockArg()
+{
+    const QStringList a = QCoreApplication::arguments();
+    for (int i = 0; i + 2 < a.size(); ++i) {
+        if (a[i] == "--from-dock")
+            return QPoint(a[i + 1].toInt(), a[i + 2].toInt());
+    }
+    return QPoint(-1, -1);
+}
+
+class DockCloseAnimFilter : public QObject {
+public:
+    DockCloseAnimFilter(QWidget *target, const QPoint &dockPt)
+        : QObject(target), m_target(target), m_dock(dockPt) {}
+    bool eventFilter(QObject *o, QEvent *e) override {
+        if (e->type() == QEvent::Close && m_target && m_dock.x() >= 0) {
+            QRect r = m_target->frameGeometry();
+            QPixmap pm = grabWidget(m_target);
+            if (!pm.isNull()) {
+                QString png = QDir::tempPath() +
+                    QString("/apokolips-close-%1-%2.png")
+                        .arg(QCoreApplication::applicationPid())
+                        .arg(QDateTime::currentMSecsSinceEpoch());
+                if (pm.save(png, "PNG")) {
+                    QWidget *target = m_target;
+                    const QString readyName = genieMakeHandshakeName();
+                    QLocalServer::removeServer(readyName);
+                    QLocalServer *readyServer = new QLocalServer(target);
+                    readyServer->listen(readyName);
+
+                    const QStringList overlayArgs{
+                        minimizeStyleFlag(), png,
+                        QString::number(r.x()), QString::number(r.y()),
+                        QString::number(r.width()), QString::number(r.height()),
+                        QString::number(m_dock.x()), QString::number(m_dock.y()),
+                        "--ms", "400", "--ready-sock", readyName
+                    };
+                    const bool started = QProcess::startDetached(
+                        QCoreApplication::applicationFilePath(), overlayArgs);
+
+                    if (!started) {
+                        readyServer->close();
+                        readyServer->deleteLater();
+                        target->hide();
+                    } else {
+                        QObject::connect(readyServer, &QLocalServer::newConnection,
+                                         [readyServer, target]() {
+                            QLocalSocket *conn = readyServer->nextPendingConnection();
+                            if (!conn) return;
+                            QObject::connect(conn, &QLocalSocket::readyRead,
+                                             [conn, readyServer, target]() {
+                                QByteArray data = conn->readAll();
+                                if (data.contains("ready") && target)
+                                    target->hide();
+                                conn->disconnectFromServer();
+                                if (readyServer->isListening())
+                                    readyServer->close();
+                            });
+                        });
+                        // Safety fallback in case the overlay never signals
+                        // (process crash, etc.) — don't leave the window stuck.
+                        QTimer::singleShot(900, target, [target]() {
+                            if (target) target->hide();
+                        });
+                    }
+                }
+            } else {
+                m_target->hide();
+            }
+        }
+        return QObject::eventFilter(o, e);
+    }
+private:
+    QWidget *m_target = nullptr;
+    QPoint   m_dock;
+};
+
+static void shellAnimateDockIn(QWidget *w, const QPoint &dockPt)
+{
+    if (!w) return;
+    if (dockPt.x() < 0) { w->show(); return; }
+
+    // Install close filter for later.
+    w->installEventFilter(new DockCloseAnimFilter(w, dockPt));
+
+    // Grab the widget's own pixels without ever showing it on screen.
+    QRect r = w->frameGeometry();
+    QPixmap pm = grabWidget(w);
+    if (pm.isNull()) { w->show(); return; }
+
+    QString png = QDir::tempPath() +
+        QString("/apokolips-open-%1-%2.png")
+            .arg(QCoreApplication::applicationPid())
+            .arg(QDateTime::currentMSecsSinceEpoch());
+    if (!pm.save(png, "PNG")) { w->show(); return; }
+
+    // Window stays hidden until the overlay has finished its reverse
+    // animation and signals readiness over the handshake socket —
+    // no fixed-delay guess, so slow process startup never causes a flash.
+    const QString readyName = genieMakeHandshakeName();
+    QLocalServer::removeServer(readyName);
+    QLocalServer *readyServer = new QLocalServer(w);
+    readyServer->listen(readyName);
+
+    const QStringList overlayArgs{
+        minimizeStyleFlag(), png,
+        QString::number(r.x()), QString::number(r.y()),
+        QString::number(r.width()), QString::number(r.height()),
+        QString::number(dockPt.x()), QString::number(dockPt.y()),
+        "--reverse", "--ms", "400", "--ready-sock", readyName
+    };
+    const bool started = QProcess::startDetached(
+        QCoreApplication::applicationFilePath(), overlayArgs);
+
+    auto revealReal = [w]() {
+        if (!w) return;
+        w->show();
+        w->raise();
+        w->activateWindow();
+    };
+
+    if (!started) {
+        readyServer->close();
+        readyServer->deleteLater();
+        revealReal();
+        return;
+    }
+
+    QObject::connect(readyServer, &QLocalServer::newConnection,
+                     [readyServer, revealReal]() {
+        QLocalSocket *conn = readyServer->nextPendingConnection();
+        if (!conn) return;
+        QObject::connect(conn, &QLocalSocket::readyRead,
+                         [conn, readyServer, revealReal]() {
+            QByteArray data = conn->readAll();
+            if (data.contains("ready")) revealReal();
+            conn->disconnectFromServer();
+            if (readyServer->isListening()) readyServer->close();
+        });
+    });
+    // Safety fallback — the overlay's own animation runs ~400ms, so if
+    // the handshake is ever missed, still reveal the window.
+    QTimer::singleShot(900, w, revealReal);
+}
+
+// Yellow traffic light → forward shrink-to-dock, then hide.
+static void shellScaleToDock(QWidget *w)
+{
+    if (!w) return;
+    QPoint dock = extractFromDockArg();
+    if (dock.x() < 0) { w->hide(); return; }
+
+    QRect r = w->frameGeometry();
+    QPixmap pm = grabWidget(w);
+    if (pm.isNull()) { w->hide(); return; }
+
+    QString png = QDir::tempPath() +
+        QString("/apokolips-min-%1-%2.png")
+            .arg(QCoreApplication::applicationPid())
+            .arg(QDateTime::currentMSecsSinceEpoch());
+    if (!pm.save(png, "PNG")) { w->hide(); return; }
+
+    const QString readyName = genieMakeHandshakeName();
+    QLocalServer::removeServer(readyName);
+    QLocalServer *readyServer = new QLocalServer(w);
+    readyServer->listen(readyName);
+
+    const QStringList overlayArgs{
+        minimizeStyleFlag(), png,
+        QString::number(r.x()), QString::number(r.y()),
+        QString::number(r.width()), QString::number(r.height()),
+        QString::number(dock.x()), QString::number(dock.y()),
+        "--ms", "400", "--ready-sock", readyName
+    };
+    const bool started = QProcess::startDetached(
+        QCoreApplication::applicationFilePath(), overlayArgs);
+
+    if (!started) {
+        readyServer->close();
+        readyServer->deleteLater();
+        w->hide();
+        return;
+    }
+
+    QObject::connect(readyServer, &QLocalServer::newConnection,
+                     [readyServer, w]() {
+        QLocalSocket *conn = readyServer->nextPendingConnection();
+        if (!conn) return;
+        QObject::connect(conn, &QLocalSocket::readyRead,
+                         [conn, readyServer, w]() {
+            QByteArray data = conn->readAll();
+            if (data.contains("ready") && w) w->hide();
+            conn->disconnectFromServer();
+            if (readyServer->isListening()) readyServer->close();
+        });
+    });
+    QTimer::singleShot(900, w, [w]() { if (w) w->hide(); });
+}
+
+
 // Yellow traffic light on any shell window — ask the shell to run
 // its full minimize animation on the currently focused window.
 static void shellMinimizeFocusedWindow()
 {
     QProcess::startDetached("bash", { "-c",
         "pkill -RTMIN -f 'apokolips-shell/build/apokolips-shell$'" });
+}
+
+// Red traffic light: minimize through the shell's pipeline, then
+// close the window ~once the animation has finished. The scratchpad
+// entry disappears when the process exits.
+static void shellCloseViaGenie(QWidget *w)
+{
+    if (!w) return;
+    // Only run the minimize animation when this window is the focused
+    // one. Guards against a background red-light click hijacking the
+    // shell's SIGRTMIN from a freshly-launched window.
+    if (w->isActiveWindow()) {
+        // Match the animation duration exactly, plus a small margin
+        // for overlay process startup and handshake roundtrip. The
+        // real window must not close until the overlay has finished.
+        const int animMs = qBound(128,
+            VisualConfigManager::instance().cfg().genieDurationMs, 5000);
+        const int closeAfter = animMs + 400;
+
+        shellMinimizeFocusedWindow();
+        QPointer<QWidget> guard(w);
+        QTimer::singleShot(closeAfter, [guard]() {
+            if (guard) guard->close();
+        });
+    } else {
+        w->close();
+    }
 }
 
 
@@ -3908,7 +4165,12 @@ protected:
         else if (m_name == "Files")     matchId = "org.gnome.Nautilus";
 
         if (!matchId.isEmpty()) {
-            // Try to focus an existing window with this app_id
+            // Bring a scratchpad-hidden window back first — "focus" alone
+            // on a scratchpad window can report success without actually
+            // surfacing it, which looked like "nothing happens" on click.
+            QProcess::execute("swaymsg",
+                { QString("[app_id=%1]").arg(matchId), "scratchpad", "show" });
+
             QProcess sway;
             sway.start("swaymsg",
                 { QString("[app_id=%1]").arg(matchId), "focus" });
@@ -3969,6 +4231,9 @@ protected:
         }
 
         qDebug() << "[dock] startDetached" << program << args;
+        // (--from-dock removed: fresh launches no longer animate,
+        //  minimised windows are restored via the reverse-genie path)
+
         qint64 launchedPid = 0;
         const bool ok = QProcess::startDetached(
             program, args, QString(), &launchedPid);
@@ -4268,6 +4533,7 @@ protected:
 
     void mouseMoveEvent(QMouseEvent *e) override {
         m_cursorX  = e->position().x();
+        m_cursorY  = e->position().y();
         m_hasCursor = true;
         if (!m_debugOnce) {
             qDebug() << "[dock] first mouseMove at x=" << m_cursorX
@@ -4282,11 +4548,17 @@ private:
         const auto &vc = VisualConfigManager::instance().cfg();
         const qreal sigma    = vc.dockSigma;
         const qreal maxBoost = vc.dockMagnifyMax;
-        qreal cursor = m_hasCursor ? m_cursorX : -10000.0;
+        // Axis depends on dock orientation — X for horizontal,
+        // Y for vertical. Same magnify math, different coordinate.
+        qreal cursor = m_hasCursor
+            ? (m_vertical ? m_cursorY : m_cursorX)
+            : -10000.0;
 
         bool anyMoving = false;
         for (DockIcon *di : m_icons) {
-            qreal cx = di->geometry().center().x();
+            qreal cx = m_vertical
+                ? di->geometry().center().y()
+                : di->geometry().center().x();
             qreal d  = cx - cursor;
             qreal inf = std::exp(-(d * d) / (2.0 * sigma * sigma));
             qreal target = 1.0 + maxBoost * inf;
@@ -4309,6 +4581,7 @@ private:
     QTimer *m_timer = nullptr;
     QTimer *m_pollTimer = nullptr;
     qreal m_cursorX = 0;
+    qreal m_cursorY = 0;
     bool  m_hasCursor = false;
     bool  m_debugOnce = false;
     Theme m_theme;
@@ -5575,6 +5848,51 @@ public:
         buildBlurredBackdrop();
 
         buildUi();
+
+        // ---- Traffic lights (FramelessWindowHint has no system chrome) ----
+        {
+            QWidget *lightBar = new QWidget(this);
+            lightBar->setFixedHeight(22);
+            lightBar->setAttribute(Qt::WA_TransparentForMouseEvents, false);
+            QHBoxLayout *lb = new QHBoxLayout(lightBar);
+            lb->setContentsMargins(14, 10, 0, 0);
+            lb->setSpacing(8);
+
+            auto makeLight = [](const QString &idle, const QString &hover) {
+                QPushButton *b = new QPushButton;
+                b->setFixedSize(13, 13);
+                b->setCursor(Qt::PointingHandCursor);
+                b->setStyleSheet(QString(
+                    "QPushButton { background: %1;"
+                    "  border: 1px solid rgba(0,0,0,60);"
+                    "  border-radius: 6px; }"
+                    "QPushButton:hover { background: %2; }")
+                    .arg(idle, hover));
+                return b;
+            };
+            QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
+            QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
+            QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
+            lb->addWidget(closeBtn);
+            lb->addWidget(minBtn);
+            lb->addWidget(maxBtn);
+            lb->addStretch();
+
+            QObject::connect(closeBtn, &QPushButton::clicked,
+                             [this]() { shellCloseViaGenie(this); });
+            QObject::connect(minBtn, &QPushButton::clicked,
+                             []() { shellMinimizeFocusedWindow(); });
+            QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
+                static bool zoomed = false;
+                if (zoomed)
+                    setShellWindowGeometry(this, QSize(900, 560));
+                else
+                    setGeometry(shellSafeArea());
+                zoomed = !zoomed;
+            });
+
+            lightBar->move(0, 0);
+        }
 
         ThemeManager::instance().subscribe([this](const Theme &t) {
             m_theme = t;
@@ -8104,7 +8422,7 @@ public:
         QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
 
         QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { close(); });
+                         [this]() { shellCloseViaGenie(this); });
         QObject::connect(minBtn, &QPushButton::clicked,
                          []() { shellMinimizeFocusedWindow(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
@@ -8527,7 +8845,7 @@ public:
         QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
 
         QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { close(); });
+                         [this]() { shellCloseViaGenie(this); });
         QObject::connect(minBtn, &QPushButton::clicked,
                          []() { shellMinimizeFocusedWindow(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
@@ -8648,7 +8966,7 @@ public:
         QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
 
         QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { close(); });
+                         [this]() { shellCloseViaGenie(this); });
         QObject::connect(minBtn, &QPushButton::clicked,
                          []() { shellMinimizeFocusedWindow(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
@@ -8948,7 +9266,7 @@ public:
         QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
         QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
         QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { close(); });
+                         [this]() { shellCloseViaGenie(this); });
         QObject::connect(minBtn, &QPushButton::clicked,
                          []() { shellMinimizeFocusedWindow(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
@@ -9753,7 +10071,7 @@ private:
         QPushButton *maxBtn = makeLight("#155c1e", "#28c840");
 
         QObject::connect(m_closeBtn, &QPushButton::clicked,
-                         [this]() { this->close(); this->deleteLater(); });
+                         [this]() { close(); });
         QObject::connect(minBtn, &QPushButton::clicked,
                          []() { shellMinimizeFocusedWindow(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
@@ -19242,7 +19560,7 @@ private:
             v->addLayout(hdr);
 
             QObject::connect(closeBtn, &QPushButton::clicked,
-                             [this]() { close(); });
+                             [this]() { shellCloseViaGenie(this); });
             QObject::connect(minBtn, &QPushButton::clicked,
                              []() { shellMinimizeFocusedWindow(); });
             QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
@@ -19444,7 +19762,7 @@ private:
         hdr->addStretch();
 
         QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { close(); });
+                         [this]() { shellCloseViaGenie(this); });
         QObject::connect(minBtn, &QPushButton::clicked,
                          []() { shellMinimizeFocusedWindow(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
@@ -19628,8 +19946,10 @@ public:
     SuckOverlay(const QString &pngPath, QRect startRect,
                 QPoint dockGlobal, int durationOverrideMs = 0,
                 const QString &readySock = QString(),
+                bool reverse = false,
                 QWidget *parent = nullptr)
-        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
+        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint),
+          m_reverse(reverse)
     {
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
@@ -19685,8 +20005,8 @@ protected:
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
         p.setRenderHint(QPainter::Antialiasing, true);
 
-        const qreal t = qBound<qreal>(
-            0.0, qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
+        qreal t = qBound<qreal>(0.0, qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
+        if (m_reverse) t = 1.0 - t;
         const auto smoothStep = [](qreal v) {
             v = qBound<qreal>(0.0, v, 1.0);
             return v * v * (3.0 - 2.0 * v);
@@ -19749,6 +20069,9 @@ private:
     QTimer *m_timer = nullptr;
     int m_frame = 0;
     int m_frames = 30;
+    bool m_reverse = false;
+    QString m_readySock;
+    bool    m_paintPinged = false;
 };
 
 class ScaleOverlay : public QWidget {
@@ -19756,8 +20079,10 @@ public:
     ScaleOverlay(const QString &pngPath, QRect startRect,
                  QPoint dockGlobal, int durationOverrideMs = 0,
                  const QString &readySock = QString(),
+                 bool reverse = false,
                  QWidget *parent = nullptr)
-        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
+        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint),
+          m_reverse(reverse)
     {
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
@@ -19812,8 +20137,9 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-        const qreal raw = qBound<qreal>(
+        qreal raw = qBound<qreal>(
             0.0, qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
+        if (m_reverse) raw = 1.0 - raw;
         const qreal t = raw * raw * (3.0 - 2.0 * raw);
 
         const qreal fadeStart = 0.94;
@@ -19858,6 +20184,9 @@ private:
     QTimer *m_timer = nullptr;
     int m_frame = 0;
     int m_frames = 30;
+    bool m_reverse = false;
+    QString m_readySock;
+    bool    m_paintPinged = false;
 };
 
 
@@ -20036,6 +20365,8 @@ private:
     qreal m_curve = 0.65;
     qreal m_fadeFrom = 0.95;
     bool m_reverse = false;
+    QString m_readySock;
+    bool    m_paintPinged = false;
 };
 
 static int runShell(int argc, char *argv[])
@@ -20280,11 +20611,13 @@ static int runShell(int argc, char *argv[])
                 // Find the dock icon position for this app
                 QString dockName;
                 // Our own app windows share app_id; distinguish by title.
-                if (target.appId == "apokolips-shell" &&
-                    target.title == "Files") {
+                if (target.appId == "apokolips-files" ||
+                    (target.appId == "apokolips-shell" &&
+                     target.title == "Files")) {
                     dockName = "Finder";
-                } else if (target.appId == "apokolips-shell" &&
-                           target.title == "Apokolips Settings") {
+                } else if (target.appId == "apokolips-settings" ||
+                           (target.appId == "apokolips-shell" &&
+                            target.title == "Apokolips Settings")) {
                     dockName = "Settings";
                 } else if (target.appId == "firefox") {
                     dockName = "Finder";
@@ -20298,8 +20631,33 @@ static int runShell(int argc, char *argv[])
                 } else if (target.appId == "thunderbird") {
                     dockName = "Mail";
                 } else if (target.appId == "org.gnome.Terminal" ||
-                           target.appId == "foot") {
-                    dockName = "Terminal";
+                           target.appId == "foot" ||
+                           target.appId == "apokolips-node") {
+                    dockName = "Node";
+                } else if (target.appId == "apokolips-aperture") {
+                    dockName = "Aperture";
+                } else if (target.appId == "apokolips-boombube") {
+                    dockName = "BoomTube";
+                } else if (target.appId == "apokolips-mymach") {
+                    dockName = "myMach";
+                } else if (target.appId == "apokolips-notes") {
+                    dockName = "Notes";
+                } else if (target.appId == "apokolips-calculator") {
+                    dockName = "Calculator";
+                } else if (target.appId == "apokolips-glyph") {
+                    dockName = "Glyph";
+                } else if (target.appId == "apokolips-shell"
+                           && target.title == "Node") {
+                    dockName = "Node";
+                } else if (target.appId == "apokolips-shell"
+                           && target.title == "Aperture") {
+                    dockName = "Aperture";
+                } else if (target.appId == "apokolips-shell"
+                           && target.title == "BoomTube") {
+                    dockName = "BoomTube";
+                } else if (target.appId == "apokolips-shell"
+                           && target.title == "myMach") {
+                    dockName = "myMach";
                 }
 
                 QPoint dockPt(960, 820);   // fallback — bottom center
@@ -21037,6 +21395,22 @@ static int runShell(int argc, char *argv[])
             warm, &QProcess::deleteLater);
     }
 
+    // ---- Clear stale genie state from any previous shell session ----
+    // Any conIds saved before this process started are dead — sway
+    // assigns new IDs at every boot. Leaving them in caused: dock
+    // click plays a stale reverse animation, then fails to restore
+    // the (long-gone) window. Wipe on startup.
+    {
+        QFile::remove("/tmp/apokolips-genie-state.json");
+        QDir tmp(QDir::tempPath());
+        for (const QString &f :
+             tmp.entryList({ "apokolips-genie-*.png",
+                             "genie-*.png" },
+                           QDir::Files))
+            QFile::remove(tmp.filePath(f));
+        qInfo() << "[genie] state wiped on startup";
+    }
+
     ClipboardPanel *clipboardPanel = new ClipboardPanel(root);
 
     // IPC — second instance connects and sends "toggle"
@@ -21367,48 +21741,65 @@ static int runShell(int argc, char *argv[])
         }
     }
 
-    auto applyDockPosition = [middle, desktop, dock](int pos) {
-        if (QLayout *old = middle->layout()) {
-            QLayoutItem *item;
-            while ((item = old->takeAt(0)) != nullptr) {
-                if (QWidget *w = item->widget()) w->setParent(middle);
-                delete item;
-            }
-            delete old;
+    // Persistent grid layout — never destroyed. Moving widgets between
+    // cells avoids the Wayland reparent/layout-destroy race that froze
+    // dock input on position change.
+    QGridLayout *middleGrid = new QGridLayout(middle);
+    middleGrid->setContentsMargins(0, 0, 0, 0);
+    middleGrid->setSpacing(0);
+    middle->setLayout(middleGrid);
+
+    auto applyDockPosition = [middle, desktop, dock, middleGrid](int pos) {
+        middleGrid->removeWidget(dock);
+        middleGrid->removeWidget(desktop);
+
+        // Reset all stretches
+        for (int i = 0; i < 4; ++i) {
+            middleGrid->setRowStretch(i, 0);
+            middleGrid->setColumnStretch(i, 0);
         }
 
         if (pos == 0) {
-            // Bottom
-            QVBoxLayout *v = new QVBoxLayout(middle);
-            v->setContentsMargins(0, 0, 0, 0);
-            v->setSpacing(0);
-            v->addWidget(desktop, 1);
-
-            QHBoxLayout *row = new QHBoxLayout;
-            row->setContentsMargins(0, 0, 0, 14);
-            row->addStretch();
-            row->addWidget(dock);
-            row->addStretch();
-            v->addLayout(row);
+            // Bottom — desktop fills, dock under it centered
+            middleGrid->addWidget(desktop, 0, 0, 1, 3);
+            middleGrid->addWidget(dock,    1, 1, 1, 1, Qt::AlignHCenter);
+            middleGrid->setRowStretch(0, 1);
+            middleGrid->setRowStretch(1, 0);
         } else if (pos == 1) {
             // Left
-            QHBoxLayout *h = new QHBoxLayout(middle);
-            h->setContentsMargins(14, 12, 0, 12);
-            h->setSpacing(8);
-            h->addWidget(dock, 0, Qt::AlignVCenter);
-            h->addWidget(desktop, 1);
+            middleGrid->addWidget(dock,    0, 0, 1, 1, Qt::AlignVCenter);
+            middleGrid->addWidget(desktop, 0, 1, 1, 1);
+            middleGrid->setColumnStretch(1, 1);
         } else {
             // Right
-            QHBoxLayout *h = new QHBoxLayout(middle);
-            h->setContentsMargins(0, 12, 14, 12);
-            h->setSpacing(8);
-            h->addWidget(desktop, 1);
-            h->addWidget(dock, 0, Qt::AlignVCenter);
+            middleGrid->addWidget(desktop, 0, 0, 1, 1);
+            middleGrid->addWidget(dock,    0, 1, 1, 1, Qt::AlignVCenter);
+            middleGrid->setColumnStretch(0, 1);
         }
 
         dock->setOrientation(pos != 0);
         dock->show();
         desktop->show();
+        dock->raise();
+
+        // The desktop-icon canvas (a sibling overlay) sized itself to
+        // the OLD desktop rect. After the grid reflow it must be
+        // resized to the new desktop geometry — otherwise it sits on
+        // top of the dock and swallows its mouse events.
+        if (QWidget *canvas = middle->findChild<QWidget *>("desktopCanvas")) {
+            if (QWidget *parent = canvas->parentWidget()) {
+                QPoint tl = desktop->mapTo(parent, QPoint(0, 0));
+                canvas->setGeometry(QRect(tl, desktop->size()));
+            }
+        }
+        // Same for the floating widget layer.
+        if (QWidget *wl = middle->findChild<QWidget *>("widgetLayer")) {
+            if (QWidget *parent = wl->parentWidget()) {
+                QPoint tl = desktop->mapTo(parent, QPoint(0, 0));
+                wl->setGeometry(QRect(tl, desktop->size()));
+            }
+        }
+        dock->raise();
     };
 
     int *lastDockPos = new int(VisualConfigManager::instance()
@@ -21677,6 +22068,7 @@ int main(int argc, char *argv[])
 
         int durationMs = 0;
         QString readySock;
+        bool reverse = false;
         for (int i = 9; i < argc; ++i) {
             const QString arg = QString::fromLocal8Bit(argv[i]);
             if (arg == "--ms" && i + 1 < argc) {
@@ -21690,6 +22082,8 @@ int main(int argc, char *argv[])
                 durationMs = qBound(128, value, 5000);
             } else if (arg == "--ready-sock" && i + 1 < argc) {
                 readySock = QString::fromLocal8Bit(argv[++i]);
+            } else if (arg == "--reverse") {
+                reverse = true;
             } else {
                 qWarning() << "[suck] unknown or incomplete option:" << arg;
                 return 2;
@@ -21703,7 +22097,7 @@ int main(int argc, char *argv[])
 
         auto *suck = new SuckOverlay(
             imagePath, QRect(x, y, w, h), QPoint(dx, dy),
-            durationMs, readySock);
+            durationMs, readySock, reverse);
         suck->show();
         return app.exec();
     }
@@ -21731,6 +22125,7 @@ int main(int argc, char *argv[])
 
         int durationMs = 0;
         QString readySock;
+        bool reverse = false;
         for (int i = 9; i < argc; ++i) {
             const QString arg = QString::fromLocal8Bit(argv[i]);
             if (arg == "--ms" && i + 1 < argc) {
@@ -21744,6 +22139,8 @@ int main(int argc, char *argv[])
                 durationMs = qBound(128, value, 5000);
             } else if (arg == "--ready-sock" && i + 1 < argc) {
                 readySock = QString::fromLocal8Bit(argv[++i]);
+            } else if (arg == "--reverse") {
+                reverse = true;
             } else {
                 qWarning() << "[scale] unknown or incomplete option:" << arg;
                 return 2;
@@ -21757,7 +22154,7 @@ int main(int argc, char *argv[])
 
         auto *scale = new ScaleOverlay(
             imagePath, QRect(x, y, w, h), QPoint(dx, dy),
-            durationMs, readySock);
+            durationMs, readySock, reverse);
         scale->show();
         return app.exec();
     }

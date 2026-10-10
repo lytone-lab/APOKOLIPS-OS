@@ -454,6 +454,29 @@ Golden rule for AI features (future):
   before this session's cleanup; main.cpp.pre-handshake.* is the
   last known-good before handshake.
 
+  [ ] Genie state survives shell reload — after restart, stale
+      conIds in /tmp/apokolips-genie-state.json cause: (a) dock
+      click plays reverse animation of an OLD screenshot, then
+      (b) app never launches because scratchpad show fails.
+      Fix: wipe state file + orphan pixmaps on shell startup.
+      (patched, pending verify)
+
+  [ ] Dock freeze on position change — dock visible after
+      Left/Right/Bottom switch, icons render, but hover + click
+      do nothing until shell reload. Suspected: desktopCanvas or
+      widgetLayer overlay still covers the dock's screen area and
+      eats its mouse events. Needs canvas/layer resize on reflow.
+
+  [ ] Animation start latency — the overlay process boot delay
+      (fork + Qt init) means ~200-400ms between trigger and first
+      frame. Under VM CPU load, can be longer. Fix candidate:
+      preload overlay binary at shell startup (warm Qt caches).
+
+  [ ] Animation stale-frame on launch — after shell reload, the
+      first dock-launch animation shows what the app was doing
+      BEFORE the reload, using a saved pixmap. Same root cause
+      as the first bug above.
+
 ------------------------------------------------------------------------
 WIRING BACKLOG (saved but not yet acting)
 ------------------------------------------------------------------------
