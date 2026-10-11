@@ -764,6 +764,47 @@ static bool restoreGenieForDock(const QString &dockName)
         return false;
     }
 
+    // The conId might be dead — e.g. red-light close (which minimizes
+    // then quits the app) leaves a state entry for up to 5 s until
+    // pruneStaleGenieState catches it. Restoring a dead conId plays
+    // the animation and then silently fails to surface the window,
+    // which the user sees as "reopen does nothing".
+    //
+    // Fix: ask sway for the live tree. If the conId isn't there,
+    // drop the entry and return false so launchApp falls through
+    // to a fresh launch.
+    {
+        QProcess sway;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        const QString sock = discoverSwaySock();
+        if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+        sway.setProcessEnvironment(env);
+        sway.start("swaymsg", { "-t", "get_tree" });
+        if (sway.waitForFinished(600)) {
+            const QString tree = QString::fromUtf8(
+                sway.readAllStandardOutput());
+            bool alive = false;
+            QRegularExpression re("\"id\"\s*:\s*(\d+)");
+            auto it = re.globalMatch(tree);
+            while (it.hasNext()) {
+                if (it.next().captured(1).toInt() == conId) {
+                    alive = true;
+                    break;
+                }
+            }
+            if (!alive) {
+                qInfo() << "[genie-restore] conId" << conId
+                        << "not in sway tree — dropping stale entry";
+                removeGenieWindow(conId);
+                QFile::remove(savedPng);
+                return false;
+            }
+        }
+        // If sway didn't respond in time, fall through — better to
+        // animate on a maybe-live conId than to break restore for
+        // everyone if sway is just slow.
+    }
+
     const int x = rect.at(0).toInt();
     const int y = rect.at(1).toInt();
     const int w = rect.at(2).toInt();
