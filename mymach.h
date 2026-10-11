@@ -6,6 +6,7 @@
 #include "visualconfig.h"
 #include "style.h"
 #include "shared_fwd.h"
+#include "shellapp.h"
 #include "helpers.h"
 
 class UsageBar : public QWidget {
@@ -156,15 +157,11 @@ private:
     QList<qreal> m_samples;
 };
 
-class MyMachWindow : public QWidget {
+class MyMachWindow : public ShellApp {
 public:
-    explicit MyMachWindow(QWidget *parent = nullptr) : QWidget(parent) {
-        setWindowFlags(Qt::FramelessWindowHint);
-        setWindowTitle("myMach");
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
+    explicit MyMachWindow(QWidget *parent = nullptr) : ShellApp(parent) {
+        setupShellApp("myMach", QSize(900, 640), false);
         setAutoFillBackground(false);
-        setShellWindowGeometry(this, QSize(900, 640));
 
         QVBoxLayout *root = new QVBoxLayout(this);
         // Bottom margin = rounded-corner radius. Keeps child
@@ -179,39 +176,21 @@ public:
         hh->setContentsMargins(16, 0, 16, 0);
         hh->setSpacing(10);
 
-        auto makeLight = [](const QString &idle, const QString &hover) {
-            QPushButton *b = new QPushButton;
-            b->setFixedSize(13, 13);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setStyleSheet(QString(
-                "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60);"
-                "  border-radius: 6px; }"
-                "QPushButton:hover { background: %2; }")
-                .arg(idle, hover));
-            return b;
-        };
-        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
-
-        QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { shellCloseViaGenie(this); });
-        QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
-        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-            static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(900, 640));
-            else
-                setGeometry(shellSafeArea());
-            zoomed = !zoomed;
-        });
-
-        hh->addWidget(closeBtn);
-        hh->addWidget(minBtn);
-        hh->addWidget(maxBtn);
-        hh->addSpacing(8);
+        // Standard header — lights + title via ShellApp.
+        {
+            QLabel *titleLabel = nullptr;
+            QHBoxLayout *stdHdr = buildStandardHeader(
+                "myMach", QSize(900, 640), &titleLabel, nullptr);
+            while (QLayoutItem *item = stdHdr->takeAt(0)) {
+                if (QWidget *w = item->widget()) hh->addWidget(w);
+                else if (QLayout *l = item->layout()) hh->addLayout(l);
+                else if (item->spacerItem())
+                    hh->addSpacerItem(item->spacerItem());
+                else delete item;
+            }
+            delete stdHdr;
+            Q_UNUSED(titleLabel);
+        }
 
         QLabel *title = new QLabel("myMach");
         title->setStyleSheet(
