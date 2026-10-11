@@ -169,6 +169,33 @@ Everything else is a queue, not a deadline.
 
 ---
 
+
+---
+
+## [SOON] Monetization — after the split
+
+Planned paths, in order of realism:
+
+1. **GitHub Sponsors** — turn on, link from README, done.
+2. **Ko-fi** — one-time tips, link from README.
+3. **Devlog** — one short video every two weeks: what broke, what
+   landed. The story (solo builder, macOS+Windows hybrid, 22k lines)
+   is genuinely interesting. YouTube becomes the traffic source that
+   makes 1 and 2 meaningful.
+4. **Portfolio piece** — this project is a strong signal for Qt /
+   Linux desktop / UI consulting work. Not direct revenue but opens
+   doors.
+
+Deferred until main.cpp split is complete because the project
+needs a coherent file layout before it's presentable to sponsors
+or audiences.
+
+Templates needed (write when we get there):
+  - README "Support this project" section
+  - ko-fi button/link placement
+  - GitHub Sponsors tiers
+
+---
 ## How this file gets used
 
 When you're about to work on something, glance at this file. If
