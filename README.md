@@ -138,4 +138,6 @@ See `ARCHITECTURE_NOTES.md` for the design critique and roadmap.
 
 ## License
 
-Personal project. Not currently licensed for distribution.
+GPL v3 — see LICENSE.
+
+Built by **lytone**. If you fork this or ship it, keep the credit.
