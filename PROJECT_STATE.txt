@@ -518,10 +518,6 @@ WIRING BACKLOG (saved but not yet acting)
         - Focus modes apps respect.
 
   SETTINGS PAGES STILL TO WIRE:
-    [ ] Mouse — requested by user; no page exists.
-        Scope: pointer speed, acceleration, natural scroll,
-        primary button, double-click speed.
-    [ ] Date & Time — patch applied, page not showing (see BUG LIST).
     [ ] Notifications — page exists; verify not a stub.
 
   APP POLISH QUEUE:
