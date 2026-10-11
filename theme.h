@@ -113,4 +113,65 @@ private:
     QPixmap m_blurredBg;
 };
 
+
+// --- Cleanup pass ---
+namespace SysState {
+
+inline QString networkKind() {
+    // "wifi" | "ethernet" | "offline"
+    QProcess p;
+    p.start("nmcli", { "-t", "-f", "DEVICE,TYPE,STATE", "device" });
+    p.waitForFinished(500);
+    QString out = QString::fromUtf8(p.readAllStandardOutput());
+    bool ethernet = false, wifi = false, wifiConnected = false;
+    for (const QString &line : out.split('\n')) {
+        QStringList parts = line.trimmed().split(':');
+        if (parts.size() < 3) continue;
+        if (parts[1] == "ethernet" && parts[2].startsWith("connected"))
+            ethernet = true;
+        if (parts[1] == "wifi") {
+            wifi = true;
+            if (parts[2].startsWith("connected")) wifiConnected = true;
+        }
+    }
+    if (wifi && wifiConnected) return "wifi";
+    if (ethernet)              return "ethernet";
+    if (wifi)                  return "wifi";
+    return "offline";
+}
+
+inline bool bluetoothPresent() {
+    QDir d("/sys/class/bluetooth");
+    if (!d.exists()) return false;
+    return !d.entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty();
+}
+
+inline int batteryPercent() {
+    QDir d("/sys/class/power_supply");
+    if (!d.exists()) return -1;
+    for (const QString &entry : d.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        if (!entry.startsWith("BAT")) continue;
+        QFile cap("/sys/class/power_supply/" + entry + "/capacity");
+        if (!cap.open(QIODevice::ReadOnly)) continue;
+        return QString(cap.readAll()).trimmed().toInt();
+    }
+    return -1;
+}
+
+inline bool batteryCharging() {
+    QDir d("/sys/class/power_supply");
+    if (!d.exists()) return false;
+    for (const QString &entry : d.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        if (!entry.startsWith("BAT")) continue;
+        QFile s("/sys/class/power_supply/" + entry + "/status");
+        if (!s.open(QIODevice::ReadOnly)) continue;
+        QString v = QString(s.readAll()).trimmed();
+        return v.compare("Charging", Qt::CaseInsensitive) == 0 ||
+               v.compare("Full", Qt::CaseInsensitive) == 0;
+    }
+    return false;
+}
+
+}
+
 #endif // APOKOLIPS_THEME_H

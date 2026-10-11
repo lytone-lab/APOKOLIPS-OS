@@ -620,4 +620,552 @@ static int runAnimatorDaemon(int argc, char **argv)
     return app.exec();
 }
 
+
+
+// --- Cleanup pass ---
+class GlyphOverlay : public QWidget {
+public:
+    GlyphOverlay() {
+        setWindowFlags(Qt::FramelessWindowHint
+                       | Qt::WindowStaysOnTopHint
+                       | Qt::Tool);
+        setAttribute(Qt::WA_DeleteOnClose, true);
+        setMouseTracking(true);
+        setCursor(Qt::CrossCursor);
+        setFocusPolicy(Qt::StrongFocus);
+
+        QProcess p;
+        p.start("grim", { "-" });
+        p.waitForFinished(2000);
+        m_frozen.loadFromData(p.readAllStandardOutput());
+
+        if (QScreen *s = QGuiApplication::primaryScreen())
+            setGeometry(s->geometry());
+        showFullScreen();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        if (!m_frozen.isNull())
+            p.drawPixmap(rect(), m_frozen);
+        else
+            p.fillRect(rect(), QColor(20, 20, 22));
+
+        p.fillRect(rect(), QColor(0, 0, 0, 150));
+
+        if (m_sel.isValid() && m_sel.width() > 1 && m_sel.height() > 1) {
+            QRect clipped = m_sel.intersected(rect());
+            if (!m_frozen.isNull()) {
+                p.drawPixmap(clipped, m_frozen,
+                             QRect(clipped.topLeft()
+                                     - rect().topLeft(),
+                                   clipped.size()));
+            }
+            QPen pen(QColor(168, 50, 50), 2);
+            p.setPen(pen);
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(clipped.adjusted(0, 0, -1, -1));
+
+            QString dim = QString("%1 × %2")
+                .arg(m_sel.width()).arg(m_sel.height());
+            QFont f = p.font();
+            f.setPixelSize(12);
+            p.setFont(f);
+            QFontMetrics fm(f);
+            int tw = fm.horizontalAdvance(dim) + 16;
+            int th = 22;
+            int tx = clipped.left();
+            int ty = clipped.bottom() + 6;
+            if (ty + th > rect().bottom()) ty = clipped.top() - th - 6;
+            QRect box(tx, ty, tw, th);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(20, 18, 24, 230));
+            p.drawRoundedRect(box, 6, 6);
+            p.setPen(QColor(240, 237, 232));
+            p.drawText(box, Qt::AlignCenter, dim);
+        }
+    }
+
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() != Qt::LeftButton) {
+            if (e->button() == Qt::RightButton) close();
+            return;
+        }
+        m_anchor = e->pos();
+        m_sel = QRect(m_anchor, m_anchor);
+        m_dragging = true;
+        update();
+    }
+
+    void mouseMoveEvent(QMouseEvent *e) override {
+        if (!m_dragging) return;
+        m_sel = QRect(m_anchor, e->pos()).normalized();
+        update();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() != Qt::LeftButton) return;
+        m_dragging = false;
+        if (m_sel.width() < 4 || m_sel.height() < 4) {
+            m_sel = QRect();
+            update();
+            return;
+        }
+        showToolbar();
+    }
+
+    void keyPressEvent(QKeyEvent *e) override {
+        if (e->key() == Qt::Key_Escape) close();
+    }
+
+private:
+    void showToolbar() {
+        if (m_toolbar) m_toolbar->deleteLater();
+
+        m_toolbar = new QWidget(nullptr,
+            Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint
+            | Qt::Tool);
+        m_toolbar->setAttribute(Qt::WA_DeleteOnClose);
+        m_toolbar->setAttribute(Qt::WA_TranslucentBackground, true);
+        m_toolbar->setAttribute(Qt::WA_StyledBackground, true);
+
+        QWidget *inner = new QWidget(m_toolbar);
+        inner->setObjectName("glyphToolbar");
+        inner->setAttribute(Qt::WA_StyledBackground, true);
+        inner->setStyleSheet(
+            "QWidget#glyphToolbar {"
+            "  background: rgba(22, 20, 26, 245);"
+            "  border: 1px solid rgba(255, 255, 255, 40);"
+            "  border-radius: 12px;"
+            "}"
+            "QPushButton {"
+            "  background: transparent;"
+            "  color: rgb(240, 237, 232);"
+            "  border: none;"
+            "  border-radius: 7px;"
+            "  padding: 6px 16px;"
+            "  font-size: 12px;"
+            "}"
+            "QPushButton:hover { background: rgba(255, 255, 255, 40); }"
+            "QPushButton#save {"
+            "  background: rgb(168, 50, 50);"
+            "  color: #ffffff;"
+            "}"
+            "QPushButton#save:hover { background: rgb(200, 74, 74); }");
+
+        QVBoxLayout *outerWrap = new QVBoxLayout(m_toolbar);
+        outerWrap->setContentsMargins(0, 0, 0, 0);
+        outerWrap->setSpacing(0);
+        outerWrap->addWidget(inner);
+
+        QHBoxLayout *h = new QHBoxLayout(inner);
+        h->setContentsMargins(6, 6, 6, 6);
+        h->setSpacing(4);
+        h->setSizeConstraint(QLayout::SetFixedSize);
+
+        QPushButton *save = new QPushButton("Save");
+        save->setObjectName("save");
+        save->setCursor(Qt::PointingHandCursor);
+        save->setMinimumWidth(72);
+        save->setFixedHeight(28);
+        QPushButton *copy = new QPushButton("Copy");
+        copy->setCursor(Qt::PointingHandCursor);
+        copy->setMinimumWidth(72);
+        copy->setFixedHeight(28);
+        QPushButton *cancel = new QPushButton("Cancel");
+        cancel->setCursor(Qt::PointingHandCursor);
+        cancel->setMinimumWidth(72);
+        cancel->setFixedHeight(28);
+
+        h->addWidget(save);
+        h->addWidget(copy);
+        h->addWidget(cancel);
+
+        QObject::connect(save, &QPushButton::clicked, [this]() {
+            QString dir = QDir::homePath() + "/Pictures/Screenshots";
+            QDir().mkpath(dir);
+            QString path = dir + "/Glyph-"
+                + QDateTime::currentDateTime()
+                    .toString("yyyyMMdd-HHmmss") + ".png";
+            if (m_frozen.copy(m_sel).save(path)) {
+                QByteArray png;
+                QBuffer buf(&png);
+                buf.open(QIODevice::WriteOnly);
+                m_frozen.copy(m_sel).save(&buf, "PNG");
+                QProcess *cp = new QProcess;
+                cp->start("wl-copy", { "-t", "image/png" });
+                if (cp->waitForStarted(500)) {
+                    cp->write(png);
+                    cp->closeWriteChannel();
+                }
+            }
+            close();
+        });
+
+        QObject::connect(copy, &QPushButton::clicked, [this]() {
+            QByteArray png;
+            QBuffer buf(&png);
+            buf.open(QIODevice::WriteOnly);
+            m_frozen.copy(m_sel).save(&buf, "PNG");
+            QProcess *cp = new QProcess;
+            cp->start("wl-copy", { "-t", "image/png" });
+            if (cp->waitForStarted(500)) {
+                cp->write(png);
+                cp->closeWriteChannel();
+            }
+            close();
+        });
+
+        QObject::connect(cancel, &QPushButton::clicked,
+                         [this]() { close(); });
+
+        inner->adjustSize();
+        QSize want = inner->sizeHint();
+        if (want.width()  < 220) want.setWidth(220);
+        if (want.height() < 38)  want.setHeight(38);
+        m_toolbar->setMinimumSize(want);
+        m_toolbar->setMaximumSize(want);
+        m_toolbar->resize(want);
+
+        QRect sel = m_sel;
+        int tx = sel.right() - want.width() + 1;
+        int ty = sel.bottom() + 8;
+        if (ty + want.height() > rect().bottom())
+            ty = sel.top() - want.height() - 8;
+        if (tx + want.width() > rect().right() + 1)
+            tx = rect().right() + 1 - want.width();
+        if (tx < 0) tx = 0;
+        if (ty < 0) ty = 0;
+
+        QPoint g = mapToGlobal(QPoint(tx, ty));
+        m_toolbar->move(g);
+        m_toolbar->show();
+        m_toolbar->resize(want);
+        m_toolbar->raise();
+        m_toolbar->activateWindow();
+    }
+
+    QPixmap  m_frozen;
+    QRect    m_sel;
+    QPoint   m_anchor;
+    bool     m_dragging = false;
+    QWidget *m_toolbar = nullptr;
+};
+
+class SnapPicker : public QWidget {
+public:
+    SnapPicker() {
+        setWindowFlags(Qt::FramelessWindowHint
+                       | Qt::WindowStaysOnTopHint
+                       | Qt::Tool);
+        setAttribute(Qt::WA_DeleteOnClose, true);
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setFixedSize(248, 248);
+        setFocusPolicy(Qt::StrongFocus);
+        setMouseTracking(true);
+        setCursor(Qt::ArrowCursor);
+
+        if (QScreen *s = QGuiApplication::primaryScreen())
+            move(s->geometry().center() - rect().center());
+
+        show();
+        raise();
+        activateWindow();
+    }
+
+protected:
+    QRectF cell(int idx) const {
+        const qreal pad = 12;
+        const qreal gap = 4;
+        qreal w = (width()  - 2 * pad - 2 * gap) / 3.0;
+        qreal h = (height() - 2 * pad - 2 * gap) / 3.0;
+        int col = idx % 3;
+        int row = idx / 3;
+        return QRectF(pad + col * (w + gap),
+                      pad + row * (h + gap), w, h);
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        // Background panel
+        QPainterPath path;
+        path.addRoundedRect(rect().adjusted(0, 0, -1, -1), 16, 16);
+        p.fillPath(path, QColor(22, 20, 26, 245));
+        p.setPen(QPen(QColor(255, 255, 255, 40), 1));
+        p.drawPath(path);
+
+        for (int i = 0; i < 9; ++i) {
+            QRectF r = cell(i);
+            bool hov = (i == m_hover);
+
+            // Cell background
+            QPainterPath cp;
+            cp.addRoundedRect(r, 6, 6);
+            p.fillPath(cp, hov ? QColor(168, 50, 50)
+                               : QColor(255, 255, 255, 20));
+
+            // Draw the "window" preview inside the cell
+            QColor shape = hov ? QColor(255, 255, 255) : QColor(200, 200, 210, 180);
+            QRectF inner = r.adjusted(r.width() * 0.14, r.height() * 0.14,
+                                      -r.width() * 0.14, -r.height() * 0.14);
+
+            // Which half of the cell to fill, based on idx
+            QRectF fill;
+            if      (i == 0) fill = QRectF(inner.left(),  inner.top(),
+                                            inner.width(), inner.height() / 2); // top half
+            else if (i == 2) fill = QRectF(inner.left(),  inner.center().y(),
+                                            inner.width(), inner.height() / 2); // bottom half
+            else if (i == 3) fill = QRectF(inner.left(),  inner.top(),
+                                            inner.width() / 2, inner.height()); // left half
+            else if (i == 5) fill = QRectF(inner.center().x(), inner.top(),
+                                            inner.width() / 2, inner.height()); // right half
+            else if (i == 6) fill = QRectF(inner.left(),  inner.top(),
+                                            inner.width() / 2, inner.height() / 2); // TL
+            else if (i == 8) fill = QRectF(inner.center().x(), inner.center().y(),
+                                            inner.width() / 2, inner.height() / 2); // BR
+            else if (i == 4) { // center — smaller inner rect
+                fill = inner.adjusted(inner.width() * 0.18,
+                                      inner.height() * 0.18,
+                                      -inner.width() * 0.18,
+                                      -inner.height() * 0.18);
+            } else {
+                // corners without specific meaning — draw full inner as X
+                fill = inner;
+            }
+
+            if (i == 4) {
+                QPainterPath fp;
+                fp.addRoundedRect(fill, 3, 3);
+                p.fillPath(fp, shape);
+            } else if (i == 1 || i == 7) {
+                // Unused — draw X mark
+                p.setPen(QPen(QColor(200, 200, 210, 60), 1.5));
+                p.drawLine(inner.topLeft(), inner.bottomRight());
+                p.drawLine(inner.topRight(), inner.bottomLeft());
+            } else {
+                QPainterPath fp;
+                fp.addRoundedRect(fill, 3, 3);
+                p.fillPath(fp, shape);
+                // Draw the empty area outline
+                p.setPen(QPen(QColor(200, 200, 210, 60), 1.2));
+                p.setBrush(Qt::NoBrush);
+                p.drawRoundedRect(inner, 3, 3);
+            }
+        }
+    }
+
+    void mouseMoveEvent(QMouseEvent *e) override {
+        int hov = -1;
+        for (int i = 0; i < 9; ++i) {
+            if (cell(i).contains(e->pos())) { hov = i; break; }
+        }
+        if (hov != m_hover) { m_hover = hov; update(); }
+    }
+
+    void leaveEvent(QEvent *) override {
+        m_hover = -1;
+        update();
+    }
+
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() != Qt::LeftButton) { close(); return; }
+        int idx = -1;
+        for (int i = 0; i < 9; ++i) {
+            if (cell(i).contains(e->pos())) { idx = i; break; }
+        }
+        if (idx >= 0) applySnap(idx);
+        close();
+    }
+
+    void keyPressEvent(QKeyEvent *e) override {
+        if (e->key() == Qt::Key_Escape) close();
+    }
+
+private:
+    void applySnap(int idx) {
+        QScreen *s = QGuiApplication::primaryScreen();
+        if (!s) return;
+        QRect g = s->geometry();
+        int W = g.width();
+        int H = g.height();
+        int HW = W / 2;
+        int HH = H / 2;
+
+        auto run = [](const QStringList &cmds) {
+            for (const QString &c : cmds) {
+                QProcess::startDetached("swaymsg", c.split(" "));
+            }
+        };
+
+        switch (idx) {
+        case 0: run({ "resize set " + QString::number(W) + " " + QString::number(HH),
+                      "move position " + QString::number(g.x()) + " " + QString::number(g.y()) }); break;
+        case 2: run({ "resize set " + QString::number(W) + " " + QString::number(H - HH),
+                      "move position " + QString::number(g.x()) + " " + QString::number(g.y() + HH) }); break;
+        case 3: run({ "resize set " + QString::number(HW) + " " + QString::number(H),
+                      "move position " + QString::number(g.x()) + " " + QString::number(g.y()) }); break;
+        case 5: run({ "resize set " + QString::number(W - HW) + " " + QString::number(H),
+                      "move position " + QString::number(g.x() + HW) + " " + QString::number(g.y()) }); break;
+        case 6: run({ "resize set " + QString::number(HW) + " " + QString::number(HH),
+                      "move position " + QString::number(g.x()) + " " + QString::number(g.y()) }); break;
+        case 8: run({ "resize set " + QString::number(W - HW) + " " + QString::number(H - HH),
+                      "move position " + QString::number(g.x() + HW) + " " + QString::number(g.y() + HH) }); break;
+        case 4: {
+            int cw = W * 3 / 5;
+            int ch = H * 3 / 5;
+            run({ "resize set " + QString::number(cw) + " " + QString::number(ch),
+                  "move position " + QString::number(g.x() + (W - cw) / 2) + " "
+                                  + QString::number(g.y() + (H - ch) / 2) }); break;
+        }
+        default: break;
+        }
+    }
+
+    int m_hover = -1;
+};
+
+class ScreensaverOverlay : public QWidget {
+public:
+    ScreensaverOverlay() {
+        setWindowFlags(Qt::FramelessWindowHint
+                       | Qt::WindowStaysOnTopHint
+                       | Qt::Tool);
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAttribute(Qt::WA_DeleteOnClose, true);
+        setCursor(Qt::BlankCursor);
+        setFocusPolicy(Qt::StrongFocus);
+
+        auto &cfg = VisualConfigManager::instance().cfg();
+        m_style = cfg.screensaverStyle;
+
+        if (QScreen *s = QGuiApplication::primaryScreen())
+            setGeometry(s->geometry());
+
+        // Freeze the current desktop behind the overlay
+        QProcess p;
+        p.start("grim", { "-" });
+        p.waitForFinished(1500);
+        m_bg.loadFromData(p.readAllStandardOutput());
+
+        // Slideshow — collect images
+        if (m_style == "slideshow" && !cfg.screensaverImageDir.isEmpty()) {
+            QDir d(cfg.screensaverImageDir);
+            if (d.exists()) {
+                QStringList filters = { "*.png", "*.jpg", "*.jpeg",
+                                        "*.bmp", "*.webp" };
+                for (const QString &f :
+                     d.entryList(filters, QDir::Files, QDir::Name))
+                    m_images << d.filePath(f);
+            }
+        }
+
+        if (m_style == "slideshow" && !m_images.isEmpty()) {
+            m_slideTimer = new QTimer(this);
+            m_slideTimer->setInterval(8000);
+            QObject::connect(m_slideTimer, &QTimer::timeout,
+                             this, &ScreensaverOverlay::nextImage);
+            nextImage();
+            m_slideTimer->start();
+        }
+
+        // Clock tick (used for clock + slideshow overlay info)
+        m_tick = new QTimer(this);
+        m_tick->setInterval(500);
+        QObject::connect(m_tick, &QTimer::timeout, this,
+                         [this]() { update(); });
+        m_tick->start();
+
+        showFullScreen();
+        raise();
+        activateWindow();
+        setFocus();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        // Slideshow: draw the image full-bleed
+        if (m_style == "slideshow" && !m_current.isNull()) {
+            QRect target = rect();
+            QSize sz = m_current.size();
+            sz.scale(target.size(), Qt::KeepAspectRatioByExpanding);
+            QRect src(0, 0, sz.width(), sz.height());
+            src.moveCenter(QRect(QPoint(0, 0), m_current.size()).center());
+            p.drawPixmap(target, m_current, src);
+            // Dim overlay
+            p.fillRect(rect(), QColor(0, 0, 0, 100));
+        } else {
+            // dim / clock — frozen desktop under dark veil
+            if (!m_bg.isNull())
+                p.drawPixmap(rect(), m_bg);
+            else
+                p.fillRect(rect(), QColor(20, 20, 22));
+            p.fillRect(rect(), QColor(0, 0, 0, 160));
+        }
+
+        // Clock text on top of everything
+        if (m_style == "clock" || m_style == "slideshow") {
+            QDateTime now = QDateTime::currentDateTime();
+            auto &c = VisualConfigManager::instance().cfg();
+
+            QString tfmt = c.clock24Hour ? "HH:mm" : "hh:mm AP";
+            if (c.clockShowSeconds)
+                tfmt = c.clock24Hour ? "HH:mm:ss" : "hh:mm:ss AP";
+
+            QFont f = font();
+            f.setPixelSize(140);
+            f.setWeight(QFont::Thin);
+            p.setFont(f);
+            p.setPen(QColor(240, 237, 232, 230));
+            p.drawText(rect().adjusted(0, -60, 0, 0),
+                       Qt::AlignCenter, now.toString(tfmt));
+
+            f.setPixelSize(24);
+            f.setWeight(QFont::Light);
+            p.setFont(f);
+            p.setPen(QColor(176, 173, 168, 200));
+            p.drawText(rect().adjusted(0, 140, 0, 0),
+                       Qt::AlignCenter,
+                       now.toString("dddd, d MMMM yyyy"));
+        }
+
+        // hint
+        QFont h = font();
+        h.setPixelSize(12);
+        p.setFont(h);
+        p.setPen(QColor(122, 120, 115, 140));
+        p.drawText(rect().adjusted(0, 0, 0, -24),
+                   Qt::AlignHCenter | Qt::AlignBottom,
+                   "Move the mouse or press any key to wake");
+    }
+
+    void keyPressEvent(QKeyEvent *e) override { Q_UNUSED(e); close(); }
+    void mousePressEvent(QMouseEvent *) override { close(); }
+    void mouseMoveEvent(QMouseEvent *) override  { close(); }
+
+private:
+    void nextImage() {
+        if (m_images.isEmpty()) return;
+        m_index = (m_index + 1) % m_images.size();
+        m_current.load(m_images[m_index]);
+        update();
+    }
+
+    QString              m_style;
+    QPixmap              m_bg;
+    QPixmap              m_current;
+    QStringList          m_images;
+    int                  m_index = -1;
+    QTimer              *m_slideTimer = nullptr;
+    QTimer              *m_tick = nullptr;
+};
+
 #endif // APOKOLIPS_OVERLAYS_H
