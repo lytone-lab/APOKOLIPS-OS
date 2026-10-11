@@ -15,6 +15,15 @@ Earlier, joining AIs would:
 This file is the single source of truth. Update it when anything
 changes. If you are an AI, do not skip this file.
 
+  [ ] Stale entry blocks re-launch within 5 s of red-light close
+      Open app -> red-light close -> reopen within ~5 s:
+      animation plays, app never launches.
+      Cause: pruneStaleGenieState runs every 5 s; in between, a
+      dead conId in the state file short-circuits launchApp.
+      Fix: validate conId against sway tree BEFORE animating in
+      restoreGenieForDock; drop entry on failure, fall through to
+      fresh launch. Small. Do after main.cpp split.
+
 ------------------------------------------------------------------------
 THE VISION
 ------------------------------------------------------------------------
