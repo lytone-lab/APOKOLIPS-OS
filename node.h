@@ -6,17 +6,14 @@
 #include "visualconfig.h"
 #include "style.h"
 #include "shared_fwd.h"
+#include "shellapp.h"
 #include "helpers.h"
 
-class NodeWindow : public QWidget {
+class NodeWindow : public ShellApp {
 public:
-    explicit NodeWindow(QWidget *parent = nullptr) : QWidget(parent) {
-        setWindowFlags(Qt::FramelessWindowHint);
-        setWindowTitle("Node");
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
+    explicit NodeWindow(QWidget *parent = nullptr) : ShellApp(parent) {
+        setupShellApp("Node", QSize(900, 600), false);
         setAutoFillBackground(false);
-        setShellWindowGeometry(this, QSize(900, 600));
 
         QVBoxLayout *root = new QVBoxLayout(this);
         // Bottom margin = rounded-corner radius. Keeps child
@@ -32,47 +29,23 @@ public:
         hh->setContentsMargins(16, 0, 16, 0);
         hh->setSpacing(10);
 
-        auto makeLight = [](const QString &idle, const QString &hover) {
-            QPushButton *b = new QPushButton;
-            b->setFixedSize(13, 13);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setStyleSheet(QString(
-                "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60);"
-                "  border-radius: 6px; }"
-                "QPushButton:hover { background: %2; }")
-                .arg(idle, hover));
-            return b;
-        };
-        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
-
-        QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { shellCloseViaGenie(this); });
-        QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
-        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-            static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(900, 600));
+        // Standard header — lights + title via ShellApp.
+        QLabel *titleLabel = nullptr;
+        QHBoxLayout *stdHdr = buildStandardHeader(
+            "Node", QSize(900, 600), &titleLabel, nullptr);
+        // Adopt the standard header's items into this local widget.
+        while (QLayoutItem *item = stdHdr->takeAt(0)) {
+            if (QWidget *w = item->widget())
+                hh->addWidget(w);
+            else if (QLayout *l = item->layout())
+                hh->addLayout(l);
+            else if (item->spacerItem())
+                hh->addSpacerItem(item->spacerItem());
             else
-                setGeometry(shellSafeArea());
-            zoomed = !zoomed;
-        });
-
-        hh->addWidget(closeBtn);
-        hh->addWidget(minBtn);
-        hh->addWidget(maxBtn);
-        hh->addSpacing(8);
-
-        QLabel *title = new QLabel("Node");
-        title->setStyleSheet(
-            "color: rgb(240, 237, 232);"
-            "font-size: 13px; font-weight: 600;"
-            "background: transparent;");
-        hh->addWidget(title);
-        hh->addStretch();
+                delete item;
+        }
+        delete stdHdr;
+        Q_UNUSED(titleLabel);
 
         root->addWidget(header);
 
@@ -112,15 +85,6 @@ protected:
         p.setPen(QPen(Sigil::border(), 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(full);
-    }
-
-    void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton && e->pos().y() < 42) {
-            if (QWindow *wh = window()->windowHandle()) {
-                if (wh->startSystemMove()) { e->accept(); return; }
-            }
-        }
-        QWidget::mousePressEvent(e);
     }
 
 private:
