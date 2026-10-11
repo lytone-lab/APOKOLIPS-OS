@@ -3610,7 +3610,18 @@ int main(int argc, char *argv[])
         app.setApplicationName("Node");
         app.setDesktopFileName("apokolips-node");
 
-        {
+        // Optional --run "<cmd>" argument: type the command into a
+        // fresh Node window. When present, skip single-instance
+        // behavior so the new window actually opens.
+        QString runCmd;
+        for (int i = 2; i + 1 < argc; ++i) {
+            if (QString::fromLocal8Bit(argv[i]) == "--run") {
+                runCmd = QString::fromLocal8Bit(argv[i + 1]);
+                break;
+            }
+        }
+
+        if (runCmd.isEmpty()) {
             QLocalSocket probe;
             probe.connectToServer("apokolips-node");
             if (probe.waitForConnected(300)) {
@@ -3623,7 +3634,7 @@ int main(int argc, char *argv[])
 
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
-        NodeWindow w;
+        NodeWindow w(nullptr, runCmd);
 
         QLocalServer::removeServer("apokolips-node");
         QLocalServer *srv = new QLocalServer(&w);

@@ -11,7 +11,10 @@
 
 class NodeWindow : public ShellApp {
 public:
-    explicit NodeWindow(QWidget *parent = nullptr) : ShellApp(parent) {
+    explicit NodeWindow(QWidget *parent = nullptr,
+                        const QString &runCmd = QString())
+        : ShellApp(parent)
+    {
         setupShellApp("Node", QSize(900, 600), false);
         setAutoFillBackground(false);
 
@@ -57,6 +60,14 @@ public:
         m_term->setWorkingDirectory(QDir::homePath());
         m_term->startShellProgram();
         root->addWidget(m_term, 1);
+
+        // Optional startup command — typed into the shell as if the
+        // user did it. Delayed so bash has time to attach its pty.
+        if (!runCmd.isEmpty()) {
+            QTimer::singleShot(500, this, [this, runCmd]() {
+                if (m_term) m_term->sendText(runCmd + "\n");
+            });
+        }
     }
 
 protected:

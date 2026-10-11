@@ -3282,8 +3282,9 @@ protected:
             });
 
             QObject::connect(aOpenTerminal, &QAction::triggered, []() {
-                // foot is Wayland-native; no D-Bus session needed
-                QProcess::startDetached("foot");
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--node" });
             });
             QObject::connect(aOpenFiles, &QAction::triggered, []() {
                 QProcess::startDetached(

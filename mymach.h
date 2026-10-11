@@ -612,7 +612,9 @@ public:
                     { "--files" });
             });
             QObject::connect(openTerm, &QPushButton::clicked, []() {
-                QProcess::startDetached("foot", {});
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--node" });
             });
             QObject::connect(sysReport, &QPushButton::clicked, []() {
                 QString cmd =
@@ -621,8 +623,9 @@ public:
                     "echo '=== df -h ==='; df -h; echo; "
                     "echo '=== lspci ==='; lspci 2>/dev/null | head -20; "
                     "echo; read -p 'Press Enter to close...'";
-                QProcess::startDetached("foot",
-                    { "bash", "-c", cmd });
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--node", "--run", cmd });
             });
 
             row->addWidget(openFiles);

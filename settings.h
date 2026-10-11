@@ -1506,8 +1506,9 @@ private:
 
                 // Educational — do not execute a real erase blindly.
                 // Instead open a terminal explaining the manual step.
-                QProcess::startDetached("foot", {
-                    "bash", "-c",
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--node", "--run",
                     "echo 'Apokolips OS — Reset'; echo; "
                     "echo 'A full system reset must be done from a live '; "
                     "echo 'USB / installer environment. This page cannot '; "
@@ -2158,8 +2159,9 @@ private:
                     box.move(pt);
                 }
                 if (box.exec() != QMessageBox::Yes) return;
-                QProcess::startDetached("foot", {
-                    "bash", "-c",
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--node", "--run",
                     "sudo apt upgrade -y && echo && echo 'Updates "
                     "installed. Press Enter to close.' && read" });
             });
@@ -2597,7 +2599,9 @@ private:
             "echo 'Press Enter to close.' && read")
             .arg(dest);
 
-        QProcess::startDetached("foot", { "bash", "-c", cmd });
+        QProcess::startDetached(
+            QCoreApplication::applicationFilePath(),
+            { "--node", "--run", cmd });
 
         QTimer::singleShot(1500, this, [this]() { refreshBackupPage(); });
     }
@@ -7183,8 +7187,9 @@ private:
             QObject::connect(chpw, &QPushButton::clicked, [user]() {
                 // Launch foot for password change — real terminal
                 // password prompts can't be faked in a Qt dialog.
-                QProcess::startDetached("foot", {
-                    "bash", "-c",
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--node", "--run",
                     QString("echo 'Changing password for %1'; passwd")
                         .arg(user) });
             });
