@@ -6,21 +6,12 @@
 #include "visualconfig.h"
 #include "style.h"
 #include "shared_fwd.h"
+#include "shellapp.h"
 
-class CalculatorApp : public QWidget {
+class CalculatorApp : public ShellApp {
 public:
-    CalculatorApp(QWidget *parent = nullptr) : QWidget(parent) {
-        if (parent) {
-            // Child overlay — must NOT be a native window, or sway tiles it
-            setWindowFlags(Qt::Widget);
-            setAttribute(Qt::WA_TranslucentBackground, true);
-            setAttribute(Qt::WA_NoSystemBackground, true);
-        } else {
-            setWindowTitle("Calculator");
-            setWindowFlags(Qt::FramelessWindowHint);
-            setAttribute(Qt::WA_TranslucentBackground, true);
-            setShellWindowGeometry(this, QSize(320, 480));
-        }
+    CalculatorApp(QWidget *parent = nullptr) : ShellApp(parent) {
+        setupShellApp("Calculator", QSize(320, 480), parent != nullptr);
 
         buildUi();
         if (parent) hide();
@@ -32,8 +23,6 @@ public:
             restyle();
             update();
         });
-        if (!parent)
-            setShellWindowGeometry(this, QSize(320, 480));
     }
 
     void toggle() { isVisible() ? hide() : show2(); }
@@ -51,82 +40,17 @@ public:
     }
 
 protected:
-    void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton) {
-            if (QWindow *wh = window()->windowHandle())
-                if (wh->startSystemMove()) return;
-        }
-        QWidget::mousePressEvent(e);
-    }
-
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-        QRect r = rect().adjusted(0, 0, -1, -1);
-        QPainterPath path;
-        path.addRoundedRect(r, 16, 16);
-        QColor bg(24, 22, 30, 240);
-        p.fillPath(path, bg);
-        QColor edge(255, 255, 255, 40);
-        p.setPen(QPen(edge, 1));
-        p.drawPath(path);
-    }
-
 private:
     void buildUi() {
         QVBoxLayout *v = new QVBoxLayout(this);
         v->setContentsMargins(16, 16, 16, 16);
         v->setSpacing(8);
 
-        // Header — traffic lights on the left (standalone mode only)
-        if (!parentWidget()) {
-            QHBoxLayout *hdr = new QHBoxLayout;
-            hdr->setContentsMargins(0, 0, 0, 0);
-
-            auto mkLight = [](const QString &idle,
-                              const QString &hover) {
-                QPushButton *b = new QPushButton;
-                b->setFixedSize(13, 13);
-                b->setCursor(Qt::PointingHandCursor);
-                b->setStyleSheet(QString(
-                    "QPushButton { background: %1;"
-                    "  border: 1px solid rgba(0,0,0,60);"
-                    "  border-radius: 6px; }"
-                    "QPushButton:hover { background: %2; }")
-                    .arg(idle, hover));
-                return b;
-            };
-            QPushButton *closeBtn = mkLight("#7a2b25", "#ff5f57");
-            QPushButton *minBtn   = mkLight("#7a5b18", "#febc2e");
-            QPushButton *maxBtn   = mkLight("#155c1e", "#28c840");
-
-            hdr->addWidget(closeBtn);
-            hdr->addWidget(minBtn);
-            hdr->addWidget(maxBtn);
-
-            QLabel *title = new QLabel("Calculator");
-            title->setStyleSheet(
-                "color: rgb(240, 237, 232);"
-                "font-size: 13px; font-weight: 600;"
-                "background: transparent;");
-            hdr->addSpacing(8);
-            hdr->addWidget(title);
-            hdr->addStretch();
-
+        // Standard header — only in standalone mode (not embedded).
+        if (!m_embedded) {
+            QHBoxLayout *hdr = buildStandardHeader(
+                "Calculator", QSize(320, 480), nullptr, nullptr);
             v->addLayout(hdr);
-
-            QObject::connect(closeBtn, &QPushButton::clicked,
-                             [this]() { shellCloseViaGenie(this); });
-            QObject::connect(minBtn, &QPushButton::clicked,
-                             []() { shellMinimizeFocusedWindow(); });
-            QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-                static bool zoomed = false;
-                if (zoomed)
-                    setShellWindowGeometry(this, QSize(320, 480));
-                else
-                    setGeometry(shellSafeArea());
-                zoomed = !zoomed;
-            });
         }
 
         m_display = new QLabel("0");
