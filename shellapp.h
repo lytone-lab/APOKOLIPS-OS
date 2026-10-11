@@ -57,6 +57,10 @@ protected:
     // Default: hide (macOS-style).  BoomTube overrides to close.
     virtual void onEscape() { hide(); }
 
+    // Subclasses override for their own Ctrl+W behavior.
+    // Default: close this window.  Finder overrides to close-tab.
+    virtual void onCloseWindow() { close(); }
+
     // Build a traffic-light button in the standard style.
     QPushButton *makeTrafficLight(const QString &idle,
                                   const QString &hover,
@@ -131,7 +135,7 @@ protected:
         add(QKeySequence("Ctrl+Q"),
             []() { QCoreApplication::quit(); });
         add(QKeySequence("Ctrl+W"),
-            [this]() { close(); });
+            [this]() { onCloseWindow(); });
         add(QKeySequence(Qt::Key_Escape),
             [this]() { onEscape(); });
         add(QKeySequence("Meta+M"),

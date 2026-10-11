@@ -6,66 +6,18 @@
 #include "visualconfig.h"
 #include "style.h"
 #include "shared_fwd.h"
+#include "shellapp.h"
 #include "helpers.h"
 
-class FileExplorer : public QWidget {
+class FileExplorer : public ShellApp {
 public:
-    explicit FileExplorer(QWidget *parent = nullptr) : QWidget(parent) {
-        setWindowFlags(Qt::FramelessWindowHint);
-        setWindowTitle("Files");
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setShellWindowGeometry(this, QSize(900, 560));
+    explicit FileExplorer(QWidget *parent = nullptr) : ShellApp(parent) {
+        setupShellApp("Files", QSize(900, 560), false);
 
         // Render the current wallpaper, blurred, as glass backdrop
         buildBlurredBackdrop();
 
         buildUi();
-
-        // ---- Traffic lights (FramelessWindowHint has no system chrome) ----
-        {
-            QWidget *lightBar = new QWidget(this);
-            lightBar->setFixedHeight(22);
-            lightBar->setAttribute(Qt::WA_TransparentForMouseEvents, false);
-            QHBoxLayout *lb = new QHBoxLayout(lightBar);
-            lb->setContentsMargins(14, 10, 0, 0);
-            lb->setSpacing(8);
-
-            auto makeLight = [](const QString &idle, const QString &hover) {
-                QPushButton *b = new QPushButton;
-                b->setFixedSize(13, 13);
-                b->setCursor(Qt::PointingHandCursor);
-                b->setStyleSheet(QString(
-                    "QPushButton { background: %1;"
-                    "  border: 1px solid rgba(0,0,0,60);"
-                    "  border-radius: 6px; }"
-                    "QPushButton:hover { background: %2; }")
-                    .arg(idle, hover));
-                return b;
-            };
-            QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
-            QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
-            QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
-            lb->addWidget(closeBtn);
-            lb->addWidget(minBtn);
-            lb->addWidget(maxBtn);
-            lb->addStretch();
-
-            QObject::connect(closeBtn, &QPushButton::clicked,
-                             [this]() { shellCloseViaGenie(this); });
-            QObject::connect(minBtn, &QPushButton::clicked,
-                             []() { shellMinimizeFocusedWindow(); });
-            QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-                static bool zoomed = false;
-                if (zoomed)
-                    setShellWindowGeometry(this, QSize(900, 560));
-                else
-                    setGeometry(shellSafeArea());
-                zoomed = !zoomed;
-            });
-
-            lightBar->move(0, 0);
-        }
 
         ThemeManager::instance().subscribe([this](const Theme &t) {
             m_theme = t;
@@ -135,7 +87,8 @@ public:
         sc("Ctrl+V",   [this]() { pasteInto();         });
         sc("Ctrl+H",   [this]() { toggleHidden();      });
         sc("Ctrl+T",   [this]() { addTab();            });
-        sc("Ctrl+W",   [this]() { closeCurrentTab();   });
+        // Ctrl+W is wired through ShellApp::onCloseWindow()
+        // (overridden above) — do not install here, would clash.
         sc("Ctrl+Tab", [this]() {
             if (m_tabs.size() > 1) {
                 switchTab((m_currentTab + 1) % m_tabs.size());
@@ -173,14 +126,8 @@ public:
     }
 
 protected:
-    void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton) {
-            if (QWindow *wh = window()->windowHandle()) {
-                if (wh->startSystemMove()) { e->accept(); return; }
-            }
-        }
-        QWidget::mousePressEvent(e);
-    }
+    // Finder: Ctrl+W closes the current tab, not the window.
+    void onCloseWindow() override { closeCurrentTab(); }
 
     void buildBlurredBackdrop() {
         Wallpaper *wp = WallpaperConfig::makeById(WallpaperConfig::loadId());
@@ -301,57 +248,20 @@ private:
         hh->setContentsMargins(14, 0, 14, 0);
         hh->setSpacing(8);
 
-        auto makeLight = [](const QString &idle, const QString &hover,
-                            const QString &glyph) {
-            QPushButton *b = new QPushButton;
-            b->setFixedSize(13, 13);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setText("");
-            b->setProperty("glyph", glyph);
-            b->setStyleSheet(QString(
-                "QPushButton { background: %1; color: rgba(0,0,0,140);"
-                "  border: 1px solid rgba(0,0,0,60); border-radius: 6px;"
-                "  font-size: 8px; font-weight: bold; padding: 0; }"
-                "QPushButton:hover { background: %2; }").arg(idle, hover));
-            return b;
-        };
-        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57",
-                                          QString::fromUtf8("\xC3\x97"));
-        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e",
-                                          QString::fromUtf8("\xE2\x88\x92"));
-        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840",
-                                          QString::fromUtf8("+"));
-        // Show glyph on hover via stylesheet trick
-        closeBtn->setStyleSheet(closeBtn->styleSheet() +
-            "QPushButton:hover { color: rgba(0,0,0,180); }");
-        minBtn->setStyleSheet(minBtn->styleSheet() +
-            "QPushButton:hover { color: rgba(0,0,0,180); }");
-        maxBtn->setStyleSheet(maxBtn->styleSheet() +
-            "QPushButton:hover { color: rgba(0,0,0,180); }");
-        // Use a small text on hover
-        closeBtn->setText("");
-        minBtn->setText("");
-        maxBtn->setText("");
-        QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { close(); deleteLater(); });
-        QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
-        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-            static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(900, 560));
-            else
-                setGeometry(shellSafeArea());
-            zoomed = !zoomed;
-        });
-        hh->addWidget(closeBtn);
-        hh->addWidget(minBtn);
-        hh->addWidget(maxBtn);
-        hh->addSpacing(12);
-
-        m_title = new QLabel("Files");
-        hh->addWidget(m_title);
-        hh->addStretch();
+        {
+            QLabel *titleLabel = nullptr;
+            QHBoxLayout *stdHdr = buildStandardHeader(
+                "Files", QSize(900, 560), &titleLabel, nullptr);
+            while (QLayoutItem *item = stdHdr->takeAt(0)) {
+                if (QWidget *w = item->widget()) hh->addWidget(w);
+                else if (QLayout *l = item->layout()) hh->addLayout(l);
+                else if (item->spacerItem())
+                    hh->addSpacerItem(item->spacerItem());
+                else delete item;
+            }
+            delete stdHdr;
+            m_title = titleLabel;
+        }
         root->addWidget(m_header);
 
         // ---- Tab bar (below header, above toolbar) ----
