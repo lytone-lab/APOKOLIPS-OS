@@ -488,6 +488,62 @@ Golden rule for AI features (future):
 
 ------------------------------------------------------------------------
 WIRING BACKLOG (saved but not yet acting)
+
+  ARCHITECTURE — what separates a "themed suite" from an OS.
+
+  [ ] ShellApp base class (HIGH PRIORITY — do after current queue).
+      One C++ parent every app inherits. Handles:
+        - frameless window setup
+        - traffic lights (red/yellow/green)
+        - keyboard: Ctrl+W, Ctrl+Q, Super+M
+        - 16 px bottom margin (rounded-corner guard)
+        - ThemeManager + VisualConfigManager subscriptions
+        - setShellWindowGeometry
+      Effect: each app class shrinks ~200 lines and behaves
+      identically because they literally share code.
+      Plan: Settings first (test), then Notes, then the rest.
+      Two sessions. Do while the codebase is small.
+
+  [ ] Shared protocols (do one at a time, only when a feature needs
+      one — no speculative abstraction):
+        - Drag-and-drop standard between apps (Finder -> Notes,
+          Finder -> Aperture).
+        - "Recent files" store every app reads/writes.
+        - "Open with" wired through Core Matrix.
+        - Rich clipboard panel all apps share.
+
+  [ ] System services (deferred — do when app count justifies it):
+        - Spotlight indexes Notes content.
+        - Global menu bar at top of screen (macOS style).
+        - Focus modes apps respect.
+
+  SETTINGS PAGES STILL TO WIRE:
+    [ ] Mouse — requested by user; no page exists.
+        Scope: pointer speed, acceleration, natural scroll,
+        primary button, double-click speed.
+    [ ] Date & Time — patch applied, page not showing (see BUG LIST).
+    [ ] Notifications — page exists; verify not a stub.
+
+  APP POLISH QUEUE:
+    [ ] myMach — chart style picker (Line / Bar / Area / Radial)
+        + process list below the cards (Hybrid layout).
+        Wired to visual.json as mymach.graphStyle. Settings page.
+    [ ] myMach — verify squircle chips read cleanly on light
+        wallpapers now that chips landed on desktop + dock + icons.
+
+  OUTSOURCED (do not touch — hand off to Manus on next handoff):
+    - Genie effect (strip-warp combined, delivered).
+    - Launcher polish.
+    - Swing / reverse genie / scale / suck family.
+
+  RULES (pinned):
+    - Real working apps, not demos.
+    - Every page uses Sigil components:
+      Card, sectionTitle, groupLabel, makeToggleRow, Dropdown,
+      ApokolipsInputDialog, textPrimary/Secondary/Dim.
+    - For any feature: first read the discussion text where the
+      user and previous AI talked about it, confirm, THEN proceed.
+
 ------------------------------------------------------------------------
 These controls persist to visual.json but nothing reads them yet, or
 they write to a system that needs another piece to actually fire.
@@ -621,6 +677,29 @@ MANDATORY APP CHECKLIST
 
 ------------------------------------------------------------------------
 BUG LIST (open)
+
+  [ ] Date & Time page doesn't appear in Settings sidebar.
+      Patch applied (config + sidebar + makeDateTimePage), build
+      clean, service restarted, but no "Date & Time" entry visible.
+      Need to grep main.cpp for the strings to see if patch landed.
+      Repro: open Settings, look at sidebar — Date & Time missing
+      between Notifications and About.
+
+  [ ] Top bar clock ignores clock24Hour / clockShowSeconds config.
+      Fields added by the Date & Time patch but the top bar doesn't
+      read them. Clock stays 24h/seconds-off regardless of toggles.
+
+  [ ] QString::arg missing argument warnings in journal on startup.
+      Non-fatal but noisy. Find the style strings with placeholders
+      that have no .arg() chain and fix.
+
+  [ ] Stale genie-state entry blocks re-launch within ~5 s of red-
+      light close. Open app -> close via red light -> reopen within
+      5 s: animation plays, app never launches. Cause: pruneStale
+      runs every 5 s; in between, dead conId in state file short-
+      circuits launchApp. Fix: validate conId against sway tree
+      BEFORE animating in restoreGenieForDock.
+
 ------------------------------------------------------------------------
   1. Clipboard IPC unreliable
      QLocalServer/Socket starts, but second-instance toggle sometimes
