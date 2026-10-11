@@ -138,6 +138,7 @@ See `ARCHITECTURE_NOTES.md` for the design critique and roadmap.
 
 ## License
 
-GPL v3 — see LICENSE.
+GPL v3 — see [LICENSE](LICENSE). Plain English version in
+[LICENSE-EXPLAINED.md](LICENSE-EXPLAINED.md).
 
 Built by **lytone**. If you fork this or ship it, keep the credit.
