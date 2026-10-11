@@ -497,6 +497,70 @@ public:
             v->addWidget(c);
         }
 
+        // PROCESSES — top consumers, refreshed each second
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("PROCESSES"));
+
+            QLabel *hint = new QLabel("Top consumers by CPU");
+            hint->setStyleSheet(QString(
+                "color: %1; font-size: 11px;"
+                " background: transparent;")
+                .arg(Sigil::textDim().name()));
+            cv->addWidget(hint);
+
+            m_procListLayout = new QVBoxLayout;
+            m_procListLayout->setSpacing(8);
+            cv->addLayout(m_procListLayout);
+
+            for (int i = 0; i < 8; ++i) {
+                QWidget *row = new QWidget;
+                QHBoxLayout *h = new QHBoxLayout(row);
+                h->setContentsMargins(0, 0, 0, 0);
+                h->setSpacing(12);
+
+                QLabel *nm = new QLabel(QString("—"));
+                nm->setFixedWidth(180);
+                nm->setStyleSheet(QString(
+                    "color: %1; font-size: 12px;"
+                    " background: transparent;")
+                    .arg(Sigil::textPrimary().name()));
+
+                QProgressBar *bar = new QProgressBar;
+                bar->setRange(0, 100);
+                bar->setValue(0);
+                bar->setTextVisible(false);
+                bar->setFixedHeight(6);
+                bar->setStyleSheet(QString(
+                    "QProgressBar { background: rgba(255,255,255,18);"
+                    "  border: none; border-radius: 3px; }"
+                    "QProgressBar::chunk { background: %1;"
+                    "  border-radius: 3px; }")
+                    .arg(Sigil::textPrimary().name()));
+
+                QLabel *val = new QLabel("");
+                val->setFixedWidth(52);
+                val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                val->setStyleSheet(QString(
+                    "color: %1; font-size: 11px;"
+                    " background: transparent;")
+                    .arg(Sigil::textSecondary().name()));
+
+                h->addWidget(nm);
+                h->addWidget(bar, 1);
+                h->addWidget(val);
+                m_procListLayout->addWidget(row);
+
+                m_procBars.append(bar);
+                m_procVals.append(val);
+            }
+
+            v->addWidget(c);
+        }
+
         // ACTIONS
         {
             Sigil::Card *c = new Sigil::Card;
@@ -589,16 +653,84 @@ public:
             if (m_ramValue)
                 m_ramValue->setText(QString("%1%")
                     .arg(ram, 0, 'f', 0));
+
+            // Live style reload — pick up mymachGraphStyle changes
+            // made from Settings without needing to reopen.
+            VisualConfigManager::instance().load();
+            const QString want =
+                VisualConfigManager::instance().cfg().mymachGraphStyle;
+            if (want != m_appliedStyle) {
+                m_appliedStyle = want;
+                auto toStyle = [](const QString &s) {
+                    if (s == "bar")    return Sparkline::Style::Bar;
+                    if (s == "area")   return Sparkline::Style::Area;
+                    if (s == "radial") return Sparkline::Style::Radial;
+                    return Sparkline::Style::Line;
+                };
+                if (m_cpuSpark) m_cpuSpark->setStyle(toStyle(want));
+                if (m_ramSpark) m_ramSpark->setStyle(toStyle(want));
+            }
+
+            refreshProcessList();
         });
         m_refreshTimer->start();
     }
 
 private:
+    void refreshProcessList() {
+        QProcess ps;
+        ps.start("ps", { "-eo", "pid=,comm=,pcpu=", "--sort=-pcpu" });
+        if (!ps.waitForFinished(500)) return;
+        const QString out = QString::fromUtf8(ps.readAllStandardOutput());
+        const QStringList lines = out.split('\n', Qt::SkipEmptyParts);
+
+        int idx = 0;
+        for (const QString &line : lines) {
+            if (idx >= m_procBars.size()) break;
+            const QStringList parts = line.trimmed().split(
+                QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+            if (parts.size() < 3) continue;
+            const QString pid  = parts[0];
+            const QString name = parts[1];
+            const double pct   = parts[2].toDouble();
+            if (pct < 0.1) continue;
+            if (pid == QString::number(
+                    QCoreApplication::applicationPid())) continue;
+
+            QString display = name;
+            if (display.length() > 22) display = display.left(21) + "…";
+
+            QWidget *row = m_procBars[idx]->parentWidget();
+            if (row) {
+                auto labels = row->findChildren<QLabel *>();
+                if (!labels.isEmpty())
+                    labels.first()->setText(display);
+            }
+            m_procBars[idx]->setValue(int(qMin(100.0, pct)));
+            m_procVals[idx]->setText(
+                QString("%1%").arg(pct, 0, 'f', 1));
+            ++idx;
+        }
+        for (int i = idx; i < m_procBars.size(); ++i) {
+            QWidget *row = m_procBars[i]->parentWidget();
+            if (row) {
+                auto labels = row->findChildren<QLabel *>();
+                if (!labels.isEmpty()) labels.first()->setText("—");
+            }
+            m_procBars[i]->setValue(0);
+            m_procVals[i]->setText("");
+        }
+    }
+
     QTimer    *m_refreshTimer = nullptr;
     QLabel    *m_cpuValue = nullptr;
     QLabel    *m_ramValue = nullptr;
     Sparkline *m_cpuSpark = nullptr;
     Sparkline *m_ramSpark = nullptr;
+    QString    m_appliedStyle = "line";
+    QVBoxLayout *m_procListLayout = nullptr;
+    QList<QProgressBar *> m_procBars;
+    QList<QLabel *>       m_procVals;
 
 protected:
     void paintEvent(QPaintEvent *) override {
