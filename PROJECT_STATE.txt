@@ -491,18 +491,18 @@ WIRING BACKLOG (saved but not yet acting)
 
   ARCHITECTURE — what separates a "themed suite" from an OS.
 
-  [ ] ShellApp base class (HIGH PRIORITY — do after current queue).
-      One C++ parent every app inherits. Handles:
-        - frameless window setup
-        - traffic lights (red/yellow/green)
-        - keyboard: Ctrl+W, Ctrl+Q, Super+M
-        - 16 px bottom margin (rounded-corner guard)
-        - ThemeManager + VisualConfigManager subscriptions
-        - setShellWindowGeometry
-      Effect: each app class shrinks ~200 lines and behaves
-      identically because they literally share code.
-      Plan: Settings first (test), then Notes, then the rest.
-      Two sessions. Do while the codebase is small.
+  [x] ShellApp base class — DONE 2026-10-11
+      All 7 apps migrated: Notes, Calculator, Finder, Aperture,
+      Node, myMach, BoomTube. ShellApp owns:
+        - frameless window setup + size + chrome
+        - traffic lights (standard styling)
+        - keyboard: Ctrl+Q, Ctrl+W, Escape, Super+M
+        - theme subscription + paintEvent for rounded body
+        - virtual hooks: onEscape(), onCloseWindow(),
+          onThemeChanged() — subclasses override only what
+          they need (Finder: close-tab; BoomTube: escape=close)
+      Settings app is next (not done — it's a QDialog-ish thing)
+      or skip: Settings has its own chrome model.
 
   [ ] Shared protocols (do one at a time, only when a feature needs
       one — no speculative abstraction):
