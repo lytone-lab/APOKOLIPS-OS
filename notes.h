@@ -8,21 +8,13 @@
 #include "visualconfig.h"
 #include "style.h"
 #include "shared_fwd.h"
+#include "shellapp.h"
 
-class NotesApp : public QWidget {
+class NotesApp : public ShellApp {
 public:
-    NotesApp(QWidget *parent = nullptr) : QWidget(parent) {
+    NotesApp(QWidget *parent = nullptr) : ShellApp(parent) {
         setObjectName("notesApp");
-        if (parent) {
-            setWindowFlags(Qt::Widget);
-            setAttribute(Qt::WA_TranslucentBackground, true);
-            setAttribute(Qt::WA_NoSystemBackground, true);
-        } else {
-            setWindowTitle("Notes");
-            setWindowFlags(Qt::FramelessWindowHint);
-            setAttribute(Qt::WA_TranslucentBackground, true);
-            setShellWindowGeometry(this, QSize(720, 520));
-        }
+        setupShellApp("Notes", QSize(720, 520), parent != nullptr);
 
         m_dir = QDir::homePath() + "/.local/share/apokolips/notes";
         QDir().mkpath(m_dir);
@@ -38,8 +30,6 @@ public:
             update();
         });
         if (parent) hide();
-        else
-            setShellWindowGeometry(this, QSize(720, 520));
     }
 
     void toggle() { isVisible() ? hide() : show2(); }
@@ -57,79 +47,19 @@ public:
     }
 
 protected:
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-        QRect r = rect().adjusted(0, 0, -1, -1);
-        QPainterPath path;
-        path.addRoundedRect(r, 14, 14);
-        QColor bg(24, 22, 30, 245);
-        p.fillPath(path, bg);
-        QColor edge(255, 255, 255, 40);
-        p.setPen(QPen(edge, 1));
-        p.drawPath(path);
-    }
-
-    void keyPressEvent(QKeyEvent *e) override {
-        if (e->key() == Qt::Key_Escape) { hide(); e->accept(); }
-        else QWidget::keyPressEvent(e);
-    }
-
-    void mousePressEvent(QMouseEvent *e) override {
-        if (!parentWidget()) {
-            if (e->button() == Qt::LeftButton) {
-                if (QWindow *wh = window()->windowHandle())
-                    if (wh->startSystemMove()) { e->accept(); return; }
-            }
-        }
-        QWidget::mousePressEvent(e);
-    }
-
 private:
     void buildUi() {
         QVBoxLayout *outer = new QVBoxLayout(this);
         outer->setContentsMargins(16, 16, 16, 16);
         outer->setSpacing(12);
 
-        // Header — traffic lights left (macOS order)
-        QHBoxLayout *hdr = new QHBoxLayout;
-
-        auto mkLight = [this](const QString &idle, const QString &hover) {
-            QPushButton *b = new QPushButton;
-            b->setFixedSize(13, 13);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setStyleSheet(QString(
-                "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60);"
-                "  border-radius: 6px; }"
-                "QPushButton:hover { background: %2; }")
-                .arg(idle, hover));
-            return b;
-        };
-        QPushButton *closeBtn = mkLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn   = mkLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn   = mkLight("#155c1e", "#28c840");
-        hdr->addWidget(closeBtn);
-        hdr->addWidget(minBtn);
-        hdr->addWidget(maxBtn);
-        hdr->addSpacing(10);
-
-        m_title = new QLabel("Notes");
-        hdr->addWidget(m_title);
-        hdr->addStretch();
-
-        QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { shellCloseViaGenie(this); });
-        QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
-        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-            static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(720, 520));
-            else
-                setGeometry(shellSafeArea());
-            zoomed = !zoomed;
-        });
+        // Standard header — traffic lights + title via ShellApp.
+        QLabel *titleLabel = nullptr;
+        QHBoxLayout *hdr = buildStandardHeader("Notes",
+                                                QSize(720, 520),
+                                                &titleLabel,
+                                                nullptr);
+        m_title = titleLabel;
 
         m_newBtn = new QPushButton("+ New");
         m_delBtn = new QPushButton("Delete");
