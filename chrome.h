@@ -945,13 +945,29 @@ protected:
 
         int boost = int(qBound(0.0, (m_current - 1.0) / 0.42, 1.0) * 90);
 
-        // Style-aware icon background
+        // Neutral squircle chip.
+        //
+        // Was red-tinted (accentSoft/accent). That read as "empty"
+        // on dark wallpapers and vanished on light ones, leaving
+        // the bone-white glyph floating with no contrast.
+        //
+        // New approach: every dock tile gets a soft dark chip with
+        // a faint light border. Bone-on-dark is guaranteed legible
+        // against any wallpaper — light, dark, photo, gradient.
+        // Same StyleRenderer call so Glass/Neu/Skeuo/Clay still
+        // applies its own character on top of these colors.
         Theme iconTheme = m_theme;
-        iconTheme.panelBg      = m_theme.accentSoft;
-        iconTheme.chromeBorder = m_theme.accent;
+        iconTheme.panelBg      = QColor(0, 0, 0, 96);       // ~38% black
+        iconTheme.chromeBorder = QColor(255, 255, 255, 30); // ~12% white
+
         if (boost > 0) {
+            // Hover: brighten the chip instead of darkening it.
+            // Previously alpha-boost made the tile darker on hover,
+            // which read as "pressed" not "hovered".
             QColor a = iconTheme.panelBg;
-            a.setAlpha(qMin(255, a.alpha() + boost + 20));
+            a.setRed  (qMin(255, a.red()   + boost / 3));
+            a.setGreen(qMin(255, a.green() + boost / 3));
+            a.setBlue (qMin(255, a.blue()  + boost / 3));
             iconTheme.panelBg = a;
             QColor b = iconTheme.chromeBorder;
             b.setAlpha(qMin(255, b.alpha() + boost));
@@ -1363,6 +1379,16 @@ protected:
         const auto &vc = VisualConfigManager::instance().cfg();
         StyleRenderer::drawPanel(p, QRectF(rect().adjusted(1, 1, -1, -1)),
                                  20, m_theme, vc.dockAlpha);
+
+        // Inner highlight — one faint stroke inside the dock so the
+        // panel reads as a distinct surface, not just a blurry blob.
+        // Radius 18 nests inside the outer 20.
+        p.save();
+        p.setClipPath(path);
+        p.setPen(QPen(QColor(255, 255, 255, 22), 1.0));
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(QRectF(rect().adjusted(2, 2, -2, -2)), 18, 18);
+        p.restore();
     }
 
     void mousePressEvent(QMouseEvent *e) override {
@@ -2128,8 +2154,19 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        // No tile background — the mark floats free on the wallpaper.
         QRectF tile((width() - 64) / 2.0, 6, 64, 64);
+
+        // Squircle chip — same treatment as dock tiles, so desktop
+        // icons are legible on any wallpaper (light, dark, photo).
+        QRectF chip = tile.adjusted(-4, -4, 4, 4);
+        const qreal chipR = chip.width() * 0.28;
+        QPainterPath chipPath;
+        chipPath.addRoundedRect(chip, chipR, chipR);
+        QColor chipFill(0, 0, 0, m_hover ? 110 : 72);
+        p.fillPath(chipPath, chipFill);
+        QColor chipEdge(255, 255, 255, m_hover ? 46 : 26);
+        p.setPen(QPen(chipEdge, 1.0));
+        p.drawPath(chipPath);
 
         if (m_paint) {
             QRectF inner = tile.adjusted(10, 10, -10, -10);

@@ -23,6 +23,7 @@
 #include <QMainWindow>
 #include <QWidget>
 #include <QLabel>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>

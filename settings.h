@@ -509,6 +509,10 @@ private:
         addSection(sb, "Date & Time",
                    QString::fromUtf8("\xF0\x9F\x95\x90"),
                    QColor(80, 120, 200), [this]() { return makeDateTimePage(); });
+        addSection(sb, "myMach",
+                   QString::fromUtf8("\xF0\x9F\x93\x8A"),
+                   QColor(80, 120, 200),
+                   [this]() { return makeMyMachPage(); });
         addSection(sb, "About",      QString::fromUtf8("\xE2\x84\xB9"),
                    QColor(106, 106, 112), [this]() { return makeAboutPage(); });
 
@@ -7385,6 +7389,108 @@ private:
             m_usersList->addItem(it);
         }
     }
+
+    QWidget *makeMyMachPage() {
+    QWidget *page = new QWidget;
+    QVBoxLayout *v = new QVBoxLayout(page);
+    v->setContentsMargins(40, 30, 40, 40);
+    v->setSpacing(20);
+    v->addWidget(Sigil::sectionTitle("myMach"));
+    {
+        QLabel *sub = new QLabel("System monitor appearance");
+        sub->setStyleSheet(QString(
+            "color: %1; font-size: 12px;"
+            " background: transparent;")
+            .arg(Sigil::textDim().name()));
+        v->addWidget(sub);
+    }
+
+    // ---- GRAPH STYLE card ----
+    {
+        Sigil::Card *c = new Sigil::Card;
+        QVBoxLayout *cv = new QVBoxLayout(c);
+        cv->setContentsMargins(20, 18, 20, 18);
+        cv->setSpacing(14);
+        cv->addWidget(Sigil::groupLabel("GRAPH STYLE"));
+        {
+            QLabel *h = new QLabel(
+                "How the CPU and RAM sparklines are drawn");
+            h->setStyleSheet(QString(
+                "color: %1; font-size: 11px;"
+                " background: transparent;")
+                .arg(Sigil::textDim().name()));
+            cv->addWidget(h);
+        }
+
+        // The buttons and their values — re-applied on every click so
+        // the selected one is highlighted, the rest are not.
+        auto *btns = new QList<QPair<QPushButton *, QString>>;
+
+        auto applyStyle = [](QPushButton *b, bool on) {
+            b->setStyleSheet(QString(
+                "QPushButton {"
+                " background: %1;"
+                " color: %2;"
+                " border: 1px solid %3;"
+                " border-radius: 8px;"
+                " padding: 4px 18px;"
+                " font-size: 12px;"
+                " font-weight: %4; }"
+                "QPushButton:hover { background: %5; }")
+                .arg(on ? QString("rgba(80,120,200,80)")
+                        : QString("rgba(255,255,255,18)"),
+                     on ? QString("#ffffff")
+                        : Sigil::textPrimary().name(),
+                     on ? QString("rgba(80,120,200,200)")
+                        : QString("rgba(255,255,255,25)"),
+                     on ? "600" : "400",
+                     on ? QString("rgba(80,120,200,120)")
+                        : QString("rgba(255,255,255,38)")));
+        };
+
+        const QString current =
+            VisualConfigManager::instance().cfg().mymachGraphStyle;
+
+        QHBoxLayout *row = new QHBoxLayout;
+        row->setSpacing(10);
+        struct Opt { const char *label; const char *value; };
+        const Opt opts[] = {
+            { "Line",   "line"   },
+            { "Bar",    "bar"    },
+            { "Area",   "area"   },
+            { "Radial", "radial" },
+        };
+        for (const auto &o : opts) {
+            QPushButton *b = new QPushButton(o.label);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setFixedHeight(34);
+            b->setMinimumWidth(80);
+            applyStyle(b, current == o.value);
+            btns->append({ b, QString(o.value) });
+
+            const QString value = o.value;
+            QObject::connect(
+                b, &QPushButton::clicked,
+                [value, btns, applyStyle]() {
+                    VisualConfigManager::instance().setAndSave(
+                        [value](VisualConfig &c) {
+                            c.mymachGraphStyle = value;
+                        });
+                    for (const auto &pair : *btns) {
+                        applyStyle(pair.first,
+                                   pair.second == value);
+                    }
+                });
+            row->addWidget(b);
+        }
+        row->addStretch();
+        cv->addLayout(row);
+        v->addWidget(c);
+    }
+
+    v->addStretch();
+    return page;
+}
 
     QWidget *makeNotificationsPage() {
         QWidget *page = new QWidget;

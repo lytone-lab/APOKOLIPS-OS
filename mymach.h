@@ -32,7 +32,13 @@ protected:
         fill.setWidth(r.width() * m_pct);
         QPainterPath fp;
         fp.addRoundedRect(fill, 4, 4);
-        p.fillPath(fp, QColor(168, 50, 50));
+        // Red only when genuinely alarming. Under 90% it stays
+        // neutral so the UI doesn't read as perpetually on fire.
+        QColor fillCol = (m_pct >= 0.90)
+            ? QColor(200, 74, 74)
+            : Sigil::textPrimary();
+        fillCol.setAlpha(m_pct >= 0.90 ? 220 : 200);
+        p.fillPath(fp, fillCol);
     }
 private:
     double m_pct = 0.0;
@@ -40,11 +46,16 @@ private:
 
 class Sparkline : public QWidget {
 public:
+    enum class Style { Line, Bar, Area, Radial };
+
     explicit Sparkline(QWidget *parent = nullptr) : QWidget(parent) {
         setMinimumHeight(48);
         setAttribute(Qt::WA_TransparentForMouseEvents, true);
         for (int i = 0; i < kMax; ++i) m_samples.append(0.0);
     }
+    void setStyle(Style s) { m_style = s; update(); }
+    Style style() const    { return m_style; }
+
     void push(double v01) {
         v01 = qBound(0.0, v01, 1.0);
         m_samples.append(v01);
@@ -59,40 +70,87 @@ protected:
         if (N < 2) return;
         const qreal w = width(), h = height();
         const qreal step = w / qreal(N - 1);
+        const QColor a = Sigil::textPrimary();
 
+        // Common faint midline
         QColor grid = Sigil::textDim(); grid.setAlpha(40);
         p.setPen(QPen(grid, 1, Qt::DotLine));
         p.drawLine(QPointF(0, h * 0.5), QPointF(w, h * 0.5));
 
-        QPainterPath area;
-        area.moveTo(0, h);
-        for (int i = 0; i < N; ++i) {
-            qreal x = i * step;
-            qreal y = h - m_samples[i] * (h - 6) - 3;
-            area.lineTo(x, y);
-        }
-        area.lineTo(w, h);
-        area.closeSubpath();
+        auto yAt = [&](qreal v) {
+            return h - v * (h - 6) - 3;
+        };
 
-        QColor a = Sigil::accent();
-        QLinearGradient g(0, 0, 0, h);
-        QColor top = a; top.setAlpha(150);
-        QColor bot = a; bot.setAlpha(0);
-        g.setColorAt(0, top);
-        g.setColorAt(1, bot);
-        p.fillPath(area, g);
-
-        QPainterPath line;
-        for (int i = 0; i < N; ++i) {
-            qreal x = i * step;
-            qreal y = h - m_samples[i] * (h - 6) - 3;
-            if (i == 0) line.moveTo(x, y);
-            else        line.lineTo(x, y);
+        switch (m_style) {
+        case Style::Line: {
+            QPainterPath line;
+            for (int i = 0; i < N; ++i) {
+                qreal x = i * step;
+                qreal y = yAt(m_samples[i]);
+                if (i == 0) line.moveTo(x, y);
+                else        line.lineTo(x, y);
+            }
+            p.setPen(QPen(a, 1.8, Qt::SolidLine,
+                          Qt::RoundCap, Qt::RoundJoin));
+            p.drawPath(line);
+            break;
         }
-        p.setPen(QPen(a, 1.8, Qt::SolidLine,
-                      Qt::RoundCap, Qt::RoundJoin));
-        p.drawPath(line);
+        case Style::Area: {
+            QPainterPath area;
+            area.moveTo(0, h);
+            for (int i = 0; i < N; ++i)
+                area.lineTo(i * step, yAt(m_samples[i]));
+            area.lineTo(w, h);
+            area.closeSubpath();
+            QLinearGradient g(0, 0, 0, h);
+            QColor top = a; top.setAlpha(140);
+            QColor bot = a; bot.setAlpha(0);
+            g.setColorAt(0, top);
+            g.setColorAt(1, bot);
+            p.fillPath(area, g);
+            QPainterPath line;
+            for (int i = 0; i < N; ++i) {
+                qreal x = i * step;
+                qreal y = yAt(m_samples[i]);
+                if (i == 0) line.moveTo(x, y);
+                else        line.lineTo(x, y);
+            }
+            p.setPen(QPen(a, 1.6, Qt::SolidLine,
+                          Qt::RoundCap, Qt::RoundJoin));
+            p.drawPath(line);
+            break;
+        }
+        case Style::Bar: {
+            const qreal bw = qMax<qreal>(1.0, step * 0.7);
+            QColor bar = a; bar.setAlpha(200);
+            p.setPen(Qt::NoPen);
+            p.setBrush(bar);
+            for (int i = 0; i < N; ++i) {
+                qreal x = i * step - bw * 0.5 + step * 0.5;
+                qreal y = yAt(m_samples[i]);
+                p.drawRoundedRect(QRectF(x, y, bw, h - y),
+                                  1.5, 1.5);
+            }
+            break;
+        }
+        case Style::Radial: {
+            const qreal cur = m_samples.last();
+            const qreal d   = qMin(w, h) * 0.9;
+            const QRectF ring(
+                (w - d) * 0.5, (h - d) * 0.5, d, d);
+            QColor track = Sigil::textDim(); track.setAlpha(60);
+            p.setPen(QPen(track, 6.0, Qt::SolidLine, Qt::RoundCap));
+            p.setBrush(Qt::NoBrush);
+            p.drawArc(ring, 90 * 16, -360 * 16);
+            p.setPen(QPen(a, 6.0, Qt::SolidLine, Qt::RoundCap));
+            p.drawArc(ring, 90 * 16,
+                      int(-cur * 360.0 * 16));
+            break;
+        }
+        }
     }
+
+    Style m_style = Style::Line;
 private:
     static constexpr int kMax = 60;
     QList<qreal> m_samples;
@@ -215,6 +273,17 @@ public:
 
         // LIVE — CPU and RAM with rolling sparklines
         {
+            // Read chart style from config once — live changes are
+            // picked up via the config file watcher below.
+            const QString gstyle =
+                VisualConfigManager::instance().cfg().mymachGraphStyle;
+            auto styleFromString = [](const QString &s) {
+                if (s == "bar")    return Sparkline::Style::Bar;
+                if (s == "area")   return Sparkline::Style::Area;
+                if (s == "radial") return Sparkline::Style::Radial;
+                return Sparkline::Style::Line;
+            };
+            const Sparkline::Style chosen = styleFromString(gstyle);
             Sigil::Card *c = new Sigil::Card;
             QVBoxLayout *cv = new QVBoxLayout(c);
             cv->setContentsMargins(20, 18, 20, 18);
@@ -251,6 +320,9 @@ public:
 
             cols->addLayout(mkCol("CPU", m_cpuValue, m_cpuSpark), 1);
             cols->addLayout(mkCol("RAM", m_ramValue, m_ramSpark), 1);
+
+            if (m_cpuSpark) m_cpuSpark->setStyle(chosen);
+            if (m_ramSpark) m_ramSpark->setStyle(chosen);
 
             cv->addLayout(cols);
             v->addWidget(c);

@@ -89,6 +89,7 @@ struct VisualConfig {
     QString boomtubeFolder     = "";
     bool    boomtubeShuffle    = false;
     QString boomtubeLoop       = "off";   // off | all | one
+    QString mymachGraphStyle   = "line";  // line | bar | area | radial
     QVariantMap desktopIconPos;   // id -> {x, y}
     bool    launcherEnabled    = true;
     bool    spotlightEnabled   = true;
@@ -334,6 +335,9 @@ public:
         m_cfg.boomtubeLoop        = o.contains("boomtubeLoop")
                                    ? o["boomtubeLoop"].toString()
                                    : m_cfg.boomtubeLoop;
+        m_cfg.mymachGraphStyle    = o.contains("mymachGraphStyle")
+                                   ? o["mymachGraphStyle"].toString()
+                                   : m_cfg.mymachGraphStyle;
         if (o.contains("desktopIconPos")
             && o["desktopIconPos"].isObject()) {
             m_cfg.desktopIconPos = o["desktopIconPos"].toObject()
@@ -562,6 +566,7 @@ public:
         o["boomtubeFolder"]      = m_cfg.boomtubeFolder;
         o["boomtubeShuffle"]     = m_cfg.boomtubeShuffle;
         o["boomtubeLoop"]        = m_cfg.boomtubeLoop;
+        o["mymachGraphStyle"]    = m_cfg.mymachGraphStyle;
         o["desktopIconPos"]      = QJsonObject::fromVariantMap(
                                        m_cfg.desktopIconPos);
         o["launcherEnabled"]     = m_cfg.launcherEnabled;
