@@ -6,17 +6,15 @@
 #include "visualconfig.h"
 #include "style.h"
 #include "shared_fwd.h"
+#include "shellapp.h"
 #include "helpers.h"
 
-class BoomTubeWindow : public QWidget {
+class BoomTubeWindow : public ShellApp {
 public:
     explicit BoomTubeWindow(const QString &initialPath = QString())
-        : QWidget(nullptr)
+        : ShellApp(nullptr)
     {
-        setWindowFlags(Qt::FramelessWindowHint);
-        setWindowTitle("BoomTube");
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
+        setupShellApp("BoomTube", QSize(1000, 700), false);
         setAutoFillBackground(false);
         setShellWindowGeometry(this, QSize(1000, 700), QPoint(0, -20));
 
@@ -40,47 +38,21 @@ public:
         hh->setContentsMargins(16, 0, 16, 0);
         hh->setSpacing(10);
 
-        auto makeLight = [](const QString &idle, const QString &hover) {
-            QPushButton *b = new QPushButton;
-            b->setFixedSize(13, 13);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setStyleSheet(QString(
-                "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60);"
-                "  border-radius: 6px; }"
-                "QPushButton:hover { background: %2; }")
-                .arg(idle, hover));
-            return b;
-        };
-        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840");
-        QObject::connect(closeBtn, &QPushButton::clicked,
-                         [this]() { shellCloseViaGenie(this); });
-        QObject::connect(minBtn, &QPushButton::clicked,
-                         []() { shellMinimizeFocusedWindow(); });
-        QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-            static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(1000, 700), QPoint(0, -20));
-            else
-                setGeometry(shellSafeArea());
-            zoomed = !zoomed;
-        });
-
-        // macOS order: lights on the LEFT, then title
-        hh->addWidget(closeBtn);
-        hh->addWidget(minBtn);
-        hh->addWidget(maxBtn);
-        hh->addSpacing(8);
-
-        QLabel *title = new QLabel("BoomTube");
-        title->setStyleSheet(
-            "color: rgb(240, 237, 232);"
-            "font-size: 13px; font-weight: 600;"
-            "background: transparent;");
-        hh->addWidget(title);
-        hh->addStretch();
+        // Standard header — lights + title via ShellApp.
+        {
+            QLabel *titleLabel = nullptr;
+            QHBoxLayout *stdHdr = buildStandardHeader(
+                "BoomTube", QSize(1000, 700), &titleLabel, nullptr);
+            while (QLayoutItem *item = stdHdr->takeAt(0)) {
+                if (QWidget *w = item->widget()) hh->addWidget(w);
+                else if (QLayout *l = item->layout()) hh->addLayout(l);
+                else if (item->spacerItem())
+                    hh->addSpacerItem(item->spacerItem());
+                else delete item;
+            }
+            delete stdHdr;
+            Q_UNUSED(titleLabel);
+        }
 
         root->addWidget(header);
 
@@ -392,15 +364,10 @@ protected:
         p.drawPath(full);
     }
 
-    void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton && e->pos().y() < 42) {
-            if (QWindow *wh = window()->windowHandle()) {
-                if (wh->startSystemMove()) { e->accept(); return; }
-            }
-        }
-        QWidget::mousePressEvent(e);
-    }
+    // BoomTube-specific: red-light close instead of hide-on-escape.
+    void onEscape() override { close(); }
 
+    // Media keys. Escape is handled via onEscape() shortcut.
     void keyPressEvent(QKeyEvent *e) override {
         switch (e->key()) {
             case Qt::Key_Space: togglePlay(); return;
@@ -408,9 +375,8 @@ protected:
                                     m_player->position() - 5000); return;
             case Qt::Key_Right: m_player->setPosition(
                                     m_player->position() + 5000); return;
-            case Qt::Key_Escape: close(); return;
         }
-        QWidget::keyPressEvent(e);
+        ShellApp::keyPressEvent(e);
     }
 
 private:

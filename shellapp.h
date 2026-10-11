@@ -53,6 +53,10 @@ protected:
     // Subclasses override for their own restyling.
     virtual void onThemeChanged(const Theme &) {}
 
+    // Subclasses override for their own Escape behavior.
+    // Default: hide (macOS-style).  BoomTube overrides to close.
+    virtual void onEscape() { hide(); }
+
     // Build a traffic-light button in the standard style.
     QPushButton *makeTrafficLight(const QString &idle,
                                   const QString &hover,
@@ -129,7 +133,7 @@ protected:
         add(QKeySequence("Ctrl+W"),
             [this]() { close(); });
         add(QKeySequence(Qt::Key_Escape),
-            [this]() { hide(); });
+            [this]() { onEscape(); });
         add(QKeySequence("Meta+M"),
             []() { shellMinimizeFocusedWindow(); });
     }
@@ -145,12 +149,6 @@ protected:
         p.setPen(QPen(Sigil::border(), 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(full);
-    }
-
-    void keyPressEvent(QKeyEvent *e) override
-    {
-        if (e->key() == Qt::Key_Escape) { hide(); e->accept(); return; }
-        QWidget::keyPressEvent(e);
     }
 
     void mousePressEvent(QMouseEvent *e) override
