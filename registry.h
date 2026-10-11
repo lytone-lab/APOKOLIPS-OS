@@ -58,23 +58,55 @@ static void appTile(QPainter &p, const QRectF &r,
                     const QColor &top, const QColor &bottom)
 {
     p.setRenderHint(QPainter::Antialiasing);
-    qreal radius = r.width() * 0.22;
+    const qreal radius = r.width() * 0.22;
+    QPainterPath path;
+    path.addRoundedRect(r, radius, radius);
+
+    // Base gradient
     QLinearGradient g(r.topLeft(), r.bottomRight());
     g.setColorAt(0.0, top);
     g.setColorAt(1.0, bottom);
-    QPainterPath path;
-    path.addRoundedRect(r, radius, radius);
     p.fillPath(path, g);
 
-    // Inner top highlight — subtle macOS-style depth
-    QColor hi(255, 255, 255, 55);
-    p.setPen(QPen(hi, qMax(1.0, r.width() * 0.012)));
-    p.setBrush(Qt::NoBrush);
-    QPainterPath inner;
-    inner.addRoundedRect(r.adjusted(r.width()*0.05, r.height()*0.05,
-                                    -r.width()*0.05, -r.height()*0.05),
-                         radius * 0.82, radius * 0.82);
-    p.drawPath(inner);
+    // macOS "curved in" look:
+    //   - dark inner shadow hugging the edges (the carve)
+    //   - bright top highlight just inside the top edge (the rim)
+    // Together they make the tile read as a soft physical button.
+
+    p.save();
+    p.setClipPath(path);
+
+    // Carve — a thick dark ring drawn just inside the rounded edge.
+    // A stroke reads stronger than a radial gradient at small sizes.
+    {
+        const qreal inset = r.width() * 0.055;
+        QPainterPath inner;
+        inner.addRoundedRect(r.adjusted(inset, inset, -inset, -inset),
+                             radius * 0.88, radius * 0.88);
+        p.setPen(QPen(QColor(0, 0, 0, 140),
+                      r.width() * 0.075,
+                      Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(inner);
+    }
+
+    // Rim — bright band along the top edge, fading down.
+    {
+        QLinearGradient rim(r.topLeft(),
+                            r.topLeft() + QPointF(0, r.height() * 0.28));
+        rim.setColorAt(0.0, QColor(255, 255, 255, 130));
+        rim.setColorAt(1.0, QColor(255, 255, 255,   0));
+        QPainterPath topBand;
+        topBand.addRoundedRect(
+            r.adjusted(r.width() * 0.02, r.height() * 0.02,
+                       -r.width() * 0.02, -r.height() * 0.02),
+            radius * 0.94, radius * 0.94);
+        p.setPen(Qt::NoPen);
+        p.setBrush(rim);
+        p.drawPath(topBand);
+    }
+
+    p.restore();
 }
 
 // ---- Motif helper: white pen of consistent weight ----
@@ -114,14 +146,43 @@ static void drawFinder(QPainter &p, const QRectF &r, const QColor &) {
                mc + QPointF(mr*1.6, mr*1.6));
 }
 
-static void drawLaunchpad(QPainter &p, const QRectF &r, const QColor &) {
-    appTile(p, r, QColor(180,  60,  60), QColor(110,  26,  26));
+// Plain omega glyph — used by the top-bar system menu button.
+// No tile, no chip, just the letter in the current text color.
+static void drawOmega(QPainter &p, const QRectF &r, const QColor &c)
+{
+    p.setRenderHint(QPainter::Antialiasing, true);
     QFont f = p.font();
-    f.setPixelSize(int(r.width() * 0.68));
+    f.setPixelSize(int(r.width() * 0.92));
     f.setWeight(QFont::Light);
     p.setFont(f);
-    p.setPen(QColor(255, 255, 255, 240));
+    p.setPen(c);
     p.drawText(r, Qt::AlignCenter, QString::fromUtf8("\xCE\xA9"));
+}
+
+static void drawLaunchpad(QPainter &p, const QRectF &r, const QColor &) {
+    // Neutral dark chip with a 3x3 grid of bone-white rounded squares.
+    // Clean, universal "app grid" symbol — avoids reading as a system
+    // mark (the omega on the top bar owns that).
+    p.setRenderHint(QPainter::Antialiasing, true);
+    appTile(p, r, QColor(60, 60, 66), QColor(28, 28, 30));
+
+    const qreal d = r.width();
+    const qreal cell = d * 0.16;
+    const qreal gap  = d * 0.075;
+    const qreal total = 3 * cell + 2 * gap;
+    const qreal ox = r.center().x() - total / 2.0;
+    const qreal oy = r.center().y() - total / 2.0;
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(240, 237, 232, 235));
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            QRectF c(ox + col * (cell + gap),
+                     oy + row * (cell + gap),
+                     cell, cell);
+            p.drawRoundedRect(c, cell * 0.25, cell * 0.25);
+        }
+    }
 }
 
 static void drawPhotos(QPainter &p, const QRectF &r, const QColor &) {
@@ -143,6 +204,7 @@ static void drawPhotos(QPainter &p, const QRectF &r, const QColor &) {
 // Aperture — hexagonal iris with six angled blades
 static void drawAperture(QPainter &p, const QRectF &r, const QColor &)
 {
+    appTile(p, r, QColor(120, 110, 200), QColor(50, 45, 130));
     p.setRenderHint(QPainter::Antialiasing, true);
 
     const QPointF c = r.center();
@@ -207,6 +269,7 @@ static void drawAperture(QPainter &p, const QRectF &r, const QColor &)
 // myMach — monitor outline with gear inside
 static void drawMyMach(QPainter &p, const QRectF &r, const QColor &)
 {
+    appTile(p, r, QColor(60, 110, 70), QColor(30, 70, 40));
     p.setRenderHint(QPainter::Antialiasing, true);
     QColor bone(240, 237, 232, 230);
     QColor ox(168, 50, 50);
@@ -252,6 +315,7 @@ static void drawMyMach(QPainter &p, const QRectF &r, const QColor &)
 
 static void drawMusic(QPainter &p, const QRectF &r, const QColor &)
 {
+    appTile(p, r, QColor(140, 45, 45), QColor(70, 20, 20));
     // BoomTube — horizontal tube with three oxblood energy rings
     p.setRenderHint(QPainter::Antialiasing, true);
 
@@ -459,6 +523,7 @@ static void drawFor(const QString &name, QPainter &p,
                     const QRectF &r, const QColor &c) {
     if (name == "Finder")         drawFinder(p, r, c);
     else if (name == "Launchpad") drawLaunchpad(p, r, c);
+    else if (name == "Omega")     drawOmega(p, r, c);
     else if (name == "Aperture")  drawAperture(p, r, c);
     else if (name == "myMach")    drawMyMach(p, r, c);
     else if (name == "Photos")    drawPhotos(p, r, c);
@@ -581,7 +646,6 @@ static const QVector<AppEntry> &appRegistry() {
         { "mail",        "Mail",      "\xE2\x9C\x89",       true,  true  },
         { "settings",    "Settings",  "\xE2\x9A\x99",       true,  true  },
         { "node",        "Node",      "\xF0\x9F\x92\xBB",  true,  true  },
-        { "power",       "Power",     "\xE2\x9A\xA1",       true,  true  },
         { "glyph",       "Glyph",     "\xE2\x97\x89",       false, true  },
         { "calculator",  "Calculator","\xF0\x9F\xA7\xAE",  false, false },
         { "screensaver", "Screensaver","\xF0\x9F\x8C\x8C", false, false },

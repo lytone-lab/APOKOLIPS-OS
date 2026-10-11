@@ -98,10 +98,9 @@ private:
             "QWidget {"
             "  background: %1;"
             "  border: none;"
-            "  border-left: 3px solid %3;"
+            "  border-left: 3px solid %2;"
             "  border-radius: 12px;"
             "}").arg(rgba(m_theme.chromeBg.lighter(110)),
-                     rgba(accent),
                      rgba(accent)));
 
         QVBoxLayout *v = new QVBoxLayout(card);
@@ -520,12 +519,11 @@ private:
                 "  border: none;"
                 "  border-radius: 12px;"
                 "  padding: 12px 16px;"
-                "  color: %3;"
+                "  color: %2;"
                 "  font-size: 15px;"
                 "}"
-                "QLineEdit:focus { border: 1px solid %4; }")
+                "QLineEdit:focus { border: 1px solid %3; }")
                 .arg(rgba(m_theme.chromeBg.lighter(120)),
-                     rgba(m_theme.chromeBorder),
                      m_theme.textPrimary.name(),
                      m_theme.accent.name()));
         }
@@ -941,46 +939,33 @@ protected:
         int visual = int(baseSize * m_current);
         int x = (width()  - visual) / 2;
         int y = (height() - visual) / 2 - 4 + m_bounceOffset;
-        int radius = int(visual * 0.26);
 
-        int boost = int(qBound(0.0, (m_current - 1.0) / 0.42, 1.0) * 90);
+        // Icon is full-bleed — no wrapper margin. Chip is drawn at
+        // the same bounds and same radius (0.22). At rest it's
+        // completely covered by the icon. On hover, it grows outward
+        // a few px and its alpha ramps up, giving a soft dark halo.
+        const qreal baseRadius = visual * 0.22;
+        QRectF iconRect(x, y, visual, visual);
 
-        // Neutral squircle chip.
-        //
-        // Was red-tinted (accentSoft/accent). That read as "empty"
-        // on dark wallpapers and vanished on light ones, leaving
-        // the bone-white glyph floating with no contrast.
-        //
-        // New approach: every dock tile gets a soft dark chip with
-        // a faint light border. Bone-on-dark is guaranteed legible
-        // against any wallpaper — light, dark, photo, gradient.
-        // Same StyleRenderer call so Glass/Neu/Skeuo/Clay still
-        // applies its own character on top of these colors.
-        Theme iconTheme = m_theme;
-        iconTheme.panelBg      = QColor(0, 0, 0, 96);       // ~38% black
-        iconTheme.chromeBorder = QColor(255, 255, 255, 30); // ~12% white
+        // Hover amount 0..1
+        const qreal boost = (m_current > 1.0)
+            ? qBound(0.0, (m_current - 1.0) / 0.42, 1.0)
+            : 0.0;
 
-        if (boost > 0) {
-            // Hover: brighten the chip instead of darkening it.
-            // Previously alpha-boost made the tile darker on hover,
-            // which read as "pressed" not "hovered".
-            QColor a = iconTheme.panelBg;
-            a.setRed  (qMin(255, a.red()   + boost / 3));
-            a.setGreen(qMin(255, a.green() + boost / 3));
-            a.setBlue (qMin(255, a.blue()  + boost / 3));
-            iconTheme.panelBg = a;
-            QColor b = iconTheme.chromeBorder;
-            b.setAlpha(qMin(255, b.alpha() + boost));
-            iconTheme.chromeBorder = b;
+        // Chip — invisible at rest, halo on hover.
+        const qreal pad = boost * 3.0;
+        QRectF chipRect = iconRect.adjusted(-pad, -pad, pad, pad);
+        const int chipAlpha = int(boost * 160);
+        if (chipAlpha > 0) {
+            QPainterPath chipPath;
+            chipPath.addRoundedRect(chipRect, baseRadius + pad,
+                                    baseRadius + pad);
+            p.fillPath(chipPath,
+                       QColor(0, 0, 0, chipAlpha));
         }
-        QRectF bgRect(x, y, visual, visual);
-        StyleRenderer::drawPanel(p, bgRect, radius, iconTheme,
-                                 iconTheme.panelBg.alpha());
 
-        // Vector icon, centered in the rounded rect
-        QRectF glyphRect(x + visual * 0.17, y + visual * 0.17,
-                         visual * 0.66, visual * 0.66);
-        Icons::drawFor(m_name, p, glyphRect, m_theme.textPrimary);
+        // App icon on top.
+        Icons::drawFor(m_name, p, iconRect, m_theme.textPrimary);
 
         // Running indicator dot under the icon
         if (m_running) {
@@ -1089,9 +1074,6 @@ protected:
             args = { "--notes" };
         } else if (m_name == "Mail") {
             program = "thunderbird";
-        } else if (m_name == "Power") {
-            // Menu is handled separately below
-            return;
         } else {
             program = QCoreApplication::applicationFilePath();
             args = { "--demo", m_name, QString::number(m_index) };
@@ -1109,49 +1091,11 @@ protected:
         qDebug() << "[dock] result:" << ok << "pid:" << m_pid;
     }
 
-    void showPowerMenu(QPoint globalPos) {
-        const Theme &t = ThemeManager::instance().current();
-        QMenu m(this);
-        m.setStyleSheet(QString(
-            "QMenu { background: %1; border: 1px solid %2;"
-            "  border-radius: 8px; padding: 5px; color: %3;"
-            "  font-size: 12px; }"
-            "QMenu::item { padding: 6px 18px; border-radius: 5px; }"
-            "QMenu::item:selected { background: %4; }")
-            .arg(rgba(t.panelBg), rgba(t.chromeBorder),
-                 t.textPrimary.name(), rgba(t.accentSoft)));
-
-        QAction *lock    = m.addAction("Lock Screen");
-        QAction *suspend = m.addAction("Suspend");
-        m.addSeparator();
-        QAction *reboot  = m.addAction("Restart…");
-        QAction *shutdn  = m.addAction("Shut Down…");
-
-        QObject::connect(lock, &QAction::triggered, []() {
-            QProcess::startDetached("loginctl", { "lock-session" });
-        });
-        QObject::connect(suspend, &QAction::triggered, []() {
-            QProcess::startDetached("systemctl", { "suspend" });
-        });
-        QObject::connect(reboot, &QAction::triggered, []() {
-            QProcess::startDetached("systemctl", { "reboot" });
-        });
-        QObject::connect(shutdn, &QAction::triggered, []() {
-            QProcess::startDetached("systemctl", { "poweroff" });
-        });
-
-        m.exec(globalPos);
-    }
-
 public:
     void handleClick(Qt::MouseButton btn, QPoint globalPos) {
         qDebug() << "[dockicon] handleClick" << m_name << "btn=" << btn;
         if (btn == Qt::LeftButton) {
-            if (m_name == "Power") {
-                showPowerMenu(globalPos);
-            } else {
-                launchApp();
-            }
+            launchApp();
         } else if (btn == Qt::RightButton) {
             // Build right-click menu
             const Theme &t = ThemeManager::instance().current();
@@ -1188,8 +1132,7 @@ public:
             const bool removable =
                 m_name != "Finder"
                 && m_name != "Launchpad"
-                && m_name != "Settings"
-                && m_name != "Power";
+                && m_name != "Settings";
 
             if (removable) {
                 m.addSeparator();
@@ -1212,11 +1155,7 @@ public:
 
     void __unused_original_mousePress(QMouseEvent *e) {
         if (e->button() == Qt::LeftButton) {
-            if (m_name == "Power") {
-                showPowerMenu(e->globalPosition().toPoint());
-            } else {
-                launchApp();
-            }
+            launchApp();
         } else if (e->button() == Qt::RightButton) {
             const Theme &t = ThemeManager::instance().current();
             QMenu m(this);
@@ -2156,21 +2095,24 @@ protected:
 
         QRectF tile((width() - 64) / 2.0, 6, 64, 64);
 
-        // Squircle chip — same treatment as dock tiles, so desktop
-        // icons are legible on any wallpaper (light, dark, photo).
-        QRectF chip = tile.adjusted(-4, -4, 4, 4);
-        const qreal chipR = chip.width() * 0.28;
-        QPainterPath chipPath;
-        chipPath.addRoundedRect(chip, chipR, chipR);
-        QColor chipFill(0, 0, 0, m_hover ? 110 : 72);
-        p.fillPath(chipPath, chipFill);
-        QColor chipEdge(255, 255, 255, m_hover ? 46 : 26);
-        p.setPen(QPen(chipEdge, 1.0));
-        p.drawPath(chipPath);
+        // Chip at same bounds / same radius as the icon. At rest,
+        // fully covered. On hover, grows 3px and darkens.
+        const qreal baseRadius = tile.width() * 0.22;
+        const qreal pad = m_hover ? 3.0 : 0.0;
+        QRectF chipRect = tile.adjusted(-pad, -pad, pad, pad);
+        const int chipAlpha = m_hover ? 160 : 0;
 
+        if (chipAlpha > 0) {
+            QPainterPath chipPath;
+            chipPath.addRoundedRect(chipRect,
+                                    baseRadius + pad,
+                                    baseRadius + pad);
+            p.fillPath(chipPath, QColor(0, 0, 0, chipAlpha));
+        }
+
+        // App icon on top, no margin.
         if (m_paint) {
-            QRectF inner = tile.adjusted(10, 10, -10, -10);
-            m_paint(p, inner);
+            m_paint(p, tile);
         }
 
         // Label
@@ -2358,50 +2300,13 @@ public:
             }
 
             QString label = labelForId(id);
+            // Route every desktop icon through the same renderer the
+            // dock uses — one source of truth for appTile colors,
+            // carve, and rim.
             std::function<void(QPainter&, QRectF)> paint =
-                [id](QPainter &p, QRectF r) {
-                    QColor bone(240, 237, 232, 230);
-                    QColor ox(168, 50, 50);
-
-                    if (id == "mymach") {
-                        QRectF mon(r.left() + r.width() * 0.10,
-                                   r.top()  + r.height() * 0.16,
-                                   r.width() * 0.80,
-                                   r.height() * 0.58);
-                        QPen bp(bone, 1.4);
-                        bp.setJoinStyle(Qt::RoundJoin);
-                        p.setPen(bp);
-                        p.setBrush(Qt::NoBrush);
-                        p.drawRoundedRect(mon, 3, 3);
-                        p.drawLine(QPointF(mon.center().x(), mon.bottom()),
-                                   QPointF(mon.center().x(),
-                                           mon.bottom() + r.height() * 0.08));
-                        p.drawLine(QPointF(mon.center().x()
-                                           - r.width() * 0.10,
-                                           mon.bottom() + r.height() * 0.08),
-                                   QPointF(mon.center().x()
-                                           + r.width() * 0.10,
-                                           mon.bottom() + r.height() * 0.08));
-                        QPointF gc = mon.center();
-                        qreal outer = r.width() * 0.16;
-                        qreal inner = r.width() * 0.09;
-                        p.setPen(Qt::NoPen);
-                        p.setBrush(ox);
-                        p.drawEllipse(gc, outer, outer);
-                        for (int i = 0; i < 8; ++i) {
-                            qreal a = i * M_PI / 4.0;
-                            QRectF tooth(gc.x() + std::cos(a) * outer - 1.5,
-                                         gc.y() + std::sin(a) * outer - 1.5,
-                                         3.0, 3.0);
-                            p.drawEllipse(tooth);
-                        }
-                        p.setBrush(bone);
-                        p.drawEllipse(gc, inner, inner);
-                    } else {
-                        // Fallback — use the shell's icon renderer
-                        QString label = labelForId(id);
-                        Icons::drawFor(label, p, r, bone);
-                    }
+                [id, label](QPainter &p, QRectF r) {
+                    Icons::drawFor(label, p, r,
+                                   QColor(240, 237, 232));
                 };
 
             QString capId = id;

@@ -956,7 +956,7 @@ static QString menuStyle(const Theme &)
         "  background: rgb(24, 22, 30);"
         "  border: 1px solid rgba(255, 255, 255, 30);"
         "  border-radius: 12px;"
-        "  padding: 6px;"
+        "  padding: 14px 6px;"
         "  color: #f0f0f5;"
         "  font-size: 13px;"
         "}"
@@ -978,6 +978,12 @@ static QString menuStyle(const Theme &)
         "  height: 1px;"
         "  background: rgba(255, 255, 255, 40);"
         "  margin: 6px 12px;"
+        "}"
+        "QMenu::right-arrow {"
+        "  image: none;"
+        "  width: 0;"
+        "  height: 0;"
+        "  margin: 0;"
         "}");
 }
 
@@ -1211,8 +1217,8 @@ static int runShell(int argc, char *argv[])
 
     TopBar *topBar = new TopBar;
     QHBoxLayout *topLayout = new QHBoxLayout(topBar);
-    topLayout->setContentsMargins(12, 0, 14, 0);
-    topLayout->setSpacing(8);
+    topLayout->setContentsMargins(14, 0, 16, 0);
+    topLayout->setSpacing(10);
 
     auto makeLight = [](const QString &hoverColor, const QString &idleColor) {
         QPushButton *b = new QPushButton;
@@ -1737,18 +1743,19 @@ static int runShell(int argc, char *argv[])
                 p.setBrush(m_hover);
                 p.drawRoundedRect(rect(), 5, 5);
             }
-            Icons::drawLaunchpad(p, QRectF(rect()), m_color);
+            Icons::drawOmega(p, QRectF(rect()), m_color);
         }
     private:
         QColor m_color = QColor(230, 230, 240);
         QColor m_hover = QColor(230, 230, 240, 45);
     };
 
+    // Omega button — repurposed as the system menu trigger.
+    // Icon stays the same. Function changes to open apoMenu
+    // (wired below, after apoMenu is built).
     OmegaButton *btnDiamond = new OmegaButton;
     topLayout->addWidget(btnDiamond);
-    QObject::connect(btnDiamond, &QPushButton::clicked, [launcher]() {
-        launcher->toggle();
-    });
+
 
     // Bell button
     QPushButton *btnBell = new QPushButton(QString::fromUtf8("\xE2\x9C\x89"));
@@ -1769,14 +1776,17 @@ static int runShell(int argc, char *argv[])
         notifications->toggle();
     });
 
-    // Brand label
+    // Brand label — plain text; the omega button to its left is
+    // the system menu trigger.
     QLabel *brand = new QLabel("Apokolips");
     ThemeManager::instance().subscribe([brand](const Theme &t) {
         brand->setStyleSheet(QString(
             "color: %1; font-size: 13px; font-weight: 600;"
-            " background: transparent;").arg(t.textPrimary.name()));
+            " background: transparent; padding: 0 4px;")
+            .arg(t.textPrimary.name()));
     });
     topLayout->addWidget(brand);
+
 
     // ---- Per-app label — top bar shows the focused app's name ----
     // IMPORTANT: swaymsg runs async. Calling it synchronously would block
@@ -1896,7 +1906,8 @@ static int runShell(int argc, char *argv[])
         ThemeManager::instance().subscribe([b, menu](const Theme &t) {
             b->setStyleSheet(QString(
                 "QPushButton { color: %1; background: transparent;"
-                "  border: none; padding: 4px 10px; font-size: 13px; }"
+                "  border: none; padding: 4px 14px; font-size: 13px;"
+                "  font-weight: 500; letter-spacing: 0.2px; }"
                 "QPushButton:hover { color: %2; background: %3;"
                 "  border-radius: 5px; }"
                 "QPushButton:pressed { background: %4; }")
@@ -2137,6 +2148,183 @@ static int runShell(int argc, char *argv[])
         });
     }
     topLayout->addWidget(makeMenuButton("Help", helpMenu));
+
+    // =========================================================
+    // Apokolips system menu — the "Apple menu" equivalent
+    // Opened by clicking the brand label in the top bar.
+    // =========================================================
+    QMenu *apoMenu = new QMenu;
+
+    // --- About / Settings
+    {
+        QAction *a = apoMenu->addAction("About This Apokolips OS");
+        QObject::connect(a, &QAction::triggered, []() {
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                { "--settings" });
+        });
+    }
+    {
+        QAction *a = apoMenu->addAction("System Settings\xE2\x80\xA6");
+        a->setShortcut(QKeySequence("Ctrl+,"));
+        QObject::connect(a, &QAction::triggered, []() {
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                { "--settings" });
+        });
+    }
+
+    apoMenu->addSeparator();
+
+    // --- Recent Items submenu
+    {
+        QMenu *recent = apoMenu->addMenu("Recent Items");
+        {
+            QAction *a = recent->addAction("(nothing yet)");
+            a->setEnabled(false);
+        }
+        recent->addSeparator();
+        {
+            QAction *a = recent->addAction("Clear Menu");
+            QObject::connect(a, &QAction::triggered, []() {
+                QProcess::startDetached("bash", { "-c",
+                    "rm -f ~/.local/share/apokolips/recent.json" });
+            });
+        }
+    }
+
+    // --- Quick Actions submenu
+    {
+        QMenu *quick = apoMenu->addMenu("Quick Actions");
+        {
+            QAction *a = quick->addAction("Take Screenshot");
+            QObject::connect(a, &QAction::triggered, []() {
+                QProcess::startDetached("bash", { "-c",
+                    "mkdir -p ~/Pictures/Screenshots && "
+                    "grim ~/Pictures/Screenshots/"
+                    "apo-$(date +%Y%m%d-%H%M%S).png" });
+            });
+        }
+        {
+            QAction *a = quick->addAction("Set Wallpaper\xE2\x80\xA6");
+            QObject::connect(a, &QAction::triggered, []() {
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--settings" });
+            });
+        }
+        {
+            QAction *a = quick->addAction("Toggle Do Not Disturb");
+            QObject::connect(a, &QAction::triggered, []() {
+                VisualConfigManager::instance().setAndSave(
+                    [](VisualConfig &c) {
+                        c.dndEnabled = !c.dndEnabled;
+                    });
+            });
+        }
+    }
+
+    // --- Window submenu
+    {
+        QMenu *win = apoMenu->addMenu("Window");
+        {
+            QAction *a = win->addAction("Force Quit\xE2\x80\xA6");
+            a->setShortcut(QKeySequence("Ctrl+Alt+Escape"));
+            QObject::connect(a, &QAction::triggered, []() {
+                QProcess::startDetached("swaymsg", { "kill" });
+            });
+        }
+        {
+            QAction *a = win->addAction("Mission Control");
+            QObject::connect(a, &QAction::triggered, []() {
+                ::raise(SIGCONT);   // shell's g_mcToggle signal
+            });
+        }
+        {
+            QAction *a = win->addAction("Reload Shell");
+            a->setShortcut(QKeySequence("Ctrl+Shift+R"));
+            QObject::connect(a, &QAction::triggered, []() {
+                QProcess::startDetached("systemctl",
+                    { "--user", "restart",
+                      "apokolips-shell.service" });
+            });
+        }
+    }
+
+    apoMenu->addSeparator();
+
+    // --- Power / session
+    {
+        QAction *a = apoMenu->addAction("Lock Screen");
+        a->setShortcut(QKeySequence("Ctrl+Meta+Q"));
+        QObject::connect(a, &QAction::triggered, []() {
+            QProcess::startDetached("loginctl", { "lock-session" });
+        });
+    }
+    {
+        QAction *a = apoMenu->addAction("Sleep");
+        QObject::connect(a, &QAction::triggered, []() {
+            QProcess::startDetached("systemctl", { "suspend" });
+        });
+    }
+    {
+        QAction *a = apoMenu->addAction("Restart\xE2\x80\xA6");
+        QObject::connect(a, &QAction::triggered, []() {
+            QMessageBox::StandardButton r = QMessageBox::question(
+                nullptr, "Restart",
+                "Restart this machine?",
+                QMessageBox::Yes | QMessageBox::Cancel,
+                QMessageBox::Cancel);
+            if (r == QMessageBox::Yes)
+                QProcess::startDetached("systemctl", { "reboot" });
+        });
+    }
+    {
+        QAction *a = apoMenu->addAction("Shut Down\xE2\x80\xA6");
+        QObject::connect(a, &QAction::triggered, []() {
+            QMessageBox::StandardButton r = QMessageBox::question(
+                nullptr, "Shut Down",
+                "Shut down this machine?",
+                QMessageBox::Yes | QMessageBox::Cancel,
+                QMessageBox::Cancel);
+            if (r == QMessageBox::Yes)
+                QProcess::startDetached("systemctl", { "poweroff" });
+        });
+    }
+
+    apoMenu->addSeparator();
+
+    {
+        const QString user = QString::fromLocal8Bit(qgetenv("USER"));
+        QAction *a = apoMenu->addAction(
+            QString("Log Out %1\xE2\x80\xA6").arg(
+                user.isEmpty() ? "user" : user));
+        a->setShortcut(QKeySequence("Ctrl+Shift+Q"));
+        QObject::connect(a, &QAction::triggered, []() {
+            QMessageBox::StandardButton r = QMessageBox::question(
+                nullptr, "Log Out",
+                "End this session?",
+                QMessageBox::Yes | QMessageBox::Cancel,
+                QMessageBox::Cancel);
+            if (r == QMessageBox::Yes)
+                QProcess::startDetached("swaymsg", { "exit" });
+        });
+    }
+
+    // Style the menu when theme changes.
+    ThemeManager::instance().subscribe([apoMenu](const Theme &t) {
+        apoMenu->setStyleSheet(menuStyle(t));
+    });
+
+
+    // Omega button — the primary system menu trigger. Menu drops
+    // from below the omega, mac-style.
+    QObject::connect(btnDiamond, &QPushButton::clicked,
+                     [btnDiamond, apoMenu]() {
+        QPoint below = btnDiamond->mapToGlobal(
+            QPoint(0, btnDiamond->height() + 4));
+        apoMenu->exec(below);
+    });
 
     topLayout->addStretch();
 
@@ -2548,8 +2736,14 @@ static int runShell(int argc, char *argv[])
                                 pos.value("y", defaultPos.y()).toInt());
         }
 
+        // Route the desktop myMach icon through the same draw
+        // dispatch the dock uses — one source of truth for colors.
         desktopIcons->addIcon(
-            "mymach", "myMach", myMachPaint,
+            "mymach", "myMach",
+            [](QPainter &p, QRectF r) {
+                Icons::drawFor("myMach", p, r,
+                               QColor(240, 237, 232));
+            },
             []() {
                 QProcess::startDetached(
                     QCoreApplication::applicationFilePath(),

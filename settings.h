@@ -1070,8 +1070,7 @@ private:
                     "  text-align: left;"
                     "  padding: 0;"
                     "}"
-                    "QPushButton:hover { background: rgba(255,255,255,20); }")
-                    .arg(Sigil::textPrimary().name()));
+                    "QPushButton:hover { background: rgba(255,255,255,20); }"));
 
                 QHBoxLayout *h = new QHBoxLayout(b);
                 h->setContentsMargins(18, 10, 18, 10);
