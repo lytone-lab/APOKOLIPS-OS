@@ -678,17 +678,6 @@ MANDATORY APP CHECKLIST
 ------------------------------------------------------------------------
 BUG LIST (open)
 
-  [ ] Date & Time page doesn't appear in Settings sidebar.
-      Patch applied (config + sidebar + makeDateTimePage), build
-      clean, service restarted, but no "Date & Time" entry visible.
-      Need to grep main.cpp for the strings to see if patch landed.
-      Repro: open Settings, look at sidebar — Date & Time missing
-      between Notifications and About.
-
-  [ ] Top bar clock ignores clock24Hour / clockShowSeconds config.
-      Fields added by the Date & Time patch but the top bar doesn't
-      read them. Clock stays 24h/seconds-off regardless of toggles.
-
   [ ] QString::arg missing argument warnings in journal on startup.
       Non-fatal but noisy. Find the style strings with placeholders
       that have no .arg() chain and fix.
