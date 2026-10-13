@@ -19,17 +19,17 @@ public:
         setAutoFillBackground(false);
         buildUi();
 
-        // Build the first page immediately so we don't flash empty,
-        // then start background warming of the rest.
-        if (m_sidebarRows.size() > 0) {
-            ensurePageBuilt(0);
-            m_warmIndex = 1;
-        }
+        // Don't build any page in the constructor — the window must
+        // appear first. Page 0 loads on the next event-loop tick,
+        // then the rest warm in the background. warmNextPage yields
+        // between builds so the UI stays responsive while pages
+        // populate in the background.
+        m_warmIndex = 0;
         m_warmer = new QTimer(this);
-        m_warmer->setInterval(60);
+        m_warmer->setInterval(30);
         QObject::connect(m_warmer, &QTimer::timeout,
                          this, &SettingsWindow::warmNextPage);
-        QTimer::singleShot(400, this, [this]() { m_warmer->start(); });
+        QTimer::singleShot(0, this, [this]() { m_warmer->start(); });
 
         // Apply persisted text scale before choosing the final initial size.
         applyTextScale(VisualConfigManager::instance().cfg().shellTextScale);
@@ -624,6 +624,10 @@ private:
         }
         ensurePageBuilt(m_warmIndex);
         ++m_warmIndex;
+
+        // Hand the event loop back after each page so the UI can
+        // repaint and respond to clicks between background builds.
+        QCoreApplication::processEvents();
     }
 
     QWidget *makeAppearancePage() {
