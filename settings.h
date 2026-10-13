@@ -5865,45 +5865,71 @@ private:
             cv->setSpacing(12);
             cv->addWidget(Sigil::groupLabel("WI-FI"));
 
-            QProcess q;
-            q.start("nmcli", { "-t", "-f", "WIFI", "general" });
-            q.waitForFinished(1000);
-            QString wifiState =
-                QString::fromUtf8(q.readAllStandardOutput()).trimmed();
-            bool hasWifi = !wifiState.isEmpty();
+            // Async: fire both nmcli calls in parallel, populate the
+            // card in a shared finish handler. No waitForFinished.
+            QLabel *placeholder = new QLabel("Querying…");
+            placeholder->setStyleSheet(QString(
+                "color: %1; font-size: 12px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            cv->addWidget(placeholder);
 
-            QProcess r;
-            r.start("nmcli", { "radio", "wifi" });
-            r.waitForFinished(1000);
-            bool radioOn = QString::fromUtf8(
-                r.readAllStandardOutput()).trimmed().contains("enabled");
+            struct WifiAsync { QString general; bool radio = false; int done = 0; };
+            auto *st = new WifiAsync;
 
-            if (hasWifi) {
-                cv->addWidget(Sigil::makeToggleRow(
-                    "Wi-Fi",
-                    radioOn ? "On" : "Off",
-                    radioOn,
-                    [](bool on) {
-                        QProcess::startDetached("nmcli",
-                            { "radio", "wifi", on ? "on" : "off" });
-                    }));
-            } else {
-                QLabel *head = new QLabel(
-                    "No wireless adapter detected");
-                head->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textPrimary().name()));
-                QLabel *sub = new QLabel(
-                    "This machine has no Wi-Fi hardware. Wireless networks "
-                    "will appear here once an adapter is present. Ethernet "
-                    "settings are under Network.");
-                sub->setWordWrap(true);
-                sub->setStyleSheet(QString(
-                    "color: %1; font-size: 11px; background: transparent;")
-                    .arg(Sigil::textDim().name()));
-                cv->addWidget(head);
-                cv->addWidget(sub);
-            }
+            auto finish = [cv, placeholder, st]() {
+                if (++st->done < 2) return;
+                cv->removeWidget(placeholder);
+                placeholder->deleteLater();
+                if (!st->general.isEmpty()) {
+                    cv->addWidget(Sigil::makeToggleRow(
+                        "Wi-Fi",
+                        st->radio ? "On" : "Off",
+                        st->radio,
+                        [](bool on) {
+                            QProcess::startDetached("nmcli",
+                                { "radio", "wifi", on ? "on" : "off" });
+                        }));
+                } else {
+                    QLabel *head = new QLabel(
+                        "No wireless adapter detected");
+                    head->setStyleSheet(QString(
+                        "color: %1; font-size: 13px; background: transparent;")
+                        .arg(Sigil::textPrimary().name()));
+                    QLabel *sub = new QLabel(
+                        "This machine has no Wi-Fi hardware. Wireless networks "
+                        "will appear here once an adapter is present. Ethernet "
+                        "settings are under Network.");
+                    sub->setWordWrap(true);
+                    sub->setStyleSheet(QString(
+                        "color: %1; font-size: 11px; background: transparent;")
+                        .arg(Sigil::textDim().name()));
+                    cv->addWidget(head);
+                    cv->addWidget(sub);
+                }
+                delete st;
+            };
+
+            auto *pq = new QProcess(this);
+            QObject::connect(pq,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                [pq, st, finish](int, QProcess::ExitStatus) {
+                    st->general = QString::fromUtf8(
+                        pq->readAllStandardOutput()).trimmed();
+                    pq->deleteLater();
+                    finish();
+                });
+            pq->start("nmcli", { "-t", "-f", "WIFI", "general" });
+
+            auto *pr = new QProcess(this);
+            QObject::connect(pr,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                [pr, st, finish](int, QProcess::ExitStatus) {
+                    st->radio = QString::fromUtf8(
+                        pr->readAllStandardOutput()).trimmed().contains("enabled");
+                    pr->deleteLater();
+                    finish();
+                });
+            pr->start("nmcli", { "radio", "wifi" });
             v->addWidget(c);
         }
 
