@@ -667,21 +667,50 @@ private:
             m_tabs[m_currentTab].historyIndex = m_historyIndex;
             refreshTabBar();
         }
-        m_view->setRootIndex(m_proxy->mapFromSource(m_fs->index(path)));
-        if (m_treeView)
-            m_treeView->setRootIndex(m_proxy->mapFromSource(
-                m_fs->index(path)));
+        // Non-flicker swap: keep the current view visible until the
+        // target directory is loaded by QFileSystemModel, THEN swap.
+        // Otherwise setRootIndex would land on an empty model and the
+        // view would flash empty for 100-300ms while the directory
+        // loads in the background.
+        swapToDirectory(path);
         m_breadcrumb->setText(shortenPath(path));
         updateNavButtons();
         updateStatusBar();
+    }
+
+    // Load `path` in the background if needed, then swap the view's
+    // root index once the directory is cached. If the directory is
+    // already cached, swap immediately.
+    void swapToDirectory(const QString &path) {
+        const QModelIndex fsIdx = m_fs->index(path);
+        if (m_loadedDirs.contains(path) || !m_fs->canFetchMore(fsIdx)) {
+            applyRootIndex(fsIdx);
+            return;
+        }
+        // Directory not yet loaded. Kick off load and swap on ready.
+        QObject::connect(
+            m_fs, &QFileSystemModel::directoryLoaded,
+            this,
+            [this, path, fsIdx](const QString &loadedPath) {
+                if (loadedPath != path) return;
+                m_loadedDirs.insert(path);
+                applyRootIndex(fsIdx);
+            },
+            Qt::SingleShotConnection);
+        m_fs->fetchMore(fsIdx);
+    }
+
+    void applyRootIndex(const QModelIndex &fsIdx) {
+        m_view->setRootIndex(m_proxy->mapFromSource(fsIdx));
+        if (m_treeView)
+            m_treeView->setRootIndex(m_proxy->mapFromSource(fsIdx));
     }
 
     void goBack() {
         if (m_historyIndex <= 0) return;
         --m_historyIndex;
         m_currentPath = m_history[m_historyIndex];
-        m_view->setRootIndex(m_proxy->mapFromSource(
-            m_fs->index(m_currentPath)));
+        swapToDirectory(m_currentPath);
         m_breadcrumb->setText(shortenPath(m_currentPath));
         updateNavButtons();
     }
@@ -690,8 +719,7 @@ private:
         if (m_historyIndex >= m_history.size() - 1) return;
         ++m_historyIndex;
         m_currentPath = m_history[m_historyIndex];
-        m_view->setRootIndex(m_proxy->mapFromSource(
-            m_fs->index(m_currentPath)));
+        swapToDirectory(m_currentPath);
         m_breadcrumb->setText(shortenPath(m_currentPath));
         updateNavButtons();
     }
@@ -1285,6 +1313,7 @@ private:
     QPushButton *m_upBtn = nullptr;
     QListView *m_view = nullptr;
     QFileSystemModel *m_fs = nullptr;
+    QSet<QString> m_loadedDirs;   // dirs confirmed loaded by QFileSystemModel
     QSortFilterProxyModel *m_proxy = nullptr;
     QList<QPushButton *> m_navButtons;
     QList<FinderPlaceRow *> m_placeRows;
