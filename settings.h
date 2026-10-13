@@ -801,30 +801,16 @@ private:
             cv->setSpacing(14);
             cv->addWidget(Sigil::groupLabel("FONTS"));
 
-            QStringList families;
-            {
-                QProcess p;
-                p.start("bash", { "-c",
-                    "fc-list : family | tr ',' '\\n' | sed 's/^ *//' "
-                    "| sort -u | grep -v '^$'" });
-                p.waitForFinished(2000);
-                families = QString::fromUtf8(
-                    p.readAllStandardOutput()).split('\n',
-                                                     Qt::SkipEmptyParts);
-            }
-
-            QStringList uiOptions = { "(Qt default)" };
-            uiOptions += families;
-
-            QStringList monoFamilies;
-            for (const QString &f : families) {
-                if (f.contains("Mono", Qt::CaseInsensitive)
-                    || f.contains("Code", Qt::CaseInsensitive)
-                    || f.contains("Fixed", Qt::CaseInsensitive))
-                    monoFamilies << f;
-            }
-            QStringList monoOptions = { "(Qt default)" };
-            monoOptions += monoFamilies;
+            // Async: fire fc-list once, fill both dropdowns on finish.
+            // Shared loader struct keeps callback + async handler in
+            // sync — pointers persist for the card's lifetime.
+            struct FontsLoader {
+                QStringList uiOptions{ "(Qt default)" };
+                QStringList monoOptions{ "(Qt default)" };
+                Sigil::Dropdown *uiDD = nullptr;
+                Sigil::Dropdown *monoDD = nullptr;
+            };
+            auto *fl = new FontsLoader;
 
             // System font
             {
@@ -849,22 +835,13 @@ private:
                 left->addWidget(s);
                 h->addLayout(left, 1);
 
-                int idx = 0;
-                if (!vc.shellFontFamily.isEmpty()) {
-                    int i = uiOptions.indexOf(vc.shellFontFamily);
-                    if (i >= 0) idx = i;
-                }
-
-                QList<QString> *capturedList = new QList<QString>();
-                for (const QString &s : uiOptions) capturedList->append(s);
-
                 Sigil::Dropdown *dd = new Sigil::Dropdown(
-                    uiOptions, idx,
-                    [capturedList](int i) {
-                        if (i < 0 || i >= capturedList->size()) return;
+                    fl->uiOptions, 0,
+                    [fl](int i) {
+                        if (i < 0 || i >= fl->uiOptions.size()) return;
                         QString fam = (i == 0)
                             ? QString()
-                            : capturedList->at(i);
+                            : fl->uiOptions.at(i);
                         VisualConfigManager::instance().setAndSave(
                             [fam](VisualConfig &c) {
                                 c.shellFontFamily = fam; });
@@ -874,6 +851,7 @@ private:
                     });
                 h->addWidget(dd);
                 cv->addWidget(row);
+                fl->uiDD = dd;
             }
 
             // Monospace font
@@ -899,28 +877,67 @@ private:
                 left->addWidget(s);
                 h->addLayout(left, 1);
 
-                int idx = 0;
-                if (!vc.shellMonoFontFamily.isEmpty()) {
-                    int i = monoOptions.indexOf(vc.shellMonoFontFamily);
-                    if (i >= 0) idx = i;
-                }
-
-                QList<QString> *capturedList = new QList<QString>();
-                for (const QString &s : monoOptions) capturedList->append(s);
-
                 Sigil::Dropdown *dd = new Sigil::Dropdown(
-                    monoOptions, idx,
-                    [capturedList](int i) {
-                        if (i < 0 || i >= capturedList->size()) return;
+                    fl->monoOptions, 0,
+                    [fl](int i) {
+                        if (i < 0 || i >= fl->monoOptions.size()) return;
                         QString fam = (i == 0)
                             ? QString()
-                            : capturedList->at(i);
+                            : fl->monoOptions.at(i);
                         VisualConfigManager::instance().setAndSave(
                             [fam](VisualConfig &c) {
                                 c.shellMonoFontFamily = fam; });
                     });
                 h->addWidget(dd);
                 cv->addWidget(row);
+                fl->monoDD = dd;
+            }
+
+            // Fire fc-list async now that both dropdowns exist
+            {
+                auto *pc = new QProcess(this);
+                QObject::connect(pc,
+                    QOverload<int, QProcess::ExitStatus>::of(
+                        &QProcess::finished),
+                    [pc, fl]() {
+                        QStringList fams = QString::fromUtf8(
+                            pc->readAllStandardOutput())
+                            .split('\n', Qt::SkipEmptyParts);
+                        pc->deleteLater();
+                        fl->uiOptions = { "(Qt default)" };
+                        fl->uiOptions += fams;
+                        fl->monoOptions = { "(Qt default)" };
+                        for (const QString &f : fams) {
+                            if (f.contains("Mono", Qt::CaseInsensitive)
+                                || f.contains("Code", Qt::CaseInsensitive)
+                                || f.contains("Fixed", Qt::CaseInsensitive))
+                                fl->monoOptions << f;
+                        }
+                        auto &vc2 =
+                            VisualConfigManager::instance().cfg();
+                        if (fl->uiDD) {
+                            int idx = 0;
+                            if (!vc2.shellFontFamily.isEmpty()) {
+                                int i = fl->uiOptions.indexOf(
+                                    vc2.shellFontFamily);
+                                if (i >= 0) idx = i;
+                            }
+                            fl->uiDD->setItemsSilent(fl->uiOptions, idx);
+                        }
+                        if (fl->monoDD) {
+                            int idx = 0;
+                            if (!vc2.shellMonoFontFamily.isEmpty()) {
+                                int i = fl->monoOptions.indexOf(
+                                    vc2.shellMonoFontFamily);
+                                if (i >= 0) idx = i;
+                            }
+                            fl->monoDD->setItemsSilent(
+                                fl->monoOptions, idx);
+                        }
+                    });
+                pc->start("bash", { "-c",
+                    "fc-list : family | tr ',' '\\n' | sed 's/^ *//' "
+                    "| sort -u | grep -v '^$'" });
             }
 
             // Base size slider
@@ -5625,105 +5642,109 @@ private:
             cv->setSpacing(14);
             cv->addWidget(Sigil::groupLabel("BATTERY"));
 
-            // Query upower
-            QProcess q;
-            q.start("upower", { "-i",
-                "/org/freedesktop/UPower/devices/battery_BAT0" });
-            q.waitForFinished(1200);
-            QString out = QString::fromUtf8(q.readAllStandardOutput());
+            // Async: placeholder, fill on upower finish.
+            QVBoxLayout *body = new QVBoxLayout;
+            body->setContentsMargins(0, 0, 0, 0);
+            body->setSpacing(14);
+            cv->addLayout(body);
 
-            bool present = out.contains("present:") &&
-                           !out.contains("present:             no");
+            QLabel *placeholder = new QLabel("Querying…");
+            placeholder->setStyleSheet(QString(
+                "color: %1; font-size: 12px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            body->addWidget(placeholder);
 
-            if (!present) {
-                QLabel *head = new QLabel("No battery detected");
-                head->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textPrimary().name()));
-                QLabel *sub = new QLabel(
-                    "This machine has no battery. Plug in a laptop-style "
-                    "power source, or ignore if this is a desktop.");
-                sub->setWordWrap(true);
-                sub->setStyleSheet(QString(
-                    "color: %1; font-size: 11px; background: transparent;")
-                    .arg(Sigil::textDim().name()));
-                cv->addWidget(head);
-                cv->addWidget(sub);
-            } else {
-                // Parse fields
-                auto getField = [&](const QString &key) -> QString {
-                    for (const QString &line : out.split('\n')) {
-                        QString t = line.trimmed();
-                        if (t.startsWith(key + ":")) {
-                            return t.section(':', 1).trimmed();
-                        }
+            auto *q = new QProcess(this);
+            QObject::connect(q,
+                QOverload<int, QProcess::ExitStatus>::of(
+                    &QProcess::finished),
+                [q, body, placeholder](int, QProcess::ExitStatus) {
+                    QString out = QString::fromUtf8(
+                        q->readAllStandardOutput());
+                    q->deleteLater();
+                    body->removeWidget(placeholder);
+                    placeholder->deleteLater();
+
+                    bool present = out.contains("present:") &&
+                        !out.contains("present:             no");
+
+                    if (!present) {
+                        QLabel *head = new QLabel("No battery detected");
+                        head->setStyleSheet(QString(
+                            "color: %1; font-size: 13px;"
+                            " background: transparent;")
+                            .arg(Sigil::textPrimary().name()));
+                        QLabel *sub = new QLabel(
+                            "This machine has no battery. Plug in a "
+                            "laptop-style power source, or ignore if "
+                            "this is a desktop.");
+                        sub->setWordWrap(true);
+                        sub->setStyleSheet(QString(
+                            "color: %1; font-size: 11px;"
+                            " background: transparent;")
+                            .arg(Sigil::textDim().name()));
+                        body->addWidget(head);
+                        body->addWidget(sub);
+                        return;
                     }
-                    return {};
-                };
 
-                QString pct  = getField("percentage");
-                QString st   = getField("state");
-                QString rate = getField("energy-rate");
-                QString full = getField("energy-full");
-                QString cap  = getField("capacity");
+                    auto getField = [&out](const QString &key) -> QString {
+                        for (const QString &line : out.split('\n')) {
+                            QString t = line.trimmed();
+                            if (t.startsWith(key + ":")) {
+                                return t.section(':', 1).trimmed();
+                            }
+                        }
+                        return {};
+                    };
 
-                // Big percentage row
-                QHBoxLayout *bigRow = new QHBoxLayout;
-                QLabel *big = new QLabel(pct);
-                big->setStyleSheet(QString(
-                    "color: %1; font-size: 34px; font-weight: 300;"
-                    " background: transparent; letter-spacing: 1px;")
-                    .arg(Sigil::textPrimary().name()));
-                bigRow->addWidget(big);
-                bigRow->addStretch();
-                QLabel *stLbl = new QLabel(st);
-                stLbl->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textSecondary().name()));
-                bigRow->addWidget(stLbl, 0, Qt::AlignVCenter);
-                cv->addLayout(bigRow);
+                    QString pct  = getField("percentage");
+                    QString st   = getField("state");
+                    QString rate = getField("energy-rate");
+                    QString full = getField("energy-full");
+                    QString cap  = getField("capacity");
 
-                // Details
-                auto addDetail = [&](const QString &k, const QString &val) {
-                    if (val.isEmpty()) return;
-                    QHBoxLayout *h = new QHBoxLayout;
-                    QLabel *l = new QLabel(k);
-                    l->setStyleSheet(QString(
-                        "color: %1; font-size: 12px; background: transparent;")
-                        .arg(Sigil::textDim().name()));
-                    QLabel *r = new QLabel(val);
-                    r->setStyleSheet(QString(
-                        "color: %1; font-size: 12px; background: transparent;")
+                    QHBoxLayout *bigRow = new QHBoxLayout;
+                    QLabel *big = new QLabel(pct);
+                    big->setStyleSheet(QString(
+                        "color: %1; font-size: 34px; font-weight: 300;"
+                        " background: transparent; letter-spacing: 1px;")
+                        .arg(Sigil::textPrimary().name()));
+                    bigRow->addWidget(big);
+                    bigRow->addStretch();
+                    QLabel *stLbl = new QLabel(st);
+                    stLbl->setStyleSheet(QString(
+                        "color: %1; font-size: 13px;"
+                        " background: transparent;")
                         .arg(Sigil::textSecondary().name()));
-                    h->addWidget(l);
-                    h->addStretch();
-                    h->addWidget(r);
-                    cv->addLayout(h);
-                };
-                addDetail("Power draw",   rate);
-                addDetail("Total energy", full);
-                addDetail("Health",       cap);
+                    bigRow->addWidget(stLbl, 0, Qt::AlignVCenter);
+                    body->addLayout(bigRow);
 
-                // Refresh button
-                QPushButton *refresh = new QPushButton("Refresh");
-                refresh->setCursor(Qt::PointingHandCursor);
-                refresh->setFixedHeight(26);
-                refresh->setMinimumWidth(80);
-                refresh->setStyleSheet(QString(
-                    "QPushButton { background: rgba(255,255,255,20);"
-                    "  color: %1; border: none; border-radius: 6px;"
-                    "  font-size: 11px; padding: 2px 12px; }"
-                    "QPushButton:hover { background: rgba(255,255,255,45); }")
-                    .arg(Sigil::textPrimary().name()));
-                QObject::connect(refresh, &QPushButton::clicked, [this]() {
-                    auto *sw = qobject_cast<QWidget *>(this);
-                    if (sw) sw->update();
+                    auto addDetail =
+                        [body](const QString &k, const QString &val) {
+                            if (val.isEmpty()) return;
+                            QHBoxLayout *h = new QHBoxLayout;
+                            QLabel *l = new QLabel(k);
+                            l->setStyleSheet(QString(
+                                "color: %1; font-size: 12px;"
+                                " background: transparent;")
+                                .arg(Sigil::textDim().name()));
+                            QLabel *r = new QLabel(val);
+                            r->setStyleSheet(QString(
+                                "color: %1; font-size: 12px;"
+                                " background: transparent;")
+                                .arg(Sigil::textSecondary().name()));
+                            h->addWidget(l);
+                            h->addStretch();
+                            h->addWidget(r);
+                            body->addLayout(h);
+                        };
+                    addDetail("Power draw",   rate);
+                    addDetail("Total energy", full);
+                    addDetail("Health",       cap);
                 });
-                QHBoxLayout *btnRow = new QHBoxLayout;
-                btnRow->addWidget(refresh);
-                btnRow->addStretch();
-                cv->addLayout(btnRow);
-            }
+            q->start("upower", { "-i",
+                "/org/freedesktop/UPower/devices/battery_BAT0" });
             v->addWidget(c);
         }
 
@@ -5841,59 +5862,70 @@ private:
             cv->setSpacing(12);
             cv->addWidget(Sigil::groupLabel("STATUS"));
 
-            QProcess q;
-            q.start("bluetoothctl", { "list" });
-            q.waitForFinished(1500);
-            bool hasAdapter = !q.readAllStandardOutput().trimmed().isEmpty();
+            // Async: placeholder, chain list → show → toggle
+            QLabel *btPlaceholder = new QLabel("Querying…");
+            btPlaceholder->setStyleSheet(QString(
+                "color: %1; font-size: 12px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            cv->addWidget(btPlaceholder);
 
-            if (!hasAdapter) {
-                QLabel *head = new QLabel("No Bluetooth hardware detected");
-                head->setStyleSheet(QString(
-                    "color: %1; font-size: 13px; background: transparent;")
-                    .arg(Sigil::textPrimary().name()));
-                QLabel *sub = new QLabel(
-                    "This machine has no Bluetooth adapter, or the service "
-                    "is not running. Plug in a USB Bluetooth adapter and "
-                    "restart bluetooth.service, then Refresh.");
-                sub->setWordWrap(true);
-                sub->setStyleSheet(QString(
-                    "color: %1; font-size: 11px; background: transparent;")
-                    .arg(Sigil::textDim().name()));
-                cv->addWidget(head);
-                cv->addWidget(sub);
+            auto *q = new QProcess(this);
+            QObject::connect(q,
+                QOverload<int, QProcess::ExitStatus>::of(
+                    &QProcess::finished),
+                [this, q, cv, btPlaceholder](int, QProcess::ExitStatus) {
+                    bool hasAdapter = !q->readAllStandardOutput()
+                        .trimmed().isEmpty();
+                    q->deleteLater();
+                    cv->removeWidget(btPlaceholder);
+                    btPlaceholder->deleteLater();
 
-                QPushButton *refresh = new QPushButton("Refresh");
-                refresh->setCursor(Qt::PointingHandCursor);
-                refresh->setFixedHeight(28);
-                refresh->setMinimumWidth(90);
-                refresh->setStyleSheet(QString(
-                    "QPushButton { background: rgba(255,255,255,20);"
-                    "  color: %1; border: none; border-radius: 7px;"
-                    "  font-size: 12px; padding: 4px 14px; }"
-                    "QPushButton:hover { background: rgba(255,255,255,45); }")
-                    .arg(Sigil::textPrimary().name()));
-                QObject::connect(refresh, &QPushButton::clicked,
-                    [this]() { refreshBluetoothPage(); });
-                QHBoxLayout *btnRow = new QHBoxLayout;
-                btnRow->addWidget(refresh);
-                btnRow->addStretch();
-                cv->addLayout(btnRow);
-            } else {
-                bool powered = false;
-                QProcess pw;
-                pw.start("bluetoothctl", { "show" });
-                pw.waitForFinished(1500);
-                QString out = QString::fromUtf8(pw.readAllStandardOutput());
-                powered = out.contains("Powered: yes");
-                cv->addWidget(Sigil::makeToggleRow(
-                    "Bluetooth",
-                    powered ? "On and ready to pair" : "Off — click to enable",
-                    powered,
-                    [](bool on) {
-                        QProcess::startDetached("bluetoothctl",
-                            { "power", on ? "on" : "off" });
-                    }));
-            }
+                    if (!hasAdapter) {
+                        QLabel *head = new QLabel(
+                            "No Bluetooth hardware detected");
+                        head->setStyleSheet(QString(
+                            "color: %1; font-size: 13px;"
+                            " background: transparent;")
+                            .arg(Sigil::textPrimary().name()));
+                        QLabel *sub = new QLabel(
+                            "This machine has no Bluetooth adapter, "
+                            "or the service is not running. Plug in "
+                            "a USB Bluetooth adapter and restart "
+                            "bluetooth.service, then reopen this "
+                            "page.");
+                        sub->setWordWrap(true);
+                        sub->setStyleSheet(QString(
+                            "color: %1; font-size: 11px;"
+                            " background: transparent;")
+                            .arg(Sigil::textDim().name()));
+                        cv->addWidget(head);
+                        cv->addWidget(sub);
+                        return;
+                    }
+
+                    auto *pw = new QProcess(this);
+                    QObject::connect(pw,
+                        QOverload<int, QProcess::ExitStatus>::of(
+                            &QProcess::finished),
+                        [pw, cv](int, QProcess::ExitStatus) {
+                            QString out = QString::fromUtf8(
+                                pw->readAllStandardOutput());
+                            pw->deleteLater();
+                            bool powered = out.contains("Powered: yes");
+                            cv->addWidget(Sigil::makeToggleRow(
+                                "Bluetooth",
+                                "Power on to scan and pair devices",
+                                powered,
+                                [](bool on) {
+                                    QProcess::startDetached(
+                                        "bluetoothctl",
+                                        { "power",
+                                          on ? "on" : "off" });
+                                }));
+                        });
+                    pw->start("bluetoothctl", { "show" });
+                });
+            q->start("bluetoothctl", { "list" });
             v->addWidget(c);
         }
 
@@ -7338,46 +7370,74 @@ private:
             cv->setSpacing(14);
             cv->addWidget(Sigil::groupLabel("FIREWALL"));
 
-            // Query ufw status (requires pkexec)
-            QProcess q;
-            q.start("ufw", { "status" });
-            q.waitForFinished(700);
-            QString out = QString::fromUtf8(q.readAllStandardOutput());
-            bool active = out.contains("Status: active");
-
-            QLabel *status = new QLabel(
-                active ? "Active — firewall is protecting this machine"
-                       : "Inactive — incoming connections are not filtered");
+            // Async: placeholder, fill on ufw finish.
+            QLabel *status = new QLabel("Querying…");
             status->setStyleSheet(QString(
                 "color: %1; font-size: 12px; background: transparent;")
-                .arg(Sigil::textSecondary().name()));
+                .arg(Sigil::textDim().name()));
             cv->addWidget(status);
 
             QWidget *row = new QWidget;
             QHBoxLayout *h = new QHBoxLayout(row);
             h->setContentsMargins(0, 6, 0, 6);
 
-            QPushButton *enable = new QPushButton(
-                active ? "Disable Firewall" : "Enable Firewall");
+            QPushButton *enable = new QPushButton("Querying…");
             enable->setCursor(Qt::PointingHandCursor);
             enable->setFixedHeight(30);
             enable->setMinimumWidth(150);
+            enable->setEnabled(false);
             enable->setStyleSheet(QString(
                 "QPushButton { background: rgba(255,255,255,20);"
                 "  color: %1; border: none; border-radius: 7px;"
                 "  font-size: 12px; padding: 4px 14px; }"
-                "QPushButton:hover { background: rgba(255,255,255,45); }")
-                .arg(Sigil::textPrimary().name()));
-            bool wasActive = active;
-            QObject::connect(enable, &QPushButton::clicked,
-                             [wasActive]() {
-                QProcess::startDetached("pkexec",
-                    { "ufw", wasActive ? "disable" : "--force", "enable" });
-                // Note: "ufw enable" prompts y/n; --force bypasses
-            });
+                "QPushButton:hover { background: rgba(255,255,255,45); }"
+                "QPushButton:disabled { color: %2; }")
+                .arg(Sigil::textPrimary().name(),
+                     Sigil::textDim().name()));
             h->addWidget(enable);
             h->addStretch();
             cv->addWidget(row);
+
+            // Button determines current state from its own text
+            QObject::connect(enable, &QPushButton::clicked, [enable]() {
+                bool currentlyActive =
+                    enable->text().contains("Disable");
+                QProcess::startDetached("pkexec",
+                    { "ufw",
+                      currentlyActive ? "disable" : "--force",
+                      "enable" });
+            });
+
+            {
+                auto *q = new QProcess(this);
+                QObject::connect(q,
+                    QOverload<int, QProcess::ExitStatus>::of(
+                        &QProcess::finished),
+                    [q, status, enable](int, QProcess::ExitStatus) {
+                        QString out = QString::fromUtf8(
+                            q->readAllStandardOutput());
+                        q->deleteLater();
+                        bool active = out.contains("Status: active");
+                        if (status) {
+                            status->setText(
+                                active ? "Active — firewall is "
+                                         "protecting this machine"
+                                       : "Inactive — incoming "
+                                         "connections are not filtered");
+                            status->setStyleSheet(QString(
+                                "color: %1; font-size: 12px;"
+                                " background: transparent;")
+                                .arg(Sigil::textSecondary().name()));
+                        }
+                        if (enable) {
+                            enable->setText(active
+                                ? "Disable Firewall"
+                                : "Enable Firewall");
+                            enable->setEnabled(true);
+                        }
+                    });
+                q->start("ufw", { "status" });
+            }
 
             QLabel *hint = new QLabel(
                 "Enabling/disabling requires admin password. "
