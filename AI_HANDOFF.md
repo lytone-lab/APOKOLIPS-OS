@@ -254,6 +254,24 @@ To add a setting:
 Ask for **one** diagnostic at a time. Never send a patch with a
 guessed anchor.
 
+### Before touching any listed bug
+
+A bug in PROJECT_STATE.txt or CURRENT_STATE.md is **not** proof
+it still exists. Those files are updated by hand and they drift
+behind reality. A listed bug is a *claim*, not a *fact*.
+
+Before writing a patch for any listed bug:
+
+1. Read the code. Does the fix already exist?
+2. If yes, reproduce the bug in the running shell.
+3. If it does not reproduce, the bug is closed. Remove it from
+   the list. Do NOT patch.
+4. Only patch when the bug reproduces. Diagnostic first, always.
+
+Trust the code and the running system. Never trust the docs.
+When in doubt, ask the user "is this still broken?" and run a
+read-only diagnostic before assuming it is.
+
 ---
 
 ## 10. Immediate next steps
