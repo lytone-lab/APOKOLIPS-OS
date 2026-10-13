@@ -690,7 +690,24 @@ private:
                     "  background: rgba(255,255,255,180);"
                     "  border-radius: 2px; }"));
                 m_sliders.append(sl);
-                QObject::connect(sl, &QSlider::valueChanged, onChange);
+                // Debounce rapid slider changes. Every tick was
+                // calling setAndSave → firing all VisualConfig
+                // subscribers → full-scene repaint of top bar, dock,
+                // panels. Dragging fired that 30×/second and stuttered.
+                // Now the save fires once, 120 ms after the user pauses.
+                // Works for both mouse drag and keyboard arrows.
+                {
+                    QTimer *debounce = new QTimer(sl);
+                    debounce->setSingleShot(true);
+                    debounce->setInterval(120);
+                    QObject::connect(sl, &QSlider::valueChanged,
+                                     debounce,
+                                     qOverload<>(&QTimer::start));
+                    QObject::connect(debounce, &QTimer::timeout,
+                                     [sl, onChange]() {
+                        onChange(sl->value());
+                    });
+                }
                 rv->addWidget(sl);
 
                 cv->addWidget(row);
