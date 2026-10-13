@@ -380,7 +380,7 @@ public:
     }
 
 protected:
-    void paintEvent(QPaintEvent *) override
+        void paintEvent(QPaintEvent *) override
     {
         if (m_pix.isNull() || m_start.isEmpty()
             || width() <= 0 || height() <= 0) return;
@@ -397,14 +397,15 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
         p.setRenderHint(QPainter::Antialiasing, true);
-
-        const qreal t = genieTimelineProgress(m_frame, m_frames, m_reverse);
-
         p.setOpacity(1.0);
 
-        const auto smoothStep = [](qreal v) {
-            v = qBound<qreal>(0.0, v, 1.0);
-            return v * v * (3.0 - 2.0 * v);
+        // Shared timeline: forward = window → dock. Reverse retraces it.
+        const qreal t = qBound<qreal>(
+            0.0, genieTimelineProgress(m_frame, m_frames, m_reverse), 1.0);
+
+        const auto easeWithImmediateMotion = [](qreal x) {
+            x = qBound<qreal>(0.0, x, 1.0);
+            return x * (2.0 - x);
         };
         const auto dist = [](const QPointF &a, const QPointF &b) {
             return std::hypot(a.x() - b.x(), a.y() - b.y());
@@ -413,77 +414,53 @@ protected:
         const QRectF src(m_start);
         const QPointF dock(m_dock);
 
-        // ---- Tip: nearest bottom corner to the dock ----
+        // Tip: nearest bottom corner to the dock tile.
         const QPointF bl = src.bottomLeft();
         const QPointF br = src.bottomRight();
         const QPointF tipSrc = (dist(bl, dock) < dist(br, dock)) ? bl : br;
 
-        // ---- S-path vector from tipSrc to dock ----
+        // Straight line from tip corner to dock. The tip travels this
+        // in parallel with the collapse (see `travel` below).
         const QPointF delta = dock - tipSrc;
-        const qreal deltaLen = std::hypot(delta.x(), delta.y());
-        QPointF perp(0.0, 0.0);
-        if (deltaLen > 1.0)
-            perp = QPointF(-delta.y() / deltaLen, delta.x() / deltaLen);
-        const int sN = qMax(1, m_sCount);
-        const qreal sAmp = qMin<qreal>(deltaLen * 0.45, 180.0);
 
-        // S-path position of the leading point at a given progress.
-        // The tip moves slower in the middle (where the S-wave is
-        // largest) so the wiggle is visible. Formula: u = x + k*sin(2πx)
-        // with k=0.12 — full speed at the ends, ~76% speed at the
-        // midpoint.
-        const auto sPathAt = [&](qreal progress) -> QPointF {
-            const qreal u = qBound<qreal>(0.0, progress, 1.0);
-            const qreal env = std::sin(M_PI * u);
-            const qreal osc = std::sin(2.0 * M_PI * sN * u);
-            return tipSrc + delta * u + perp * (sAmp * env * osc);
-        };
-        const QPointF leadNow = sPathAt(t);
-
-        // ---- Per-point collapse ----
-        // v = 0 top, v = 1 bottom.
-        // Bottom edge "eats" first: pixels near v=1 finish moving by
-        // t≈0.4. Middle by t≈0.7. Top edge finishes by t=1.0.
-        // Every pixel's destination is `leadNow` — the moving tip on
-        // the S-path. So at every moment, the collapsed portion of the
-        // window sits at the lead point, and the un-collapsed portion
-        // is still at its original position, flowing into it.
-        // Every strip collapses toward the moving lead point over
-        // the FULL animation. Bottom edge (v=1) starts at t=0,
-        // top edge (v=0) starts at t=TOP_DELAY, both arrive at the
-        // lead point exactly at t=1. Result: the whole window stays
-        // recognisable longer and only converges to a point at the
-        // dock — no more "collapse mid-desktop".
-        constexpr qreal TOP_DELAY = 0.5;
+        // Pour:
+        //   - Every point collapses toward the tip corner (fixed) at a
+        //     rate that depends on its vertical position: bottom strips
+        //     fast, top strips slow. That's the pour into the funnel.
+        //   - The whole collapsed shape translates toward the dock,
+        //     weighted by how collapsed each strip already is, so the
+        //     point that has already poured in travels further.
+        //   - At t=1 both collapse and travel equal 1 and every point
+        //     lands exactly on the dock. No overshoot at any frame.
         const auto destForPoint = [&](const QPointF &sp) -> QPointF {
             const qreal v = qBound<qreal>(
                 0.0,
                 (sp.y() - src.top()) / qMax<qreal>(1.0, src.height()),
                 1.0);
-            const qreal localStart = (1.0 - v) * TOP_DELAY;
-            const qreal span = qMax<qreal>(0.001, 1.0 - localStart);
-            const qreal u = smoothStep(qBound<qreal>(
-                0.0, (t - localStart) / span, 1.0));
-            return sp + (leadNow - sp) * u;
+
+            const qreal base = easeWithImmediateMotion(t);
+            const qreal stripRate = 0.50 + 0.50 * v;
+            const qreal collapse =
+                1.0 - std::pow(1.0 - base, stripRate);
+
+            const qreal travel = t * (0.08 + 0.92 * collapse);
+            return sp + (tipSrc - sp) * collapse + delta * travel;
         };
 
-        // ---- Warp pixmap in horizontal strips ----
         constexpr int SEGS = 24;
         const qreal segSrcH = src.height() / SEGS;
         const qreal segPixH = m_pix.height() / qreal(SEGS);
-        const qreal segW    = m_pix.width();
+        const qreal segW = m_pix.width();
 
         for (int i = 0; i < SEGS; ++i) {
             const qreal y0 = src.top() + i * segSrcH;
             const qreal y1 = y0 + segSrcH;
 
-            const QPointF dtl = destForPoint(QPointF(src.left(),  y0));
+            const QPointF dtl = destForPoint(QPointF(src.left(), y0));
             const QPointF dtr = destForPoint(QPointF(src.right(), y0));
             const QPointF dbr = destForPoint(QPointF(src.right(), y1));
-            const QPointF dbl = destForPoint(QPointF(src.left(),  y1));
+            const QPointF dbl = destForPoint(QPointF(src.left(), y1));
 
-            // Skip degenerate quads (all four corners on top of each
-            // other) — quadToQuad can't invert them.
             qreal maxD = 0.0;
             const QPointF pts[4] = { dtl, dtr, dbr, dbl };
             for (int a = 0; a < 4; ++a)
