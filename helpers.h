@@ -126,13 +126,28 @@ public:
         if (id == "starfield")  return new StarfieldWallpaper;
         if (id == "aurora")     return new AuroraWallpaper;
         if (id == "goldengate") return new GoldenGateWallpaper;
-        if (id == "everest")    return new EverestWallpaper;
+        if (id == "everest") {
+            return new ImageWallpaper({
+                QDir::homePath() +
+                    "/apokolips-shell/assets/wallpapers/mount-everest.jpg",
+                "/home/lytone/apokolips-shell/assets/wallpapers/mount-everest.jpg",
+                "assets/wallpapers/mount-everest.jpg",
+                "/usr/share/apokolips/wallpapers/mount-everest.jpg"
+            }, "everest", "Mount Everest");
+        }
         if (id == "gif") {
             QString p = loadGifPath();
             if (!p.isEmpty() && QFile::exists(p))
                 return new GifWallpaper(p);
         }
-        return new RubyWallpaper;
+        // Default: ruby → Magnific image
+        return new ImageWallpaper({
+            QDir::homePath() +
+                "/apokolips-shell/assets/wallpapers/magnific.jpg",
+            "/home/lytone/apokolips-shell/assets/wallpapers/magnific.jpg",
+            "assets/wallpapers/magnific.jpg",
+            "/usr/share/apokolips/wallpapers/magnific.jpg"
+        }, "ruby", "Magnific");
     }
 };
 

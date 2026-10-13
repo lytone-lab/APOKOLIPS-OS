@@ -4878,21 +4878,82 @@ private:
         QGridLayout *g = new QGridLayout;
         g->setSpacing(10);
 
-        struct WP { const char *id; const char *name; };
+        struct WP { const char *id; const char *name; const char *thumb; };
         const WP wps[] = {
-            { "ruby",       "Ruby"        },
-            { "starfield",  "Starfield"   },
-            { "aurora",     "Aurora"      },
-            { "goldengate", "Golden Gate" },
-            { "everest",    "Everest"     },
-            { "gif",        "GIF…"        }
+            { "ruby",       "Magnific",      "assets/wallpapers/magnific.jpg" },
+            { "starfield",  "Starfield",     nullptr },
+            { "aurora",     "Aurora",        nullptr },
+            { "goldengate", "Golden Gate",   "macos-golden-gate-dark.jpg" },
+            { "everest",    "Mount Everest", "assets/wallpapers/mount-everest.jpg" },
+            { "gif",        "GIF…",          nullptr }
+        };
+        auto resolveThumb = [](const QString &rel) -> QString {
+            if (rel.isEmpty()) return {};
+            QStringList cands = {
+                QDir::homePath() + "/apokolips-shell/" + rel,
+                "/home/lytone/apokolips-shell/" + rel,
+                rel,
+                "/usr/share/apokolips/wallpapers/"
+                    + QFileInfo(rel).fileName()
+            };
+            for (const QString &c : cands)
+                if (QFile::exists(c)) return c;
+            return {};
         };
         int col = 0, row = 0;
         for (const auto &wp : wps) {
-            QPushButton *btn = new QPushButton(wp.name);
+            QPushButton *btn = new QPushButton;
             btn->setCursor(Qt::PointingHandCursor);
             btn->setFixedHeight(46);
             btn->setProperty("wpId", wp.id);
+
+            QString thumb = resolveThumb(
+                QString::fromUtf8(wp.thumb ? wp.thumb : ""));
+
+            if (!thumb.isEmpty()) {
+                btn->setStyleSheet(QString(
+                    "QPushButton {"
+                    "  background-image: url(%1);"
+                    "  background-position: center;"
+                    "  background-repeat: no-repeat;"
+                    "  background-size: cover;"
+                    "  border: 1px solid rgba(255,255,255,55);"
+                    "  border-radius: 8px; }"
+                    "QPushButton:hover {"
+                    "  border: 1px solid rgba(255,255,255,140); }"
+                    "QPushButton[selected=\"true\"] {"
+                    "  border: 2px solid #ffffff; }")
+                    .arg(thumb));
+
+                QVBoxLayout *bl = new QVBoxLayout(btn);
+                bl->setContentsMargins(8, 8, 8, 6);
+                bl->addStretch();
+                QLabel *lbl = new QLabel(wp.name, btn);
+                lbl->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+                lbl->setStyleSheet(
+                    "color: white;"
+                    "background: rgba(0,0,0,90);"
+                    "border-radius: 3px;"
+                    "padding: 2px 6px;"
+                    "font-size: 11px;"
+                    "font-weight: 500;");
+                bl->addWidget(lbl, 0, Qt::AlignLeft | Qt::AlignBottom);
+            } else {
+                btn->setText(wp.name);
+                btn->setStyleSheet(
+                    "QPushButton {"
+                    "  background: rgba(255,255,255,15);"
+                    "  color: white;"
+                    "  border: 1px solid rgba(255,255,255,40);"
+                    "  border-radius: 8px;"
+                    "  font-size: 12px; }"
+                    "QPushButton:hover {"
+                    "  background: rgba(255,255,255,30); }"
+                    "QPushButton[selected=\"true\"] {"
+                    "  border: 2px solid #ffffff;"
+                    "  background: rgba(255,255,255,25); }");
+            }
+
             m_wpButtons.append(btn);
             QObject::connect(btn, &QPushButton::clicked,
                              [this, id = QString(wp.id)]() {
@@ -8046,6 +8107,10 @@ private:
         for (QPushButton *b : m_wpButtons) {
             bool sel = (b->property("wpId").toString() == current);
             b->setProperty("selected", sel);
+            // Force style re-evaluation so [selected="true"] repaints
+            b->style()->unpolish(b);
+            b->style()->polish(b);
+            b->update();
         }
     }
 

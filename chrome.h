@@ -3318,11 +3318,11 @@ protected:
             {
                 struct WP { const char *id; const char *name; };
                 const WP wps[] = {
-                    { "ruby",       "Ruby"        },
-                    { "starfield",  "Starfield"   },
-                    { "aurora",     "Aurora"      },
-                    { "goldengate", "Golden Gate" },
-                    { "everest",    "Everest"     }
+                    { "ruby",       "Magnific"      },
+                    { "starfield",  "Starfield"     },
+                    { "aurora",     "Aurora"        },
+                    { "goldengate", "Golden Gate"   },
+                    { "everest",    "Mount Everest" }
                 };
                 for (const auto &w : wps) {
                     QAction *wa = wallSub->addAction(w.name);

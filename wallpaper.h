@@ -17,6 +17,68 @@ public:
     virtual bool animated() const { return false; }
 };
 
+class ImageWallpaper : public Wallpaper {
+public:
+    ImageWallpaper(const QStringList &candidates,
+                   const QString &id,
+                   const QString &name)
+        : m_id(id), m_name(name)
+    {
+        QPixmap raw;
+        for (const QString &p : candidates) {
+            if (QFile::exists(p) && raw.load(p)) break;
+        }
+        m_source = raw;
+    }
+
+    QString id() const override { return m_id; }
+    QString displayName() const override { return m_name; }
+
+    Theme theme() const override {
+        Theme t;
+        t.chromeBg      = QColor(28, 28, 34);
+        t.chromeBorder  = QColor(200, 210, 220, 110);
+        t.accent        = QColor(220, 220, 230);
+        t.accentSoft    = QColor(220, 220, 230, 60);
+        t.accentStrong  = QColor(220, 220, 230, 120);
+        t.textPrimary   = QColor(240, 240, 245);
+        t.textSecondary = QColor(190, 195, 200);
+        t.textDim       = QColor(130, 135, 145);
+        t.panelBg       = QColor(24, 24, 28, 220);
+        return t;
+    }
+
+    void paint(QPainter &p, const QRect &r) override {
+        p.setRenderHint(QPainter::SmoothPixmapTransform);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        if (m_source.isNull()) {
+            p.fillRect(r, QColor(18, 18, 22));
+            return;
+        }
+
+        if (m_cached.isNull() || m_cachedSize != r.size()) {
+            QPixmap scaled = m_source.scaled(r.size(),
+                Qt::KeepAspectRatioByExpanding,
+                Qt::SmoothTransformation);
+            int sx = (scaled.width()  - r.width())  / 2;
+            int sy = (scaled.height() - r.height()) / 2;
+            m_cached = scaled.copy(sx, sy, r.width(), r.height());
+            m_cachedSize = r.size();
+        }
+
+        p.drawPixmap(r.topLeft(), m_cached);
+        p.fillRect(r, QColor(0, 0, 0, 25));
+    }
+
+private:
+    QString m_id;
+    QString m_name;
+    QPixmap m_source;
+    QPixmap m_cached;
+    QSize   m_cachedSize;
+};
+
 class GifWallpaper : public Wallpaper {
 public:
     explicit GifWallpaper(const QString &path) : m_path(path) {

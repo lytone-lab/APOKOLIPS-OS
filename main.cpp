@@ -2156,11 +2156,11 @@ static int runShell(int argc, char *argv[])
     });
 
     const struct { const char *id; const char *name; } wallpapers[] = {
-        { "ruby",       "Ruby"       },
-        { "starfield",  "Starfield"  },
-        { "aurora",     "Aurora"     },
-        { "goldengate", "Golden Gate" },
-        { "everest",    "Everest"    }
+        { "ruby",       "Magnific"      },
+        { "starfield",  "Starfield"     },
+        { "aurora",     "Aurora"        },
+        { "goldengate", "Golden Gate"   },
+        { "everest",    "Mount Everest" }
     };
     for (const auto &w : wallpapers) {
         QAction *a = wallSub->addAction(w.name);
