@@ -1,5 +1,15 @@
 # Manus — Genie animation handoff
 
+> **STATUS 2026-10-13: Bugs A and B are CLOSED.** Fixed by commits
+> `236a7b3`, `72d420a`, `0e01149` (no fade / linear tip / pour
+> formula / corner-aware tip). Overshoot on Finder and Node is
+> gone. Corners move from frame 1 via `easeWithImmediateMotion`.
+> Do NOT re-open those bugs. The only item still pending from this
+> doc is the **Genie option A** band rewrite — see section 6, still
+> queued after G7 per PROJECT_STATE.txt. The code for option A is
+> held offline; do not re-apply until G7 is done.
+
+
 **You are producing one patch file.** You do not edit the repo. You
 output a Python heredoc that `shellapp.h`-style applies to
 `overlays.h`. Read everything below, then produce the patch.
