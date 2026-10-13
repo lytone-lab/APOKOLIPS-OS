@@ -3374,7 +3374,7 @@ private:
             v->addWidget(c);
         }
 
-        // ---- System Security card ----
+        // ---- System Security card ---- (async: 3 parallel status queries)
         {
             Sigil::Card *c = new Sigil::Card;
             QVBoxLayout *cv = new QVBoxLayout(c);
@@ -3382,75 +3382,96 @@ private:
             cv->setSpacing(12);
             cv->addWidget(Sigil::groupLabel("SYSTEM SECURITY"));
 
-            // AppArmor status
-            QProcess aa;
-            aa.start("bash", { "-c",
-                "cat /sys/module/apparmor/parameters/enabled 2>/dev/null || "
-                "echo 'N'" });
-            aa.waitForFinished(500);
-            bool apparmorOn = QString::fromUtf8(
-                aa.readAllStandardOutput()).trimmed().startsWith("Y");
+            auto makeSecRow = [cv](const QString &name) -> QLabel * {
+                QHBoxLayout *row = new QHBoxLayout;
+                QLabel *l = new QLabel(name);
+                l->setStyleSheet(QString(
+                    "color: %1; font-size: 13px; background: transparent;")
+                    .arg(Sigil::textPrimary().name()));
+                QLabel *v = new QLabel("Querying…");
+                v->setStyleSheet(QString(
+                    "color: %1; font-size: 12px; background: transparent;")
+                    .arg(Sigil::textDim().name()));
+                row->addWidget(l);
+                row->addStretch();
+                row->addWidget(v);
+                cv->addLayout(row);
+                return v;
+            };
 
-            QHBoxLayout *row1 = new QHBoxLayout;
-            QLabel *l1 = new QLabel("AppArmor");
-            l1->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *v1 = new QLabel(apparmorOn ? "Enabled" : "Disabled");
-            v1->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(apparmorOn ? "rgb(120, 200, 120)"
-                                : "rgb(200, 120, 120)"));
-            row1->addWidget(l1);
-            row1->addStretch();
-            row1->addWidget(v1);
-            cv->addLayout(row1);
+            QLabel *v1 = makeSecRow("AppArmor");
+            QLabel *v2 = makeSecRow("Firewall (ufw)");
+            QLabel *v3 = makeSecRow("SSH server");
 
-            // Firewall status
-            QProcess fw;
-            fw.start("bash", { "-c",
-                "systemctl is-active ufw 2>/dev/null || echo inactive" });
-            fw.waitForFinished(500);
-            QString fwState = QString::fromUtf8(
-                fw.readAllStandardOutput()).trimmed();
-            bool fwOn = (fwState == "active");
+            // AppArmor async
+            {
+                auto *p = new QProcess(this);
+                QObject::connect(p,
+                    QOverload<int, QProcess::ExitStatus>::of(
+                        &QProcess::finished),
+                    [p, v1](int, QProcess::ExitStatus) {
+                        bool on = QString::fromUtf8(
+                            p->readAllStandardOutput()).trimmed()
+                            .startsWith("Y");
+                        p->deleteLater();
+                        if (!v1) return;
+                        v1->setText(on ? "Enabled" : "Disabled");
+                        v1->setStyleSheet(QString(
+                            "color: %1; font-size: 12px;"
+                            " background: transparent;")
+                            .arg(on ? "rgb(120, 200, 120)"
+                                    : "rgb(200, 120, 120)"));
+                    });
+                p->start("bash", { "-c",
+                    "cat /sys/module/apparmor/parameters/enabled "
+                    "2>/dev/null || echo 'N'" });
+            }
 
-            QHBoxLayout *row2 = new QHBoxLayout;
-            QLabel *l2 = new QLabel("Firewall (ufw)");
-            l2->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *v2 = new QLabel(fwOn ? "Active" : "Inactive");
-            v2->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(fwOn ? "rgb(120, 200, 120)"
-                          : "rgb(200, 160, 100)"));
-            row2->addWidget(l2);
-            row2->addStretch();
-            row2->addWidget(v2);
-            cv->addLayout(row2);
+            // Firewall async
+            {
+                auto *p = new QProcess(this);
+                QObject::connect(p,
+                    QOverload<int, QProcess::ExitStatus>::of(
+                        &QProcess::finished),
+                    [p, v2](int, QProcess::ExitStatus) {
+                        QString s = QString::fromUtf8(
+                            p->readAllStandardOutput()).trimmed();
+                        p->deleteLater();
+                        if (!v2) return;
+                        bool on = (s == "active");
+                        v2->setText(on ? "Active" : "Inactive");
+                        v2->setStyleSheet(QString(
+                            "color: %1; font-size: 12px;"
+                            " background: transparent;")
+                            .arg(on ? "rgb(120, 200, 120)"
+                                    : "rgb(200, 160, 100)"));
+                    });
+                p->start("bash", { "-c",
+                    "systemctl is-active ufw 2>/dev/null "
+                    "|| echo inactive" });
+            }
 
-            // SSH status
-            QProcess ssh;
-            ssh.start("systemctl", { "is-active", "ssh" });
-            ssh.waitForFinished(500);
-            bool sshOn = QString::fromUtf8(
-                ssh.readAllStandardOutput()).trimmed() == "active";
-
-            QHBoxLayout *row3 = new QHBoxLayout;
-            QLabel *l3 = new QLabel("SSH server");
-            l3->setStyleSheet(QString(
-                "color: %1; font-size: 13px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
-            QLabel *v3 = new QLabel(sshOn ? "Running" : "Stopped");
-            v3->setStyleSheet(QString(
-                "color: %1; font-size: 12px; background: transparent;")
-                .arg(sshOn ? "rgb(200, 160, 100)"
-                           : "rgb(120, 200, 120)"));
-            row3->addWidget(l3);
-            row3->addStretch();
-            row3->addWidget(v3);
-            cv->addLayout(row3);
+            // SSH async
+            {
+                auto *p = new QProcess(this);
+                QObject::connect(p,
+                    QOverload<int, QProcess::ExitStatus>::of(
+                        &QProcess::finished),
+                    [p, v3](int, QProcess::ExitStatus) {
+                        bool on = QString::fromUtf8(
+                            p->readAllStandardOutput()).trimmed()
+                            == "active";
+                        p->deleteLater();
+                        if (!v3) return;
+                        v3->setText(on ? "Running" : "Stopped");
+                        v3->setStyleSheet(QString(
+                            "color: %1; font-size: 12px;"
+                            " background: transparent;")
+                            .arg(on ? "rgb(200, 160, 100)"
+                                    : "rgb(120, 200, 120)"));
+                    });
+                p->start("systemctl", { "is-active", "ssh" });
+            }
 
             QLabel *hint = new QLabel(
                 "Manage firewall and SSH in Lock Screen & Security.");
@@ -7379,19 +7400,28 @@ private:
                 .arg(Sigil::textPrimary().name()));
             cv->addWidget(m_userInfo);
 
-            // Groups for this user
-            QProcess q;
-            q.start("id", { "-nG", user });
-            q.waitForFinished(700);
-            QString groups = QString::fromUtf8(
-                q.readAllStandardOutput()).trimmed();
-
-            QLabel *grp = new QLabel("Groups:  " + groups);
+            // Groups for this user (async)
+            QLabel *grp = new QLabel("Groups:  …");
             grp->setWordWrap(true);
             grp->setStyleSheet(QString(
                 "color: %1; font-size: 12px; background: transparent;")
                 .arg(Sigil::textSecondary().name()));
             cv->addWidget(grp);
+
+            {
+                auto *q = new QProcess(this);
+                QString u = user;
+                QObject::connect(q,
+                    QOverload<int, QProcess::ExitStatus>::of(
+                        &QProcess::finished),
+                    [q, grp](int, QProcess::ExitStatus) {
+                        QString g = QString::fromUtf8(
+                            q->readAllStandardOutput()).trimmed();
+                        q->deleteLater();
+                        if (grp) grp->setText("Groups:  " + g);
+                    });
+                q->start("id", { "-nG", u });
+            }
 
             // Change password button
             QPushButton *chpw = new QPushButton("Change password…");
@@ -7566,52 +7596,61 @@ private:
         if (!m_usersList) return;
         m_usersList->clear();
 
-        QProcess q;
-        q.start("getent", { "passwd" });
-        q.waitForFinished(1000);
-        QString out = QString::fromUtf8(q.readAllStandardOutput());
+        auto *q = new QProcess(this);
+        QObject::connect(q,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, q](int, QProcess::ExitStatus) {
+                QString out = QString::fromUtf8(
+                    q->readAllStandardOutput());
+                q->deleteLater();
+                if (!m_usersList) return;
 
-        bool anyAdded = false;
-        for (const QString &line : out.split('\n', Qt::SkipEmptyParts)) {
-            QStringList parts = line.split(':');
-            if (parts.size() < 7) continue;
-            const QString name = parts[0];
-            const QString uid  = parts[2];
-            const QString gecos= parts[4];
-            const QString home = parts[5];
-            const QString shell= parts[6];
+                bool anyAdded = false;
+                for (const QString &line :
+                     out.split('\n', Qt::SkipEmptyParts)) {
+                    QStringList parts = line.split(':');
+                    if (parts.size() < 7) continue;
+                    const QString name = parts[0];
+                    const QString uid  = parts[2];
+                    const QString gecos= parts[4];
+                    const QString home = parts[5];
+                    const QString shell= parts[6];
 
-            bool isUid = false;
-            int uidInt = uid.toInt(&isUid);
-            if (!isUid) continue;
+                    bool isUid = false;
+                    int uidInt = uid.toInt(&isUid);
+                    if (!isUid) continue;
 
-            // Human users only
-            if (uidInt < 1000 && uidInt != 0) continue;
-            if (shell.endsWith("/nologin") || shell.endsWith("/false"))
-                continue;
+                    // Human users only
+                    if (uidInt < 1000 && uidInt != 0) continue;
+                    if (shell.endsWith("/nologin")
+                        || shell.endsWith("/false"))
+                        continue;
 
-            QString display = gecos.isEmpty() ? name : gecos;
-            QString text = QString("%1   ·   %2   ·   uid %3   ·   %4")
-                .arg(name, display, uid, home);
+                    QString display = gecos.isEmpty() ? name : gecos;
+                    QString text = QString(
+                        "%1   ·   %2   ·   uid %3   ·   %4")
+                        .arg(name, display, uid, home);
 
-            QListWidgetItem *it = new QListWidgetItem(text);
-            it->setData(Qt::UserRole, name);
-            if (uidInt == 0) {
-                it->setForeground(QColor(200, 150, 80));
-            } else {
-                it->setForeground(QColor(240, 237, 232));
-            }
-            m_usersList->addItem(it);
-            anyAdded = true;
-        }
+                    QListWidgetItem *it = new QListWidgetItem(text);
+                    it->setData(Qt::UserRole, name);
+                    if (uidInt == 0) {
+                        it->setForeground(QColor(200, 150, 80));
+                    } else {
+                        it->setForeground(QColor(240, 237, 232));
+                    }
+                    m_usersList->addItem(it);
+                    anyAdded = true;
+                }
 
-        if (!anyAdded) {
-            QListWidgetItem *it = new QListWidgetItem(
-                "No human users found");
-            it->setFlags(Qt::NoItemFlags);
-            it->setForeground(QColor(122, 120, 115));
-            m_usersList->addItem(it);
-        }
+                if (!anyAdded) {
+                    QListWidgetItem *it = new QListWidgetItem(
+                        "No human users found");
+                    it->setFlags(Qt::NoItemFlags);
+                    it->setForeground(QColor(122, 120, 115));
+                    m_usersList->addItem(it);
+                }
+            });
+        q->start("getent", { "passwd" });
     }
 
     QWidget *makeMyMachPage() {
