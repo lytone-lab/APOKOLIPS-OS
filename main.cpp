@@ -1246,6 +1246,38 @@ static int runShell(int argc, char *argv[])
         WallpaperConfig::makeById(WallpaperConfig::loadId());
     ThemeManager::instance().setTheme(initialWallpaper->theme());
 
+    // Reload splash: if the previous process saved a backdrop,
+    // show it fullscreen on top while we build the new widget
+    // tree. Closes once the shell window is ready.
+    QWidget *reloadSplash = nullptr;
+    {
+        const QString bp = qEnvironmentVariable("APOKOLIPS_BACKDROP");
+        if (!bp.isEmpty()) {
+            QFileInfo fi(bp);
+            if (fi.exists() &&
+                fi.lastModified().secsTo(QDateTime::currentDateTime()) < 10) {
+                QPixmap pm(bp);
+                if (!pm.isNull()) {
+                    reloadSplash = new QWidget(
+                        nullptr,
+                        Qt::Window | Qt::FramelessWindowHint |
+                        Qt::WindowStaysOnTopHint);
+                    QLabel *lbl = new QLabel(reloadSplash);
+                    lbl->setPixmap(pm);
+                    lbl->setGeometry(0, 0, pm.width(), pm.height());
+                    reloadSplash->setGeometry(0, 0,
+                                              pm.width(), pm.height());
+                    reloadSplash->show();
+                    reloadSplash->raise();
+                    QApplication::processEvents();
+                    qInfo() << "[reload] splash shown" << pm.size();
+                }
+            }
+            QFile::remove(bp);
+            qunsetenv("APOKOLIPS_BACKDROP");
+        }
+    }
+
     QMainWindow window;
     window.setWindowFlags(Qt::FramelessWindowHint);
     window.setWindowTitle("Apokolips OS");
@@ -3026,6 +3058,14 @@ static int runShell(int argc, char *argv[])
         window.setGeometry(screen->availableGeometry());
     window.showNormal();
 
+    // Kill any reload-splash process from the previous shell.
+    // The new shell window is now composited on top, so we can
+    // safely close the splash.
+    QTimer::singleShot(300, qApp, []() {
+        QProcess::execute("pkill", { "-f", "--", "--reload-splash" });
+        qInfo() << "[reload] splash killed";
+    });
+
     // After show(), layout children (the middle placeholder widget) get
     // raised above our floating children. Raise them back in the right
     // z-order so mouse events reach the widgets.
@@ -3038,10 +3078,32 @@ static int runShell(int argc, char *argv[])
     if (spotlight)       spotlight->raise();
 
     // ---- Self-restart: replace this process with the freshly built binary ----
-    auto reloadSelf = []() {
+    auto reloadSelf = [&window]() {
         QString exe = QCoreApplication::applicationFilePath();
         QByteArray path = exe.toUtf8();
         char *argv[] = { path.data(), nullptr };
+        // Capture the desktop, spawn a splash process that shows
+        // the backdrop fullscreen, wait for it to appear, then
+        // execv. During the ~800ms Qt boot of the new shell, the
+        // splash keeps the screen covered — no black gap.
+        {
+            QPixmap shot = window.grab();
+            QString bp = QDir::tempPath() + "/apokolips-backdrop.png";
+            if (shot.isNull() || !shot.save(bp, "PNG")) {
+                qWarning() << "[reload] backdrop save failed";
+            } else {
+                qInfo() << "[reload] backdrop saved:" << bp
+                        << shot.size();
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--reload-splash", bp });
+                // Give the splash ~500ms to boot its window and
+                // reach the Wayland compositor. During this sleep
+                // the old shell window is still up, so nothing
+                // flashes.
+                QThread::msleep(500);
+            }
+        }
         execv(path.constData(), argv);
         // execv only returns on failure
         qFatal("execv failed — shell binary missing?");
@@ -3739,6 +3801,30 @@ int main(int argc, char *argv[])
         }
 
         w.show();
+        return app.exec();
+    }
+
+    if (argc >= 3 && QString(argv[1]) == "--reload-splash") {
+        // Tiny foreground window showing the frozen backdrop while
+        // the new shell process boots. Spawned by reloadSelf BEFORE
+        // the old shell execv's. Killed by the new shell when it's
+        // ready.
+        QApplication app(argc, argv);
+        app.setApplicationName("Apokolips Reload Splash");
+        app.setDesktopFileName("apokolips-reload-splash");
+        app.setQuitOnLastWindowClosed(false);
+        QPixmap pm(QString::fromLocal8Bit(argv[2]));
+        if (pm.isNull()) return 1;
+        QWidget w(nullptr, Qt::Window | Qt::FramelessWindowHint);
+        QLabel lbl(&w);
+        lbl.setPixmap(pm);
+        lbl.setGeometry(0, 0, pm.width(), pm.height());
+        w.setGeometry(0, 0, pm.width(), pm.height());
+        w.show();
+        w.raise();
+        qInfo() << "[reload-splash] shown" << pm.size();
+        // Safety: exit after 15s even if the new shell never kills us.
+        QTimer::singleShot(15000, &app, &QApplication::quit);
         return app.exec();
     }
 
