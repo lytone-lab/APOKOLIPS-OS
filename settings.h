@@ -6171,66 +6171,98 @@ private:
     }
 
     void refreshNetworkPage() {
+        // Non-blocking. Every nmcli call fires on a fresh QProcess
+        // and parses in its own finished handler. The event loop
+        // never waits on the network — UI stays responsive, values
+        // populate when nmcli answers (usually < 200 ms).
+
         // ---- Current connection summary ----
         if (m_networkInfo) {
-            QProcess p;
-            p.start("nmcli", { "-t", "-f", "DEVICE,TYPE,STATE", "device" });
-            p.waitForFinished(700);
-            QString out = QString::fromUtf8(p.readAllStandardOutput());
-            QString summary;
-            for (const QString &line : out.split('\n')) {
-                QStringList parts = line.trimmed().split(':');
-                if (parts.size() < 3) continue;
-                if (parts[2].startsWith("connected")) {
-                    if (!summary.isEmpty()) summary += "   ·   ";
-                    summary += parts[1] + " (" + parts[0] + ")";
-                }
-            }
-            if (summary.isEmpty()) summary = "Offline";
-            m_networkInfo->setText(summary);
+            auto *p = new QProcess(this);
+            QObject::connect(p,
+                QOverload<int, QProcess::ExitStatus>::of(
+                    &QProcess::finished),
+                [this, p](int, QProcess::ExitStatus) {
+                    QString out = QString::fromUtf8(
+                        p->readAllStandardOutput());
+                    QString summary;
+                    for (const QString &line : out.split('\n')) {
+                        QStringList parts =
+                            line.trimmed().split(':');
+                        if (parts.size() < 3) continue;
+                        if (parts[2].startsWith("connected")) {
+                            if (!summary.isEmpty())
+                                summary += "   ·   ";
+                            summary += parts[1] + " (" +
+                                       parts[0] + ")";
+                        }
+                    }
+                    if (summary.isEmpty()) summary = "Offline";
+                    if (m_networkInfo)
+                        m_networkInfo->setText(summary);
+                    p->deleteLater();
+                });
+            p->start("nmcli", { "-t", "-f",
+                                "DEVICE,TYPE,STATE", "device" });
         }
 
         // ---- Ethernet / VPN / Bridge device list ----
         if (m_networkList) {
             m_networkList->clear();
-            QProcess q;
-            q.start("nmcli", { "-t", "-f",
-                               "DEVICE,TYPE,STATE,CONNECTION", "device" });
-            q.waitForFinished(1200);
-            QString out = QString::fromUtf8(q.readAllStandardOutput());
-            bool anyAdded = false;
-            for (const QString &line : out.split('\n')) {
-                QString t = line.trimmed();
-                if (t.isEmpty()) continue;
-                QStringList p = t.split(':');
-                if (p.size() < 4) continue;
-                const QString dev  = p[0];
-                const QString type = p[1];
-                const QString st   = p[2];
-                const QString conn = p[3];
-                if (type == "wifi" || type == "loopback") continue;
-                if (type == "ethernet" && dev.startsWith("enp")
-                    && st == "unavailable") continue;
+            auto *q = new QProcess(this);
+            QObject::connect(q,
+                QOverload<int, QProcess::ExitStatus>::of(
+                    &QProcess::finished),
+                [this, q](int, QProcess::ExitStatus) {
+                    QString out = QString::fromUtf8(
+                        q->readAllStandardOutput());
+                    bool anyAdded = false;
+                    for (const QString &line : out.split('\n')) {
+                        QString t = line.trimmed();
+                        if (t.isEmpty()) continue;
+                        QStringList parts = t.split(':');
+                        if (parts.size() < 4) continue;
+                        const QString dev  = parts[0];
+                        const QString type = parts[1];
+                        const QString st   = parts[2];
+                        const QString conn = parts[3];
+                        if (type == "wifi" ||
+                            type == "loopback") continue;
+                        if (type == "ethernet" &&
+                            dev.startsWith("enp") &&
+                            st == "unavailable") continue;
 
-                QString text = dev + "   " + type
-                             + "   " + st;
-                if (!conn.isEmpty()) text += "   (" + conn + ")";
+                        QString text = dev + "   " + type +
+                                       "   " + st;
+                        if (!conn.isEmpty())
+                            text += "   (" + conn + ")";
 
-                QListWidgetItem *it = new QListWidgetItem(text);
-                if (st.startsWith("connected"))
-                    it->setForeground(QColor(240, 237, 232));
-                else
-                    it->setForeground(QColor(176, 173, 168));
-                m_networkList->addItem(it);
-                anyAdded = true;
-            }
-            if (!anyAdded) {
-                QListWidgetItem *it = new QListWidgetItem(
-                    "No wired, VPN or bridge interfaces detected");
-                it->setFlags(Qt::NoItemFlags);
-                it->setForeground(QColor(122, 120, 115));
-                m_networkList->addItem(it);
-            }
+                        if (!m_networkList) break;
+                        QListWidgetItem *it =
+                            new QListWidgetItem(text);
+                        if (st.startsWith("connected"))
+                            it->setForeground(
+                                QColor(240, 237, 232));
+                        else
+                            it->setForeground(
+                                QColor(176, 173, 168));
+                        m_networkList->addItem(it);
+                        anyAdded = true;
+                    }
+                    if (!anyAdded && m_networkList) {
+                        QListWidgetItem *it = new QListWidgetItem(
+                            "No wired, VPN or bridge interfaces "
+                            "detected");
+                        it->setFlags(Qt::NoItemFlags);
+                        it->setForeground(
+                            QColor(122, 120, 115));
+                        m_networkList->addItem(it);
+                    }
+                    q->deleteLater();
+                });
+            q->start("nmcli", { "-t", "-f",
+                                "DEVICE,TYPE,STATE,CONNECTION",
+                                "device" });
         }
     }
 
