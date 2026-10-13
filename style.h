@@ -468,6 +468,14 @@ public:
         m_animTimer->start();
         if (onChanged) onChanged(m_on);
     }
+    // Programmatic state change — no onChanged callback.
+    // Used when an async subprocess resolves and we need to show
+    // the real value without writing it back to config.
+    void setOnSilent(bool on) {
+        if (m_on == on) return;
+        m_on = on;
+        m_animTimer->start();
+    }
 
     std::function<void(bool)> onChanged;
 
@@ -597,6 +605,17 @@ public:
 
     int current() const { return m_current; }
 
+    // Replace options programmatically — no onChange callback.
+    // Used when an async subprocess resolves with the real item
+    // list (e.g. font families loaded after page construction).
+    void setItemsSilent(const QStringList &items, int current = 0) {
+        m_items = items;
+        if (current < 0 || current >= items.size()) current = 0;
+        m_current = current;
+        if (m_value) m_value->setText(items.value(current));
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
@@ -650,6 +669,15 @@ private:
     bool                      m_hover = false;
 };
 
+// ---- Find the Toggle inside a row from makeToggleRow ---- //
+// Used by async cards to update a toggle after a subprocess
+// resolves, without writing back to config.
+inline Toggle *toggleIn(QWidget *row) {
+    if (!row) return nullptr;
+    QWidget *w = row->findChild<QWidget *>("sigilToggle");
+    return dynamic_cast<Toggle *>(w);
+}
+
 // ---- Toggle row: label + subtitle left, iOS toggle right ----
 inline QWidget *makeToggleRow(const QString &title, const QString &sub,
                               bool initial,
@@ -681,6 +709,7 @@ inline QWidget *makeToggleRow(const QString &title, const QString &sub,
     h->addLayout(left, 1);
 
     Toggle *tg = new Toggle(initial);
+    tg->setObjectName("sigilToggle");
     tg->onChanged = onChange;
     h->addWidget(tg, 0, Qt::AlignVCenter);
 
