@@ -1740,41 +1740,47 @@ private:
     }
 
     void refreshStoragePage() {
+        // ---- Disk summary: async df ----
         if (m_storageSummary) {
-            QProcess p;
-            p.start("df", { "-B1", "--output=size,used,avail,pcent", "/" });
-            p.waitForFinished(800);
-            QString out = QString::fromUtf8(p.readAllStandardOutput());
-            QStringList lines = out.split('\n', Qt::SkipEmptyParts);
-
-            quint64 total = 0, used = 0, avail = 0;
-            int pct = 0;
-
-            if (lines.size() >= 2) {
-                QStringList p2 = lines[1].split(QRegularExpression("\\s+"),
-                                                 Qt::SkipEmptyParts);
-                if (p2.size() >= 4) {
-                    total = p2[0].toULongLong();
-                    used  = p2[1].toULongLong();
-                    avail = p2[2].toULongLong();
-                    pct   = p2[3].remove('%').toInt();
-                }
-            }
-
-            auto fmtGB = [](quint64 bytes) {
-                return QString("%1 GB").arg(bytes / 1073741824.0, 0, 'f', 1);
-            };
-
-            m_storageSummary->setText(QString(
-                "%1 used of %2     ·     %3 available     ·     %4%")
-                .arg(fmtGB(used), fmtGB(total), fmtGB(avail))
-                .arg(pct));
+            m_storageSummary->setText("Querying…");
+            auto *p = new QProcess(this);
+            QObject::connect(p,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                [this, p](int, QProcess::ExitStatus) {
+                    QString out = QString::fromUtf8(
+                        p->readAllStandardOutput());
+                    p->deleteLater();
+                    if (!m_storageSummary) return;
+                    QStringList lines = out.split('\n', Qt::SkipEmptyParts);
+                    quint64 total = 0, used = 0, avail = 0;
+                    int pct = 0;
+                    if (lines.size() >= 2) {
+                        QStringList p2 = lines[1].split(
+                            QRegularExpression("\\s+"),
+                            Qt::SkipEmptyParts);
+                        if (p2.size() >= 4) {
+                            total = p2[0].toULongLong();
+                            used  = p2[1].toULongLong();
+                            avail = p2[2].toULongLong();
+                            pct   = p2[3].remove('%').toInt();
+                        }
+                    }
+                    auto fmtGB = [](quint64 bytes) {
+                        return QString("%1 GB").arg(
+                            bytes / 1073741824.0, 0, 'f', 1);
+                    };
+                    m_storageSummary->setText(QString(
+                        "%1 used of %2     ·     %3 available     ·     %4%")
+                        .arg(fmtGB(used), fmtGB(total), fmtGB(avail))
+                        .arg(pct));
+                });
+            p->start("df", { "-B1", "--output=size,used,avail,pcent", "/" });
         }
 
+        // ---- Categories: 7 parallel du calls ----
         if (m_storageCats) {
             m_storageCats->clear();
             QString home = QDir::homePath();
-
             QStringList labels = {
                 "Applications", "Home", "Documents", "Downloads",
                 "Music", "Pictures", "Videos"
@@ -1786,45 +1792,95 @@ private:
                 home + "/Videos"
             };
 
+            struct CatJob {
+                QList<QString> results;
+                int done = 0;
+                int total = 0;
+            };
+            auto *job = new CatJob;
+            job->total = paths.size();
+            job->results.resize(paths.size());
+
             for (int i = 0; i < paths.size(); ++i) {
-                QProcess d;
-                d.start("du", { "-sb", paths[i] });
-                d.waitForFinished(3000);
-                QString o = QString::fromUtf8(d.readAllStandardOutput());
-                quint64 bytes = o.section('\t', 0, 0).trimmed().toULongLong();
+                auto *d = new QProcess(this);
+                QObject::connect(d,
+                    QOverload<int, QProcess::ExitStatus>::of(
+                        &QProcess::finished),
+                    [this, d, i, job, labels](int, QProcess::ExitStatus) {
+                        QString o = QString::fromUtf8(
+                            d->readAllStandardOutput());
+                        d->deleteLater();
+                        quint64 bytes =
+                            o.section('\t', 0, 0).trimmed().toULongLong();
+                        QString size = bytes > 1073741824
+                            ? QString("%1 GB").arg(
+                                bytes / 1073741824.0, 0, 'f', 2)
+                            : bytes > 1048576
+                                ? QString("%1 MB").arg(
+                                    bytes / 1048576.0, 0, 'f', 1)
+                                : QString("%1 KB").arg(
+                                    bytes / 1024.0, 0, 'f', 0);
+                        job->results[i] = labels[i]
+                            + QString(20 - labels[i].length(), ' ') + size;
+                        if (++job->done < job->total) return;
 
-                QString size = bytes > 1073741824
-                    ? QString("%1 GB").arg(bytes / 1073741824.0, 0, 'f', 2)
-                    : bytes > 1048576
-                        ? QString("%1 MB").arg(bytes / 1048576.0, 0, 'f', 1)
-                        : QString("%1 KB").arg(bytes / 1024.0, 0, 'f', 0);
-
-                QString text = labels[i] + QString(20 - labels[i].length(), ' ')
-                             + size;
-                QListWidgetItem *it = new QListWidgetItem(text);
-                it->setForeground(QColor(240, 237, 232));
-                m_storageCats->addItem(it);
+                        if (m_storageCats) {
+                            for (const QString &text : job->results) {
+                                QListWidgetItem *it =
+                                    new QListWidgetItem(text);
+                                it->setForeground(QColor(240, 237, 232));
+                                m_storageCats->addItem(it);
+                            }
+                        }
+                        delete job;
+                    });
+                d->start("du", { "-sb", paths[i] });
             }
         }
 
+        // ---- Trash: 2 parallel calls ----
         if (m_trashInfo) {
-            QProcess t;
-            t.start("bash", { "-c",
+            m_trashInfo->setText("Querying…");
+            struct TrashJob {
+                QString size;
+                int items = 0;
+                int done = 0;
+            };
+            auto *tj = new TrashJob;
+
+            auto finish = [this, tj]() {
+                if (++tj->done < 2) return;
+                if (m_trashInfo) {
+                    QString sz = tj->size.isEmpty() ? "0" : tj->size;
+                    m_trashInfo->setText(QString("%1  ·  %2 item(s)")
+                        .arg(sz).arg(tj->items));
+                }
+                delete tj;
+            };
+
+            auto *t = new QProcess(this);
+            QObject::connect(t,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                [t, tj, finish](int, QProcess::ExitStatus) {
+                    tj->items = QString::fromUtf8(
+                        t->readAllStandardOutput()).trimmed().toInt();
+                    t->deleteLater();
+                    finish();
+                });
+            t->start("bash", { "-c",
                 "ls -1 ~/.local/share/Trash/files/ 2>/dev/null | wc -l" });
-            t.waitForFinished(700);
-            int items = QString::fromUtf8(
-                t.readAllStandardOutput()).trimmed().toInt();
 
-            QProcess s;
-            s.start("bash", { "-c",
+            auto *s = new QProcess(this);
+            QObject::connect(s,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                [s, tj, finish](int, QProcess::ExitStatus) {
+                    tj->size = QString::fromUtf8(
+                        s->readAllStandardOutput()).trimmed();
+                    s->deleteLater();
+                    finish();
+                });
+            s->start("bash", { "-c",
                 "du -sh ~/.local/share/Trash 2>/dev/null | cut -f1" });
-            s.waitForFinished(700);
-            QString size = QString::fromUtf8(
-                s.readAllStandardOutput()).trimmed();
-            if (size.isEmpty()) size = "0";
-
-            m_trashInfo->setText(QString("%1  ·  %2 item(s)")
-                .arg(size).arg(items));
         }
     }
 
@@ -2242,14 +2298,20 @@ private:
                         "APT::Periodic::Update-Package-Lists \"1\";\n"
                         "APT::Periodic::Unattended-Upgrade \"%1\";\n")
                         .arg(on ? "1" : "0");
-                    // Write via pkexec tee
-                    QProcess p;
-                    p.start("pkexec", { "tee",
-                        "/etc/apt/apt.conf.d/20auto-upgrades" });
-                    p.waitForStarted(500);
-                    p.write(content.toUtf8());
-                    p.closeWriteChannel();
-                    p.waitForFinished(1500);
+                    // Fire-and-forget: write to a temp file (no
+                    // auth needed), then pkexec cp it into place.
+                    // The UI never blocks waiting for the auth
+                    // prompt; the user confirms in a separate
+                    // window.
+                    QString tmp = "/tmp/apokolips-auto-upgrade.conf";
+                    QFile f(tmp);
+                    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                        f.write(content.toUtf8());
+                        f.close();
+                        QProcess::startDetached("pkexec",
+                            { "cp", tmp,
+                              "/etc/apt/apt.conf.d/20auto-upgrades" });
+                    }
                 }));
 
             v->addWidget(c);
@@ -2306,74 +2368,95 @@ private:
             }
         }
 
-        // ---- Available updates ----
+        // ---- Available updates (async) ----
         if (m_updateList) {
             m_updateList->clear();
-            QProcess p;
-            p.start("bash", { "-c",
-                "apt list --upgradable 2>/dev/null | tail -n +2" });
-            p.waitForFinished(3000);
-            QString out = QString::fromUtf8(p.readAllStandardOutput());
-            QStringList lines = out.split('\n', Qt::SkipEmptyParts);
+            if (m_updateStatus) m_updateStatus->setText("Querying…");
+            auto *p = new QProcess(this);
+            QObject::connect(p,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                [this, p](int, QProcess::ExitStatus) {
+                    QString out = QString::fromUtf8(
+                        p->readAllStandardOutput());
+                    p->deleteLater();
+                    if (!m_updateList) return;
+                    QStringList lines =
+                        out.split('\n', Qt::SkipEmptyParts);
 
-            if (lines.isEmpty()) {
-                if (m_updateStatus)
-                    m_updateStatus->setText("Everything is up to date ✓");
-                QListWidgetItem *it = new QListWidgetItem(
-                    "No updates available");
-                it->setFlags(Qt::NoItemFlags);
-                it->setForeground(QColor(122, 120, 115));
-                m_updateList->addItem(it);
-            } else {
-                if (m_updateStatus)
-                    m_updateStatus->setText(
-                        QString("%1 update(s) available").arg(lines.size()));
-                for (const QString &line : lines) {
-                    QString pkg = line.section('/', 0, 0);
-                    QString rest = line.section('/', 1);
-                    QString ver = rest.section(' ', 0, 0);
-                    QString text = pkg + QString(28 - pkg.length(), ' ') + ver;
-                    QListWidgetItem *it = new QListWidgetItem(text);
-                    it->setForeground(QColor(240, 237, 232));
-                    m_updateList->addItem(it);
-                }
-            }
+                    if (lines.isEmpty()) {
+                        if (m_updateStatus)
+                            m_updateStatus->setText(
+                                "Everything is up to date ✓");
+                        QListWidgetItem *it = new QListWidgetItem(
+                            "No updates available");
+                        it->setFlags(Qt::NoItemFlags);
+                        it->setForeground(QColor(122, 120, 115));
+                        m_updateList->addItem(it);
+                    } else {
+                        if (m_updateStatus)
+                            m_updateStatus->setText(
+                                QString("%1 update(s) available")
+                                    .arg(lines.size()));
+                        for (const QString &line : lines) {
+                            QString pkg = line.section('/', 0, 0);
+                            QString rest = line.section('/', 1);
+                            QString ver = rest.section(' ', 0, 0);
+                            QString text = pkg
+                                + QString(28 - pkg.length(), ' ') + ver;
+                            QListWidgetItem *it =
+                                new QListWidgetItem(text);
+                            it->setForeground(QColor(240, 237, 232));
+                            m_updateList->addItem(it);
+                        }
+                    }
+                });
+            p->start("bash", { "-c",
+                "apt list --upgradable 2>/dev/null | tail -n +2" });
         }
 
-        // ---- History ----
+        // ---- History (async) ----
         if (m_historyList) {
             m_historyList->clear();
-            QProcess p;
-            p.start("bash", { "-c",
+            auto *p = new QProcess(this);
+            QObject::connect(p,
+                QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                [this, p](int, QProcess::ExitStatus) {
+                    QString out = QString::fromUtf8(
+                        p->readAllStandardOutput());
+                    p->deleteLater();
+                    if (!m_historyList) return;
+
+                    QStringList lines =
+                        out.split('\n', Qt::SkipEmptyParts);
+                    QString curDate;
+                    int shown = 0;
+                    for (const QString &line : lines) {
+                        if (line.startsWith("Start-Date:")) {
+                            curDate = line.mid(11).trimmed();
+                        } else if (line.startsWith("Commandline:")
+                                   && shown < 6) {
+                            QString cmd = line.mid(12).trimmed();
+                            if (cmd.length() > 90)
+                                cmd = cmd.left(87) + "…";
+                            QString text = curDate + "  ·  " + cmd;
+                            QListWidgetItem *it =
+                                new QListWidgetItem(text);
+                            it->setForeground(QColor(200, 200, 205));
+                            m_historyList->addItem(it);
+                            shown++;
+                        }
+                    }
+                    if (shown == 0) {
+                        QListWidgetItem *it = new QListWidgetItem(
+                            "No history yet");
+                        it->setFlags(Qt::NoItemFlags);
+                        it->setForeground(QColor(122, 120, 115));
+                        m_historyList->addItem(it);
+                    }
+                });
+            p->start("bash", { "-c",
                 "tac /var/log/apt/history.log 2>/dev/null | "
                 "grep -E '^(Start-Date|Commandline)' | head -20" });
-            p.waitForFinished(2000);
-            QString out = QString::fromUtf8(p.readAllStandardOutput());
-
-            QStringList lines = out.split('\n', Qt::SkipEmptyParts);
-            QString curDate;
-            int shown = 0;
-            for (const QString &line : lines) {
-                if (line.startsWith("Start-Date:")) {
-                    curDate = line.mid(11).trimmed();
-                } else if (line.startsWith("Commandline:") && shown < 6) {
-                    QString cmd = line.mid(12).trimmed();
-                    if (cmd.length() > 90)
-                        cmd = cmd.left(87) + "…";
-                    QString text = curDate + "  ·  " + cmd;
-                    QListWidgetItem *it = new QListWidgetItem(text);
-                    it->setForeground(QColor(200, 200, 205));
-                    m_historyList->addItem(it);
-                    shown++;
-                }
-            }
-            if (shown == 0) {
-                QListWidgetItem *it = new QListWidgetItem(
-                    "No history yet");
-                it->setFlags(Qt::NoItemFlags);
-                it->setForeground(QColor(122, 120, 115));
-                m_historyList->addItem(it);
-            }
         }
     }
 
@@ -5980,45 +6063,52 @@ private:
     void refreshWiFiPage() {
         if (!m_wifiPageList) return;
         m_wifiPageList->clear();
+        if (m_wifiStatus) m_wifiStatus->setText("Querying…");
 
-        QProcess q;
-        q.start("nmcli", { "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY",
-                           "device", "wifi", "list" });
-        q.waitForFinished(3000);
-        QString out = QString::fromUtf8(
-            q.readAllStandardOutput()).trimmed();
+        auto *q = new QProcess(this);
+        QObject::connect(q,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, q](int, QProcess::ExitStatus) {
+                QString out = QString::fromUtf8(
+                    q->readAllStandardOutput()).trimmed();
+                q->deleteLater();
+                if (!m_wifiPageList) return;
 
-        if (out.isEmpty()) {
-            if (m_wifiStatus)
-                m_wifiStatus->setText(
-                    "No wireless adapter — Wi-Fi list unavailable.");
-            QListWidgetItem *it = new QListWidgetItem(
-                "No networks (no adapter)");
-            it->setFlags(Qt::NoItemFlags);
-            it->setForeground(QColor(122, 120, 115));
-            m_wifiPageList->addItem(it);
-            return;
-        }
+                if (out.isEmpty()) {
+                    if (m_wifiStatus)
+                        m_wifiStatus->setText(
+                            "No wireless adapter — Wi-Fi list unavailable.");
+                    QListWidgetItem *it = new QListWidgetItem(
+                        "No networks (no adapter)");
+                    it->setFlags(Qt::NoItemFlags);
+                    it->setForeground(QColor(122, 120, 115));
+                    m_wifiPageList->addItem(it);
+                    return;
+                }
 
-        if (m_wifiStatus)
-            m_wifiStatus->setText(
-                QString("%1 network(s) found").arg(
-                    out.split('\n', Qt::SkipEmptyParts).size()));
+                if (m_wifiStatus)
+                    m_wifiStatus->setText(
+                        QString("%1 network(s) found").arg(
+                            out.split('\n', Qt::SkipEmptyParts).size()));
 
-        const QStringList lines = out.split('\n', Qt::SkipEmptyParts);
-        for (const QString &line : lines) {
-            QStringList parts = line.split(':');
-            if (parts.size() < 4) continue;
-            bool inUse = parts[0].trimmed() == "*";
-            QString ssid = parts[1];
-            QString sig  = parts[2];
-            QString sec  = parts[3];
-            QString text = (inUse ? "●  " : "    ") + ssid
-                         + "   " + sig + "%   " + sec;
-            QListWidgetItem *it = new QListWidgetItem(text);
-            it->setData(Qt::UserRole, ssid);
-            m_wifiPageList->addItem(it);
-        }
+                const QStringList lines =
+                    out.split('\n', Qt::SkipEmptyParts);
+                for (const QString &line : lines) {
+                    QStringList parts = line.split(':');
+                    if (parts.size() < 4) continue;
+                    bool inUse = parts[0].trimmed() == "*";
+                    QString ssid = parts[1];
+                    QString sig  = parts[2];
+                    QString sec  = parts[3];
+                    QString text = (inUse ? "●  " : "    ") + ssid
+                                 + "   " + sig + "%   " + sec;
+                    QListWidgetItem *it = new QListWidgetItem(text);
+                    it->setData(Qt::UserRole, ssid);
+                    m_wifiPageList->addItem(it);
+                }
+            });
+        q->start("nmcli", { "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY",
+                            "device", "wifi", "list" });
     }
 
     QWidget *makeNetworkPage() {
