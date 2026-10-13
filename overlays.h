@@ -34,6 +34,22 @@ static void genieHandshakeReady(const QString &sockName)
     }
 }
 
+// Second ping — sent when the overlay has painted its LAST frame.
+// Distinct from genieHandshakeReady (first paint). The restore path
+// in main.cpp waits for this one before revealing the real window.
+static void genieHandshakeDone(const QString &sockName)
+{
+    if (sockName.isEmpty()) return;
+    QLocalSocket sock;
+    sock.connectToServer(sockName);
+    if (sock.waitForConnected(400)) {
+        sock.write("done");
+        sock.waitForBytesWritten(200);
+        sock.disconnectFromServer();
+    }
+}
+
+
 static QString genieMakeHandshakeName()
 {
     return QString("apokolips-genie-ready-%1-%2")
@@ -399,7 +415,6 @@ protected:
         p.setRenderHint(QPainter::Antialiasing, true);
         p.setOpacity(1.0);
 
-        // Shared timeline: forward = window → dock. Reverse retraces it.
         const qreal t = qBound<qreal>(
             0.0, genieTimelineProgress(m_frame, m_frames, m_reverse), 1.0);
 
@@ -414,37 +429,51 @@ protected:
         const QRectF src(m_start);
         const QPointF dock(m_dock);
 
-        // Tip: nearest bottom corner to the dock tile.
-        const QPointF bl = src.bottomLeft();
-        const QPointF br = src.bottomRight();
-        const QPointF tipSrc = (dist(bl, dock) < dist(br, dock)) ? bl : br;
+        // Nearest of ALL FOUR corners to the dock tile. Handles
+        // every dock position: bottom, left, right, and any corner
+        // of any window. Previous version only checked bottom-left
+        // and bottom-right, which is wrong when the dock is on the
+        // right and the window sits high on screen.
+        const QPointF corners[4] = {
+            src.topLeft(), src.topRight(),
+            src.bottomRight(), src.bottomLeft()
+        };
+        int tipIdx = 0;
+        qreal bestDist = 1e18;
+        for (int i = 0; i < 4; ++i) {
+            qreal d = dist(corners[i], dock);
+            if (d < bestDist) { bestDist = d; tipIdx = i; }
+        }
+        const QPointF tipSrc = corners[tipIdx];
 
-        // Straight line from tip corner to dock. The tip travels this
-        // in parallel with the collapse (see `travel` below).
-        const QPointF delta = dock - tipSrc;
+        // Once per animation: log the corner that was selected.
+        // Lets us verify corner-aware placement without guessing.
+        if (m_frame == 0) {
+            qInfo() << "[genie-tip] corner idx=" << tipIdx
+                    << "(0=TL 1=TR 2=BR 3=BL)"
+                    << "tipSrc=" << tipSrc
+                    << "dock=" << dock;
+        }
 
-        // Pour:
-        //   - Every point collapses toward the tip corner (fixed) at a
-        //     rate that depends on its vertical position: bottom strips
-        //     fast, top strips slow. That's the pour into the funnel.
-        //   - The whole collapsed shape translates toward the dock,
-        //     weighted by how collapsed each strip already is, so the
-        //     point that has already poured in travels further.
-        //   - At t=1 both collapse and travel equal 1 and every point
-        //     lands exactly on the dock. No overshoot at any frame.
+        // Normalizer: longest diagonal of the window.
+        const qreal diag = qMax<qreal>(1.0, dist(src.topLeft(),
+                                                src.bottomRight()));
+
+        // Every point pours directly to the dock. Rate depends on
+        // how close the point starts to the tip corner:
+        //   points on the tip corner:  rate 3.5  (arrive fast)
+        //   points on the opposite:    rate 0.5  (trail behind)
+        // Result: the tip-side of the window rushes to the dock
+        // while the far side follows — a pour, not a slide.
+        //
+        // A single rate per point means straight edges — no C curve.
         const auto destForPoint = [&](const QPointF &sp) -> QPointF {
-            const qreal v = qBound<qreal>(
-                0.0,
-                (sp.y() - src.top()) / qMax<qreal>(1.0, src.height()),
-                1.0);
-
+            const qreal d = dist(sp, tipSrc);
+            const qreal dn = qBound<qreal>(0.0, d / diag, 1.0);
+            const qreal rate = 5.5 - 5.0 * dn;   // pour without slivers
             const qreal base = easeWithImmediateMotion(t);
-            const qreal stripRate = 0.50 + 0.50 * v;
-            const qreal collapse =
-                1.0 - std::pow(1.0 - base, stripRate);
-
-            const qreal travel = t * (0.08 + 0.92 * collapse);
-            return sp + (tipSrc - sp) * collapse + delta * travel;
+            const qreal progress = 1.0 - std::pow(1.0 - base, rate);
+            return sp + (dock - sp) * progress;
         };
 
         constexpr int SEGS = 24;
@@ -461,12 +490,20 @@ protected:
             const QPointF dbr = destForPoint(QPointF(src.right(), y1));
             const QPointF dbl = destForPoint(QPointF(src.left(), y1));
 
+            // Reject degenerate and near-degenerate quads.
+            //  - maxD < 0.4        : a point (skip)
+            //  - minSpan < 0.6     : a sliver (quadToQuad garbage)
             qreal maxD = 0.0;
             const QPointF pts[4] = { dtl, dtr, dbr, dbl };
             for (int a = 0; a < 4; ++a)
                 for (int b = a + 1; b < 4; ++b)
                     maxD = qMax(maxD, dist(pts[a], pts[b]));
             if (maxD < 0.4) continue;
+
+            const qreal minSpan = qMin(
+                qMin(dist(dtl, dbl), dist(dtr, dbr)),
+                qMin(dist(dtl, dtr), dist(dbl, dbr)));
+            if (minSpan < 0.6) continue;
 
             QPolygonF srcQuad;
             srcQuad << QPointF(0, 0)
@@ -495,6 +532,12 @@ private:
     {
         if (m_frame < m_frames - 1) { ++m_frame; update(); return; }
         m_timer->stop();
+        // Ping the shell that the animation is finished.
+        // genieHandshakeDone writes "done" — the restore path in
+        // main.cpp waits for that string specifically.
+        if (!m_readySock.isEmpty())
+            genieHandshakeDone(m_readySock);
+
         update();
         // Close the widget, not the app — the daemon must survive
         // between animations. quitOnLastWindowClosed still exits

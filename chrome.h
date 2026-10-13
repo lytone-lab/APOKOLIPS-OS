@@ -1242,15 +1242,77 @@ public:
     }
 
     void pollRunning() {
+        // Dot state = "is there a window for this app in sway's
+        // tree?" Not "is a process alive?" — after a shell reload,
+        // the app processes persist even though their windows are
+        // gone. Sway's tree is the source of truth for what's on
+        // screen, so it drives the dots.
+        QProcess sway;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        const QString sock = discoverSwaySock();
+        if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+        sway.setProcessEnvironment(env);
+        sway.start("swaymsg", { "-t", "get_tree" });
+        if (!sway.waitForFinished(400)) {
+            static int n = 0;
+            if (n++ % 20 == 0)
+                qInfo() << "[dots] swaymsg timeout";
+            return;
+        }
+
+        const QByteArray raw = sway.readAllStandardOutput();
+        const QString tree = QString::fromUtf8(raw);
+        QSet<QString> liveAppIds;
+        QRegularExpression re("\"app_id\"\\s*:\\s*\"([^\"]+)\"");
+        auto it = re.globalMatch(tree);
+        while (it.hasNext()) liveAppIds.insert(it.next().captured(1));
+
+        static int dbg = 0;
+        if (dbg++ % 10 == 0) {
+            qInfo() << "[dots] tree bytes=" << raw.size()
+                    << " matches=" << liveAppIds.size()
+                    << " ids=" << liveAppIds.values()
+                    << " icons=" << m_icons.size();
+        }
+
         for (DockIcon *di : m_icons) {
-            qint64 pid = di->pid();
+            const QString appId = appIdForDockName(di->appName());
             bool alive = false;
-            if (pid > 0) {
-                // On Linux, /proc/<pid> exists iff process is alive
-                alive = QFile::exists(QString("/proc/%1").arg(pid));
+            if (!appId.isEmpty() && liveAppIds.contains(appId))
+                alive = true;
+            // Shell chrome apps share app_id=apokolips-shell; also
+            // match by title if the dock entry is one of ours.
+            if (!alive) {
+                const QString title = titleForDockName(di->appName());
+                if (!title.isEmpty()) {
+                    const QString q = "\"name\"\\s*:\\s*\""
+                        + QRegularExpression::escape(title) + "\"";
+                    if (QRegularExpression(q).match(tree).hasMatch())
+                        alive = true;
+                }
             }
             di->setRunning(alive);
         }
+    }
+
+    // Map a dock app name to its sway app_id.
+    static QString appIdForDockName(const QString &name) {
+        if (name == "Finder")     return "apokolips-files";
+        if (name == "Notes")      return "apokolips-notes";
+        if (name == "Calculator") return "apokolips-calculator";
+        if (name == "Settings")   return "apokolips-settings";
+        if (name == "Aperture")   return "apokolips-aperture";
+        if (name == "BoomTube")   return "apokolips-boombube";
+        if (name == "myMach")     return "apokolips-mymach";
+        if (name == "Node")       return "apokolips-node";
+        return QString();
+    }
+
+    // Fallback title match for apps whose app_id may vary.
+    static QString titleForDockName(const QString &name) {
+        if (name == "Finder")     return "Files";
+        if (name == "Settings")   return "Apokolips Settings";
+        return QString();
     }
 
     void addIcon(const QString &icon, const QString &name, int index) {
@@ -2327,11 +2389,13 @@ public:
         update();
     }
 
-protected:
-    void resizeEvent(QResizeEvent *e) override {
-        QWidget::resizeEvent(e);
+public:
+    // Clamp all icons inside the canvas bounds. Called both from
+    // resizeEvent (below) and from the shell's dock-reflow path
+    // when the canvas geometry didn't change but icon positions
+    // were loaded from a different dock-layout session.
+    void clampIcons() {
         if (width() <= 0 || height() <= 0) return;
-        // Keep icons inside bounds if canvas shrinks
         for (DesktopIcon *ic : m_icons) {
             QPoint p = ic->pos();
             int maxX = width()  - ic->width();
@@ -2340,6 +2404,12 @@ protected:
             p.setY(qBound(0, p.y(), qMax(0, maxY)));
             ic->move(p);
         }
+    }
+
+protected:
+    void resizeEvent(QResizeEvent *e) override {
+        QWidget::resizeEvent(e);
+        clampIcons();
     }
 
 private:
@@ -2463,13 +2533,29 @@ public:
         QWidget::hideEvent(e);
     }
 
-    void repositionTo(const QSize &parentSize) {
+    // dockPos: 0 = bottom, 1 = left, 2 = right.
+    // Passed explicitly so this never races the config file write.
+    void repositionTo(const QSize &parentSize, int dockPos = -1) {
         const int CARD_W = 240;
         setFixedWidth(CARD_W);
         setFixedHeight(qMin(parentSize.height() - 130, 560));
+
+        if (dockPos < 0)
+            dockPos = VisualConfigManager::instance()
+                          .cfg().dockPosition;   // fallback
+
+        int x = parentSize.width() - CARD_W - 380;
+        if (dockPos == 1) {
+            // Dock left — widgets on the right.
+            x = parentSize.width() - CARD_W - 60;
+        } else if (dockPos == 2) {
+            // Dock right — widgets on the left.
+            x = 60;
+        }
+        // dockPos == 0 (bottom): keep the default right-side offset.
+
         if (m_userMoved) return;   // honor manual drag position
-        // Right side, offset left by notification panel width (360)
-        move(parentSize.width() - CARD_W - 380, 50);
+        move(x, 50);
     }
 
 protected:

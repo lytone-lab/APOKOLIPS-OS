@@ -732,8 +732,10 @@ static bool removeGenieWindow(int conId)
 
 static bool restoreGenieForDock(const QString &dockName)
 {
-    if (dockName.isEmpty())
+    if (dockName.isEmpty()) {
+        qWarning() << "[genie-restore][why] empty dockName";
         return false;
+    }
 
     const QJsonArray windows = readGenieWindows();
     QJsonObject entry;
@@ -750,59 +752,34 @@ static bool restoreGenieForDock(const QString &dockName)
         }
     }
 
-    if (entry.isEmpty())
+    if (entry.isEmpty()) {
+        qWarning() << "[genie-restore][why] no entry matches"
+                   << dockName;
         return false;
+    }
 
     const int conId = entry.value("conId").toInt(-1);
     const QString savedPng = entry.value("pixmap").toString();
     const QJsonArray rect = entry.value("startRect").toArray();
     const QJsonArray dock = entry.value("dockPt").toArray();
 
-    if (conId <= 0 || !QFile::exists(savedPng)
-        || rect.size() != 4 || dock.size() != 2) {
-        qWarning() << "[genie-reverse] invalid saved state for" << dockName;
+    if (conId <= 0) {
+        qWarning() << "[genie-restore][why] bad conId" << conId;
         return false;
     }
-
-    // The conId might be dead — e.g. red-light close (which minimizes
-    // then quits the app) leaves a state entry for up to 5 s until
-    // pruneStaleGenieState catches it. Restoring a dead conId plays
-    // the animation and then silently fails to surface the window,
-    // which the user sees as "reopen does nothing".
-    //
-    // Fix: ask sway for the live tree. If the conId isn't there,
-    // drop the entry and return false so launchApp falls through
-    // to a fresh launch.
-    {
-        QProcess sway;
-        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        const QString sock = discoverSwaySock();
-        if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
-        sway.setProcessEnvironment(env);
-        sway.start("swaymsg", { "-t", "get_tree" });
-        if (sway.waitForFinished(600)) {
-            const QString tree = QString::fromUtf8(
-                sway.readAllStandardOutput());
-            bool alive = false;
-            QRegularExpression re("\"id\"\s*:\s*(\d+)");
-            auto it = re.globalMatch(tree);
-            while (it.hasNext()) {
-                if (it.next().captured(1).toInt() == conId) {
-                    alive = true;
-                    break;
-                }
-            }
-            if (!alive) {
-                qInfo() << "[genie-restore] conId" << conId
-                        << "not in sway tree — dropping stale entry";
-                removeGenieWindow(conId);
-                QFile::remove(savedPng);
-                return false;
-            }
-        }
-        // If sway didn't respond in time, fall through — better to
-        // animate on a maybe-live conId than to break restore for
-        // everyone if sway is just slow.
+    if (!QFile::exists(savedPng)) {
+        qWarning() << "[genie-restore][why] pixmap missing"
+                   << savedPng << " — dropping entry";
+        removeGenieWindow(conId);
+        return false;
+    }
+    if (rect.size() != 4) {
+        qWarning() << "[genie-restore][why] rect size" << rect.size();
+        return false;
+    }
+    if (dock.size() != 2) {
+        qWarning() << "[genie-restore][why] dock size" << dock.size();
+        return false;
     }
 
     const int x = rect.at(0).toInt();
@@ -812,8 +789,10 @@ static bool restoreGenieForDock(const QString &dockName)
     const int dx = dock.at(0).toInt();
     const int dy = dock.at(1).toInt();
 
-    if (w <= 0 || h <= 0)
+    if (w <= 0 || h <= 0) {
+        qWarning() << "[genie-restore][why] zero size" << w << h;
         return false;
+    }
 
     const QString reversePng =
         QDir::tempPath()
@@ -823,7 +802,8 @@ static bool restoreGenieForDock(const QString &dockName)
 
     // GenieOverlay deletes the image it loads, so animate a temporary copy.
     if (!QFile::copy(savedPng, reversePng)) {
-        qWarning() << "[genie-reverse] could not copy" << savedPng;
+        qWarning() << "[genie-restore][why] copy failed:"
+                   << savedPng << "->" << reversePng;
         return false;
     }
 
@@ -841,6 +821,19 @@ static bool restoreGenieForDock(const QString &dockName)
         "--reverse", "--ms", QString::number(durationMs)
     };
 
+    // Ready-sock handshake for restore: the overlay pings when its
+    // first frame is painted. We start the reveal timer only then —
+    // not from a fixed wall-clock guess — so slow overlay starts on
+    // wide screen paths (dock left/right) no longer reveal mid-animation.
+    const QString readyName = genieMakeHandshakeName();
+    QLocalServer::removeServer(readyName);
+    QLocalServer *readyServer = new QLocalServer(qApp);
+    readyServer->listen(readyName);
+
+    // Args gain --ready-sock so the fresh-process fallback also pings.
+    QStringList argsWithReady = args;
+    argsWithReady << "--ready-sock" << readyName;
+
     qint64 overlayPid = 0;
     bool started = false;
 
@@ -853,7 +846,7 @@ static bool restoreGenieForDock(const QString &dockName)
         req.dock       = QPoint(dx, dy);
         req.reverse    = true;
         req.durationMs = durationMs;
-        req.readySock  = QString();
+        req.readySock  = readyName;
         if (animatorRequest(req)) {
             started = true;
             qDebug() << "[genie-reverse] sent to daemon";
@@ -864,7 +857,7 @@ static bool restoreGenieForDock(const QString &dockName)
     if (!started) {
         started = QProcess::startDetached(
             QCoreApplication::applicationFilePath(),
-            args, QString(), &overlayPid);
+            argsWithReady, QString(), &overlayPid);
         qDebug() << "[genie-reverse] spawned fresh pid=" << overlayPid;
     }
 
@@ -881,7 +874,7 @@ static bool restoreGenieForDock(const QString &dockName)
 
     // Show the real container near the end, while the full-size overlay
     // still covers it. Keep the saved record if sway reports a failure.
-    QTimer::singleShot(durationMs + 55, qApp, [conId, savedPng]() {
+    auto revealReal = [conId, savedPng]() {
         const QString sock = discoverSwaySock();
         if (sock.isEmpty()) {
             qWarning() << "[genie-reverse] no SWAYSOCK; state retained";
@@ -938,7 +931,48 @@ static bool restoreGenieForDock(const QString &dockName)
             QString("[con_id=%1]").arg(conId),
             "scratchpad", "show"
         });
-    });
+    };
+
+    // Overlay pings "ready" from its first paint. We wait the
+    // animation duration FROM THAT PING before revealing the window.
+    // 80 ms margin covers the last-frame compositing.
+    {
+        QPointer<QLocalServer> srvGuard(readyServer);
+        auto *revealed = new bool(false);
+        auto revealOnce = [revealed, revealReal]() {
+            if (*revealed) return;
+            *revealed = true;
+            revealReal();
+        };
+
+        QObject::connect(readyServer, &QLocalServer::newConnection,
+                         [srvGuard, revealOnce, revealed, conId]() {
+            if (!srvGuard) return;
+            QLocalSocket *conn = srvGuard->nextPendingConnection();
+            if (!conn) return;
+            QObject::connect(conn, &QLocalSocket::readyRead,
+                             [conn, revealOnce, revealed, conId]() {
+                const QByteArray data = conn->readAll();
+                qDebug() << "[genie-reverse] ping:" << data
+                         << "conId=" << conId;
+                // "done" = overlay finished its last frame.
+                if (data.contains("done"))
+                    revealOnce();
+                // "ready" (first paint) — do nothing here; we wait
+                // for done. Server stays open.
+                conn->disconnectFromServer();
+            });
+        });
+
+        // Safety net: if the overlay crashes or never sends done,
+        // reveal at durationMs + 2500 (animation may drift).
+        QTimer::singleShot(durationMs + 1000, qApp,
+                           [revealOnce]() {
+            qDebug() << "[genie-reverse] safety reveal";
+            revealOnce();
+        });
+    }
+
 
     return true;
 }
@@ -1131,6 +1165,17 @@ static void shellRestoreWindow(QWidget *w,
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("SWAYSOCK", sock);
 
+    // Pull from scratchpad first — a no-op if the window isn't
+    // hidden there. Without this, focus alone doesn't always
+    // surface a scratchpad window.
+    {
+        QProcess sc;
+        sc.setProcessEnvironment(env);
+        sc.start("swaymsg",
+                 { QString("[title=\"%1\"] scratchpad show").arg(title) });
+        sc.waitForFinished(400);
+    }
+    // Then focus + raise.
     QProcess sp;
     sp.setProcessEnvironment(env);
     sp.start("swaymsg", { QString("[title=\"%1\"] focus").arg(title) });
@@ -1473,17 +1518,36 @@ static int runShell(int argc, char *argv[])
                     dockName = "myMach";
                 }
 
+                qInfo() << "[genie-trace] target app="
+                        << target.appId
+                        << "title=" << target.title
+                        << "→ dockName=" << dockName;
+
                 QPoint dockPt(960, 820);   // fallback — bottom center
+                bool tileMatched = false;
+                int iconsScanned = 0;
                 for (QWidget *w : root->findChildren<QWidget *>()) {
                     if (auto *di = dynamic_cast<DockIcon *>(w)) {
+                        ++iconsScanned;
                         if (!dockName.isEmpty() && di->appName() == dockName) {
                             dockPt = di->mapTo(root,
                                                di->rect().center());
+                            tileMatched = true;
+                            qInfo() << "[genie-trace] matched tile:"
+                                    << "appName=" << di->appName()
+                                    << "local center=" << di->rect().center()
+                                    << "mapped dockPt=" << dockPt;
                             di->bounce();
                             break;
                         }
                     }
                 }
+                qInfo() << "[genie-trace] tiles scanned=" << iconsScanned
+                        << "matched=" << tileMatched
+                        << "final dockPt=" << dockPt
+                        << "(fallback used=" << !tileMatched << ")";
+                qInfo() << "[genie-trace] root size=" << root->size()
+                        << "global center=" << root->mapToGlobal(dockPt);
 
                 // Screenshot the window into a temp PNG
                 QString png = QString("/tmp/genie-%1-%2.png")
@@ -2429,6 +2493,26 @@ static int runShell(int argc, char *argv[])
         qInfo() << "[genie] state wiped on startup";
     }
 
+    // ---- Clean-slate reload: kill leftover app processes ----
+    // Reload means "fresh desktop." Any app that was running from the
+    // previous session is gone. Without this, the shell comes back up
+    // with hidden app processes still alive, and their dock dots stay
+    // lit even though no window is visible.
+    //
+    // Does NOT kill the animator daemon — its --animator-daemon flag
+    // does not match any of these patterns.
+    {
+        const QStringList appFlags = {
+            "--notes", "--files", "--settings", "--mymach",
+            "--calc", "--node", "--boomtube", "--image"
+        };
+        for (const QString &flag : appFlags) {
+            QProcess::execute("pkill", { "-f",
+                QString("apokolips-shell %1").arg(flag) });
+        }
+        qInfo() << "[shell] clean-slate: killed leftover app processes";
+    }
+
     // Start the resident animator daemon once. It lives independently
     // of the shell — restarts of the shell reattach to the same daemon.
     if (!animatorDaemonRunning()) {
@@ -2872,6 +2956,59 @@ static int runShell(int argc, char *argv[])
             };
             refit("desktopCanvas");
             refit("widgetLayer");
+
+            // Force the canvas to clamp its icons even when its
+            // geometry didn't change. The canvas is parented to the
+            // top-level shell window, NOT to `middle`, so we need
+            // the same fallback lookup refit() uses.
+            {
+                QWidget *cnv =
+                    middleGuard
+                        ? middleGuard->findChild<QWidget *>("desktopCanvas")
+                        : nullptr;
+                if (!cnv && middleGuard && middleGuard->window())
+                    cnv = middleGuard->window()
+                              ->findChild<QWidget *>("desktopCanvas");
+                if (cnv) {
+                    if (auto *dc = dynamic_cast<DesktopCanvas *>(cnv)) {
+                        dc->clampIcons();
+                        qInfo() << "[dock-reflow] clamped icons, canvas="
+                                << dc->size()
+                                << "icons=" << dc->icons().size();
+                    } else {
+                        qInfo() << "[dock-reflow] canvas found but cast "
+                                   "failed";
+                    }
+                } else {
+                    qInfo() << "[dock-reflow] desktopCanvas not found for "
+                               "clamp";
+                }
+            }
+
+            // Reposition desktop widgets (clock, CPU, weather)
+            // so they don't overlap the dock on Left/Right edges.
+            // DesktopWidgets has no Q_OBJECT, so findChild<T*>()
+            // can't be used — walk children with dynamic_cast.
+            if (desktopGuard) {
+                QWidget *top = middleGuard->window();
+                if (top) {
+                    DesktopWidgets *dw = nullptr;
+                    for (QWidget *child : top->findChildren<QWidget *>()) {
+                        if (auto *c = dynamic_cast<DesktopWidgets *>(child)) {
+                            dw = c;
+                            break;
+                        }
+                    }
+                    if (dw) {
+                        dw->repositionTo(desktopGuard->size(), pos);
+                        qInfo() << "[dock-reflow] widgets repositioned to"
+                                << dw->geometry()
+                                << "dockPos=" << pos;
+                    } else {
+                        qInfo() << "[dock-reflow] DesktopWidgets not found";
+                    }
+                }
+            }
 
             if (dockGuard) dockGuard->raise();
             if (desktopGuard) desktopGuard->update();
