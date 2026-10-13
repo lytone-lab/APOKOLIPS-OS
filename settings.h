@@ -6607,21 +6607,33 @@ private:
 
             cv->addWidget(tzRow);
 
-            bool ntpOn = false;
-            QProcess tc;
-            tc.start("timedatectl", { "show", "-p", "NTP", "--value" });
-            tc.waitForFinished(500);
-            ntpOn = QString::fromUtf8(tc.readAllStandardOutput())
-                        .trimmed() == "yes";
-
-            cv->addWidget(Sigil::makeToggleRow(
+            // Async: build with placeholder, fill on timedatectl finish
+            QWidget *ntpRow = Sigil::makeToggleRow(
                 "Automatic date & time",
                 "Sync from network time servers (NTP)",
-                ntpOn,
+                false,
                 [](bool on) {
                     QProcess::startDetached("timedatectl", {
                         "set-ntp", on ? "true" : "false" });
-                }));
+                });
+            cv->addWidget(ntpRow);
+
+            {
+                auto *tc = new QProcess(this);
+                QObject::connect(tc,
+                    QOverload<int, QProcess::ExitStatus>::of(
+                        &QProcess::finished),
+                    [tc, ntpRow](int, QProcess::ExitStatus) {
+                        bool on = QString::fromUtf8(
+                            tc->readAllStandardOutput()).trimmed()
+                            == "yes";
+                        tc->deleteLater();
+                        if (auto *t = Sigil::toggleIn(ntpRow))
+                            t->setOnSilent(on);
+                    });
+                tc->start("timedatectl",
+                    { "show", "-p", "NTP", "--value" });
+            }
 
             v->addWidget(c);
         }
@@ -7285,24 +7297,35 @@ private:
             cv->setSpacing(14);
             cv->addWidget(Sigil::groupLabel("REMOTE ACCESS"));
 
-            // Query real SSH status
-            QProcess q;
-            q.start("systemctl", { "is-active", "ssh" });
-            q.waitForFinished(700);
-            bool sshActive = QString::fromUtf8(
-                q.readAllStandardOutput()).trimmed() == "active";
-
-            cv->addWidget(Sigil::makeToggleRow(
+            // Async: build with placeholder, fill on systemctl finish.
+            // Subtitle is now neutral — the toggle state shows on/off.
+            QWidget *sshRow = Sigil::makeToggleRow(
                 "SSH server",
-                sshActive ? "On — remote login is enabled"
-                          : "Off — remote login is disabled",
-                sshActive,
+                "Allow remote login over SSH",
+                false,
                 [](bool on) {
                     QProcess::startDetached("pkexec",
                         { "systemctl", on ? "start" : "stop", "ssh" });
                     VisualConfigManager::instance().setAndSave(
                         [on](VisualConfig &c) { c.sshEnabled = on; });
-                }));
+                });
+            cv->addWidget(sshRow);
+
+            {
+                auto *q = new QProcess(this);
+                QObject::connect(q,
+                    QOverload<int, QProcess::ExitStatus>::of(
+                        &QProcess::finished),
+                    [q, sshRow](int, QProcess::ExitStatus) {
+                        bool on = QString::fromUtf8(
+                            q->readAllStandardOutput()).trimmed()
+                            == "active";
+                        q->deleteLater();
+                        if (auto *t = Sigil::toggleIn(sshRow))
+                            t->setOnSilent(on);
+                    });
+                q->start("systemctl", { "is-active", "ssh" });
+            }
 
             v->addWidget(c);
         }
