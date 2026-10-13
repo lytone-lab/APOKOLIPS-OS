@@ -355,6 +355,7 @@ public:
 
         const auto &cfg = VisualConfigManager::instance().cfg();
         m_strips = qBound(40, cfg.genieStrips, 320);
+        m_sCount = qBound(1, cfg.genieSCount, 5);
         m_stagger = qBound(0.0, cfg.genieStagger, 0.8);
         m_curve = qBound(0.3, cfg.genieCurve, 2.0);
         m_fadeFrom = qBound(0.5, cfg.genieFadeStart, 1.0);
@@ -395,93 +396,120 @@ protected:
 
         QPainter p(this);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.setRenderHint(QPainter::Antialiasing, true);
 
-        const qreal t = genieTimelineProgress(
-            m_frame, m_frames, m_reverse);
+        const qreal t = genieTimelineProgress(m_frame, m_frames, m_reverse);
 
-        auto smoothStep = [](qreal v) {
+        p.setOpacity(1.0);
+
+        const auto smoothStep = [](qreal v) {
             v = qBound<qreal>(0.0, v, 1.0);
             return v * v * (3.0 - 2.0 * v);
         };
-        auto lerp = [](qreal a, qreal b, qreal k) {
-            return a + (b - a) * k;
+        const auto dist = [](const QPointF &a, const QPointF &b) {
+            return std::hypot(a.x() - b.x(), a.y() - b.y());
         };
 
-        const qreal leftGap = m_dock.x();
-        const qreal rightGap = width() - m_dock.x();
-        const qreal topGap = m_dock.y();
-        const qreal bottomGap = height() - m_dock.y();
-        const bool sideDock =
-            qMin(leftGap, rightGap) < qMin(topGap, bottomGap);
-        const bool positive = sideDock
-            ? (m_dock.x() >= width() * 0.5)
-            : (m_dock.y() >= height() * 0.5);
+        const QRectF src(m_start);
+        const QPointF dock(m_dock);
 
-        const qreal axisStart = sideDock ? m_start.x() : m_start.y();
-        const qreal axisExtent = sideDock ? m_start.width() : m_start.height();
-        const qreal crossStart = sideDock ? m_start.y() : m_start.x();
-        const qreal crossExtent = sideDock ? m_start.height() : m_start.width();
-        const qreal dockAxis = sideDock ? m_dock.x() : m_dock.y();
-        const qreal dockCross = sideDock ? m_dock.y() : m_dock.x();
-        const qreal sourceCrossCenter = crossStart + crossExtent * 0.5;
+        // ---- Tip: nearest bottom corner to the dock ----
+        const QPointF bl = src.bottomLeft();
+        const QPointF br = src.bottomRight();
+        const QPointF tipSrc = (dist(bl, dock) < dist(br, dock)) ? bl : br;
 
-        const qreal fadeStart = qMin<qreal>(0.98, m_fadeFrom + 0.03);
-        const qreal opacity = t <= fadeStart
-            ? 1.0
-            : 1.0 - (t - fadeStart) / (1.0 - fadeStart);
-        p.setOpacity(qBound<qreal>(0.0, opacity, 1.0));
+        // ---- S-path vector from tipSrc to dock ----
+        const QPointF delta = dock - tipSrc;
+        const qreal deltaLen = std::hypot(delta.x(), delta.y());
+        QPointF perp(0.0, 0.0);
+        if (deltaLen > 1.0)
+            perp = QPointF(-delta.y() / deltaLen, delta.x() / deltaLen);
+        const int sN = qMax(1, m_sCount);
+        const qreal sAmp = qMin<qreal>(deltaLen * 0.45, 180.0);
 
-        constexpr qreal minSize = 0.12;
+        // S-path position of the leading point at a given progress.
+        // The tip moves slower in the middle (where the S-wave is
+        // largest) so the wiggle is visible. Formula: u = x + k*sin(2πx)
+        // with k=0.12 — full speed at the ends, ~76% speed at the
+        // midpoint.
+        const auto sPathAt = [&](qreal progress) -> QPointF {
+            const qreal u = qBound<qreal>(0.0, progress, 1.0);
+            const qreal env = std::sin(M_PI * u);
+            const qreal osc = std::sin(2.0 * M_PI * sN * u);
+            return tipSrc + delta * u + perp * (sAmp * env * osc);
+        };
+        const QPointF leadNow = sPathAt(t);
 
-        for (int i = 0; i < m_strips; ++i) {
-            const qreal f0 = qreal(i) / m_strips;
-            const qreal f1 = qreal(i + 1) / m_strips;
-            const qreal fm = (f0 + f1) * 0.5;
+        // ---- Per-point collapse ----
+        // v = 0 top, v = 1 bottom.
+        // Bottom edge "eats" first: pixels near v=1 finish moving by
+        // t≈0.4. Middle by t≈0.7. Top edge finishes by t=1.0.
+        // Every pixel's destination is `leadNow` — the moving tip on
+        // the S-path. So at every moment, the collapsed portion of the
+        // window sits at the lead point, and the un-collapsed portion
+        // is still at its original position, flowing into it.
+        // Every strip collapses toward the moving lead point over
+        // the FULL animation. Bottom edge (v=1) starts at t=0,
+        // top edge (v=0) starts at t=TOP_DELAY, both arrive at the
+        // lead point exactly at t=1. Result: the whole window stays
+        // recognisable longer and only converges to a point at the
+        // dock — no more "collapse mid-desktop".
+        constexpr qreal TOP_DELAY = 0.5;
+        const auto destForPoint = [&](const QPointF &sp) -> QPointF {
+            const qreal v = qBound<qreal>(
+                0.0,
+                (sp.y() - src.top()) / qMax<qreal>(1.0, src.height()),
+                1.0);
+            const qreal localStart = (1.0 - v) * TOP_DELAY;
+            const qreal span = qMax<qreal>(0.001, 1.0 - localStart);
+            const qreal u = smoothStep(qBound<qreal>(
+                0.0, (t - localStart) / span, 1.0));
+            return sp + (leadNow - sp) * u;
+        };
 
-            const qreal order = positive ? fm : (1.0 - fm);
-            const qreal delay = (1.0 - order) * m_stagger;
-            const qreal localT = qBound<qreal>(
-                0.0, (t - delay) / (1.0 - delay), 1.0);
-            const qreal eased = smoothStep(localT);
-            const qreal easedCross = std::pow(eased, m_curve);
+        // ---- Warp pixmap in horizontal strips ----
+        constexpr int SEGS = 24;
+        const qreal segSrcH = src.height() / SEGS;
+        const qreal segPixH = m_pix.height() / qreal(SEGS);
+        const qreal segW    = m_pix.width();
 
-            const qreal srcAxisCenter = axisStart + fm * axisExtent;
-            const qreal srcAxisSize = (f1 - f0) * axisExtent;
-            const qreal dstAxisCenter = lerp(srcAxisCenter, dockAxis, eased);
-            const qreal dstAxisSize = lerp(srcAxisSize, minSize, eased);
-            const qreal dstCrossCenter =
-                lerp(sourceCrossCenter, dockCross, eased);
-            const qreal dstCrossSize =
-                lerp(crossExtent, minSize, easedCross);
+        for (int i = 0; i < SEGS; ++i) {
+            const qreal y0 = src.top() + i * segSrcH;
+            const qreal y1 = y0 + segSrcH;
 
-            // Overlap must scale with strip size — a fixed 1px leaves
-            // visible seams when bands are compressed near the dock.
-            const qreal overlap = qMax<qreal>(2.5, dstAxisSize * 0.35);
+            const QPointF dtl = destForPoint(QPointF(src.left(),  y0));
+            const QPointF dtr = destForPoint(QPointF(src.right(), y0));
+            const QPointF dbr = destForPoint(QPointF(src.right(), y1));
+            const QPointF dbl = destForPoint(QPointF(src.left(),  y1));
 
-            QRectF dst;
-            if (sideDock) {
-                dst = QRectF(
-                    dstAxisCenter - (dstAxisSize + overlap) * 0.5,
-                    dstCrossCenter - dstCrossSize * 0.5,
-                    dstAxisSize + overlap,
-                    dstCrossSize);
-            } else {
-                dst = QRectF(
-                    dstCrossCenter - dstCrossSize * 0.5,
-                    dstAxisCenter - (dstAxisSize + overlap) * 0.5,
-                    dstCrossSize,
-                    dstAxisSize + overlap);
-            }
+            // Skip degenerate quads (all four corners on top of each
+            // other) — quadToQuad can't invert them.
+            qreal maxD = 0.0;
+            const QPointF pts[4] = { dtl, dtr, dbr, dbl };
+            for (int a = 0; a < 4; ++a)
+                for (int b = a + 1; b < 4; ++b)
+                    maxD = qMax(maxD, dist(pts[a], pts[b]));
+            if (maxD < 0.4) continue;
 
-            QRectF src;
-            if (sideDock) {
-                src = QRectF(f0 * m_pix.width(), 0.0,
-                             (f1 - f0) * m_pix.width(), m_pix.height());
-            } else {
-                src = QRectF(0.0, f0 * m_pix.height(),
-                             m_pix.width(), (f1 - f0) * m_pix.height());
-            }
-            p.drawPixmap(dst, m_pix, src);
+            QPolygonF srcQuad;
+            srcQuad << QPointF(0, 0)
+                    << QPointF(segW, 0)
+                    << QPointF(segW, segSrcH)
+                    << QPointF(0, segSrcH);
+
+            QPolygonF dstQuad;
+            dstQuad << dtl << dtr << dbr << dbl;
+
+            QTransform xf;
+            if (!QTransform::quadToQuad(srcQuad, dstQuad, xf))
+                continue;
+
+            p.save();
+            p.setTransform(xf, false);
+            p.drawPixmap(0, 0, m_pix,
+                         0, int(i * segPixH),
+                         int(segW), int(segPixH));
+            p.restore();
         }
     }
 
@@ -505,6 +533,7 @@ private:
     int m_frame = 0;
     int m_frames = 30;
     int m_strips = 140;
+    int m_sCount = 1;
     qreal m_stagger = 0.35;
     qreal m_curve = 0.65;
     qreal m_fadeFrom = 0.95;
