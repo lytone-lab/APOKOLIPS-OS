@@ -4637,51 +4637,68 @@ private:
     void refreshPrintersPage() {
         if (m_printerList) {
             m_printerList->clear();
-            QProcess p;
-            p.start("lpstat", { "-p" });
-            p.waitForFinished(1000);
-            QString out = QString::fromUtf8(p.readAllStandardOutput());
+            auto *p = new QProcess(this);
+            QObject::connect(p,
+                QOverload<int, QProcess::ExitStatus>::of(
+                    &QProcess::finished),
+                [this, p](int, QProcess::ExitStatus) {
+                    QString out = QString::fromUtf8(
+                        p->readAllStandardOutput());
+                    p->deleteLater();
+                    if (!m_printerList) return;
 
-            QStringList lines = out.split('\n', Qt::SkipEmptyParts);
-            if (lines.isEmpty()) {
-                QListWidgetItem *it = new QListWidgetItem(
-                    "No printers configured");
-                it->setFlags(Qt::NoItemFlags);
-                it->setForeground(QColor(122, 120, 115));
-                m_printerList->addItem(it);
-            } else {
-                for (const QString &line : lines) {
-                    QString text = line.trimmed();
-                    // Format: "printer HP_LaserJet is idle. ..."
-                    QString name;
-                    if (text.startsWith("printer ")) {
-                        name = text.section(' ', 1, 1);
+                    QStringList lines =
+                        out.split('\n', Qt::SkipEmptyParts);
+                    if (lines.isEmpty()) {
+                        QListWidgetItem *it = new QListWidgetItem(
+                            "No printers configured");
+                        it->setFlags(Qt::NoItemFlags);
+                        it->setForeground(QColor(122, 120, 115));
+                        m_printerList->addItem(it);
+                    } else {
+                        for (const QString &line : lines) {
+                            QString text = line.trimmed();
+                            QString name;
+                            if (text.startsWith("printer ")) {
+                                name = text.section(' ', 1, 1);
+                            }
+                            QString label = text;
+                            if (label.length() > 90)
+                                label = label.left(87) + "…";
+                            QListWidgetItem *it =
+                                new QListWidgetItem(label);
+                            it->setData(Qt::UserRole, name);
+                            it->setForeground(QColor(240, 237, 232));
+                            m_printerList->addItem(it);
+                        }
                     }
-                    QString label = text;
-                    if (label.length() > 90)
-                        label = label.left(87) + "…";
-                    QListWidgetItem *it = new QListWidgetItem(label);
-                    it->setData(Qt::UserRole, name);
-                    it->setForeground(QColor(240, 237, 232));
-                    m_printerList->addItem(it);
-                }
-            }
+                });
+            p->start("lpstat", { "-p" });
         }
 
         if (m_printerDefault) {
-            QProcess p;
-            p.start("lpstat", { "-d" });
-            p.waitForFinished(700);
-            QString out = QString::fromUtf8(
-                p.readAllStandardOutput()).trimmed();
-            if (out.isEmpty() || out.contains("no system default"))
-                m_printerDefault->setText("No system default destination");
-            else {
-                QString name = out;
-                if (name.startsWith("system default destination: "))
-                    name = name.mid(28);
-                m_printerDefault->setText(name);
-            }
+            auto *p = new QProcess(this);
+            QObject::connect(p,
+                QOverload<int, QProcess::ExitStatus>::of(
+                    &QProcess::finished),
+                [this, p](int, QProcess::ExitStatus) {
+                    QString out = QString::fromUtf8(
+                        p->readAllStandardOutput()).trimmed();
+                    p->deleteLater();
+                    if (!m_printerDefault) return;
+                    if (out.isEmpty()
+                        || out.contains("no system default"))
+                        m_printerDefault->setText(
+                            "No system default destination");
+                    else {
+                        QString name = out;
+                        if (name.startsWith(
+                                "system default destination: "))
+                            name = name.mid(28);
+                        m_printerDefault->setText(name);
+                    }
+                });
+            p->start("lpstat", { "-d" });
         }
     }
 
@@ -5911,24 +5928,32 @@ private:
     void refreshBluetoothPage() {
         if (!m_btList) return;
         m_btList->clear();
-        QProcess q;
-        q.start("bluetoothctl", { "devices", "Paired" });
-        q.waitForFinished(1500);
-        QString out = QString::fromUtf8(q.readAllStandardOutput()).trimmed();
-        if (out.isEmpty()) {
-            QListWidgetItem *it = new QListWidgetItem("No paired devices");
-            it->setFlags(Qt::NoItemFlags);
-            it->setForeground(QColor(122, 120, 115));
-            m_btList->addItem(it);
-            return;
-        }
-        const QStringList lines = out.split('\n', Qt::SkipEmptyParts);
-        for (const QString &line : lines) {
-            QString name = line.section(' ', 2);
-            QString mac  = line.section(' ', 1, 1);
-            if (name.isEmpty()) name = mac;
-            m_btList->addItem(name + "   (" + mac + ")");
-        }
+        auto *q = new QProcess(this);
+        QObject::connect(q,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, q](int, QProcess::ExitStatus) {
+                QString out = QString::fromUtf8(
+                    q->readAllStandardOutput()).trimmed();
+                q->deleteLater();
+                if (!m_btList) return;
+                if (out.isEmpty()) {
+                    QListWidgetItem *it = new QListWidgetItem(
+                        "No paired devices");
+                    it->setFlags(Qt::NoItemFlags);
+                    it->setForeground(QColor(122, 120, 115));
+                    m_btList->addItem(it);
+                    return;
+                }
+                const QStringList lines =
+                    out.split('\n', Qt::SkipEmptyParts);
+                for (const QString &line : lines) {
+                    QString name = line.section(' ', 2);
+                    QString mac  = line.section(' ', 1, 1);
+                    if (name.isEmpty()) name = mac;
+                    m_btList->addItem(name + "   (" + mac + ")");
+                }
+            });
+        q->start("bluetoothctl", { "devices", "Paired" });
     }
 
     QWidget *makeWiFiPage() {
@@ -6221,69 +6246,95 @@ private:
         if (!m_soundList) return;
         m_soundList->clear();
 
-        QProcess p;
-        p.start("wpctl", { "status" });
-        p.waitForFinished(500);
-        QString out = QString::fromUtf8(p.readAllStandardOutput());
+        auto *p = new QProcess(this);
+        QObject::connect(p,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, p](int, QProcess::ExitStatus) {
+                QString out = QString::fromUtf8(
+                    p->readAllStandardOutput());
+                p->deleteLater();
+                if (!m_soundList) return;
 
-        // Parse "Sinks:" and "Sources:" sections for device lines
-        QStringList lines = out.split('\n');
-        bool inSinks = false;
-        for (const QString &line : lines) {
-            QString trimmed = line.trimmed();
-            if (trimmed.startsWith("Sinks:")) { inSinks = true; continue; }
-            if (trimmed.startsWith("Sources:")) { inSinks = false; continue; }
-            if (!inSinks) continue;
-            // Matches lines like: "48. Built-in Audio [alsa]"
-            if (trimmed.contains('.')) {
-                QString name = trimmed.section('.', 1).trimmed();
-                name.remove(QRegularExpression("\\[[^]]*\\]"));
-                name = name.trimmed();
-                if (name.isEmpty()) continue;
-                QListWidgetItem *it = new QListWidgetItem("  " + name);
-                m_soundList->addItem(it);
-            }
-        }
-        if (m_soundList->count() == 0) {
-            m_soundList->addItem("  (No devices reported)");
-        }
+                QStringList lines = out.split('\n');
+                bool inSinks = false;
+                for (const QString &line : lines) {
+                    QString trimmed = line.trimmed();
+                    if (trimmed.startsWith("Sinks:")) {
+                        inSinks = true; continue;
+                    }
+                    if (trimmed.startsWith("Sources:")) {
+                        inSinks = false; continue;
+                    }
+                    if (!inSinks) continue;
+                    if (trimmed.contains('.')) {
+                        QString name =
+                            trimmed.section('.', 1).trimmed();
+                        name.remove(QRegularExpression(
+                            "\\[[^]]*\\]"));
+                        name = name.trimmed();
+                        if (name.isEmpty()) continue;
+                        QListWidgetItem *it =
+                            new QListWidgetItem("  " + name);
+                        m_soundList->addItem(it);
+                    }
+                }
+                if (m_soundList->count() == 0) {
+                    m_soundList->addItem("  (No devices reported)");
+                }
+            });
+        p->start("wpctl", { "status" });
     }
 
     void refreshDisplayPage() {
         if (!m_displayInfo || !m_resList) return;
 
-        QProcess p;
-        p.start("swaymsg", { "-t", "get_outputs", "-r" });
-        p.waitForFinished(500);
-        QJsonDocument doc = QJsonDocument::fromJson(p.readAllStandardOutput());
-        if (!doc.isArray()) {
-            m_displayInfo->setText("(Cannot query display)");
-            return;
-        }
+        auto *p = new QProcess(this);
+        QObject::connect(p,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, p](int, QProcess::ExitStatus) {
+                QJsonDocument doc = QJsonDocument::fromJson(
+                    p->readAllStandardOutput());
+                p->deleteLater();
+                if (!m_displayInfo || !m_resList) return;
 
-        m_resList->clear();
-        for (const QJsonValue &v : doc.array()) {
-            QJsonObject o = v.toObject();
-            if (!o.value("active").toBool()) continue;
-            QString name = o.value("name").toString();
-            QJsonObject cur = o.value("current_mode").toObject();
-            int curW = cur.value("width").toInt();
-            int curH = cur.value("height").toInt();
-            m_displayInfo->setText(QString("%1 — %2×%3").arg(name).arg(curW).arg(curH));
+                if (!doc.isArray()) {
+                    m_displayInfo->setText("(Cannot query display)");
+                    return;
+                }
 
-            for (const QJsonValue &mv : o.value("modes").toArray()) {
-                QJsonObject m = mv.toObject();
-                int w = m.value("width").toInt();
-                int h = m.value("height").toInt();
-                int hz = int(m.value("refresh").toDouble() + 0.5);
-                QString line = QString("  %1×%2  (%3 Hz)").arg(w).arg(h).arg(hz);
-                QListWidgetItem *it = new QListWidgetItem(line);
-                it->setData(Qt::UserRole, QString("%1x%2@%3Hz").arg(w).arg(h).arg(hz));
-                it->setData(Qt::UserRole + 1, name);
-                if (w == curW && h == curH) it->setSelected(true);
-                m_resList->addItem(it);
-            }
-        }
+                m_resList->clear();
+                for (const QJsonValue &v : doc.array()) {
+                    QJsonObject o = v.toObject();
+                    if (!o.value("active").toBool()) continue;
+                    QString name = o.value("name").toString();
+                    QJsonObject cur =
+                        o.value("current_mode").toObject();
+                    int curW = cur.value("width").toInt();
+                    int curH = cur.value("height").toInt();
+                    m_displayInfo->setText(
+                        QString("%1 — %2×%3")
+                            .arg(name).arg(curW).arg(curH));
+
+                    for (const QJsonValue &mv :
+                         o.value("modes").toArray()) {
+                        QJsonObject m = mv.toObject();
+                        int w = m.value("width").toInt();
+                        int h = m.value("height").toInt();
+                        int hz = int(m.value("refresh").toDouble() + 0.5);
+                        QString line = QString("  %1×%2  (%3 Hz)")
+                            .arg(w).arg(h).arg(hz);
+                        QListWidgetItem *it =
+                            new QListWidgetItem(line);
+                        it->setData(Qt::UserRole,
+                            QString("%1x%2@%3Hz").arg(w).arg(h).arg(hz));
+                        it->setData(Qt::UserRole + 1, name);
+                        if (w == curW && h == curH)
+                            it->setSelected(true);
+                        m_resList->addItem(it);
+                    }
+                }
+            });
+        p->start("swaymsg", { "-t", "get_outputs", "-r" });
     }
 
     void refreshNetworkPage() {
