@@ -147,6 +147,15 @@ public:
                 "/usr/share/apokolips/wallpapers/mount-everest.jpg"
             }, "everest", "Mount Everest");
         }
+        if (id == "apocalypse") {
+            return new ImageWallpaper({
+                QDir::homePath() +
+                    "/apokolips-shell/assets/wallpapers/apocalypse.jpg",
+                "/home/lytone/apokolips-shell/assets/wallpapers/apocalypse.jpg",
+                "assets/wallpapers/apocalypse.jpg",
+                "/usr/share/apokolips/wallpapers/apocalypse.jpg"
+            }, "apocalypse", "Apocalypse");
+        }
         if (id == "gif") {
             QString p = loadGifPath();
             if (!p.isEmpty() && QFile::exists(p))

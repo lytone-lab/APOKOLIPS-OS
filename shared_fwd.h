@@ -12,6 +12,9 @@ static void  setShellWindowGeometry(QWidget *window,
                                     const QPoint &offset = QPoint(),
                                     bool centered = true);
 static QRect shellSafeArea();
+static QRect shellWindowRect(const QSize &preferred,
+                             const QPoint &offset,
+                             bool centered);
 static void  shellMinimizeFocusedWindow();
 static void  shellCloseViaGenie(QWidget *w);
 static void  shellRestoreWindow(QWidget *w,

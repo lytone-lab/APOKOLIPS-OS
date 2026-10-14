@@ -157,15 +157,6 @@ protected:
         w->setGeometry(target);
     }
 
-    // Log every resize so we can see oscillation in the journal.
-    // Remove this once green button is stable.
-    void resizeEvent(QResizeEvent *e) override
-    {
-        QWidget::resizeEvent(e);
-        qInfo() << "[shellapp-resize]" << objectName()
-                << e->oldSize() << "->" << e->size();
-    }
-
     void installStandardShortcuts()
     {
         auto add = [this](const QKeySequence &k,

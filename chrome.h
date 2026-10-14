@@ -2331,6 +2331,7 @@ public:
             { "aurora",     "Aurora"               },
             { "goldengate", "Golden Gate"          },
             { "everest",    "Mount Everest"        },
+            { "apocalypse", "Apocalypse"           },
             { "neonjinx",   "Neon Jinx"            },
             { "mob",        "Mob (dev)"            },
             { "vander",     "Vander Warwick (dev)" }
@@ -3435,6 +3436,7 @@ protected:
                     { "aurora",     "Aurora"               },
                     { "goldengate", "Golden Gate"          },
                     { "everest",    "Mount Everest"        },
+                    { "apocalypse", "Apocalypse"           },
                     { "neonjinx",   "Neon Jinx"            },
                     { "mob",        "Mob (dev)"            },
                     { "vander",     "Vander Warwick (dev)" }
