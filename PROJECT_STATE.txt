@@ -278,6 +278,26 @@ PENDING — Session C (Tier 3)
   [ ] Printers & Scanners (CUPS)
   [ ] Screensaver
 
+  [ ] True macOS fullscreen (green button, mode B)
+      Currently the green button = Windows-style maximize (fill the
+      safe area, keep dock + top bar visible). The plan is to add
+      real macOS fullscreen: green button takes over the entire
+      screen, hides the top bar and dock, gives the window everything.
+      Option+click = old maximize behaviour.
+
+      Work required:
+        - Shell hides top bar + dock on request from the focused app
+        - App covers full screen
+        - Exit reverses cleanly (no orphaned hidden shell elements)
+        - Genie/minimize animations must still work in fullscreen
+        - Gate via VisualConfig so it can be turned off
+
+      NOTE: mode A (what exists now) is broken — window flickers
+      between fullscreen and normal when the green button is clicked.
+      Fix the flicker BEFORE adding mode B.
+
+      Estimated: 1-2 sessions.
+
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
 ------------------------------------------------------------------------
