@@ -4918,15 +4918,19 @@ private:
         QGridLayout *g = new QGridLayout;
         g->setSpacing(10);
 
-        struct WP { const char *id; const char *name; const char *thumb; };
+        auto &wpCfg = VisualConfigManager::instance().cfg();
+        struct WP { const char *id; const char *name; bool dev; };
         const WP wps[] = {
-            { "ruby",       "Magnific",      "assets/wallpapers/magnific.jpg" },
-            { "starfield",  "Starfield",     nullptr },
-            { "aurora",     "Aurora",        nullptr },
-            { "goldengate", "Golden Gate",   "macos-golden-gate-dark.jpg" },
-            { "everest",    "Mount Everest", "assets/wallpapers/mount-everest.jpg" },
-            { "neonjinx",   "Neon Jinx",     nullptr },
-            { "gif",        "GIF…",          nullptr }
+            { "ruby",       "Magnific",       false },
+            { "starfield",  "Starfield",      false },
+            { "aurora",     "Aurora",         false },
+            { "goldengate", "Golden Gate",    false },
+            { "everest",    "Mount Everest",  false },
+            { "neonjinx",   "Neon Jinx",      false },
+            { "gif",        "GIF…",           false },
+            { "apocalypse", "Apocalypse",     true  },
+            { "mob",        "Mob",            true  },
+            { "vander",     "Vander Warwick", true  }
         };
         auto resolveThumb = [](const QString &rel) -> QString {
             if (rel.isEmpty()) return {};
@@ -4943,13 +4947,27 @@ private:
         };
         int col = 0, row = 0;
         for (const auto &wp : wps) {
+            // Dev wallpapers stay hidden until the user has picked
+            // one from the desktop right-click menu at least once.
+            if (wp.dev
+                && !wpCfg.discoveredWallpapers.contains(
+                       QString::fromUtf8(wp.id))) {
+                continue;
+            }
+
             QPushButton *btn = new QPushButton;
             btn->setCursor(Qt::PointingHandCursor);
             btn->setFixedHeight(46);
             btn->setProperty("wpId", wp.id);
 
-            QString thumb = resolveThumb(
-                QString::fromUtf8(wp.thumb ? wp.thumb : ""));
+            // Thumbnails live in assets/wallpapers/thumbs/<id>.jpg
+            QString thumbRel = QString("assets/wallpapers/thumbs/%1.jpg")
+                                   .arg(QString::fromUtf8(wp.id));
+            QString thumb = resolveThumb(thumbRel);
+            // Golden Gate's thumbnail is named goldengate.jpg
+            if (thumb.isEmpty() && QString(wp.id) == "goldengate")
+                thumb = resolveThumb(
+                    "assets/wallpapers/thumbs/goldengate.jpg");
 
             if (!thumb.isEmpty()) {
                 btn->setStyleSheet(QString(

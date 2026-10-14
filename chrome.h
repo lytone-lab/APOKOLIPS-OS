@@ -3256,6 +3256,17 @@ public:
             setWallpaper(nw);
             ThemeManager::instance().setTheme(nw->theme());
             WallpaperConfig::saveId(id);
+            // Discovering a dev wallpaper via this menu unlocks it
+            // permanently in Settings.
+            auto &cfg = VisualConfigManager::instance().cfg();
+            if (!cfg.discoveredWallpapers.contains(id)) {
+                VisualConfigManager::instance().setAndSave(
+                    [id](VisualConfig &c) {
+                        if (!c.discoveredWallpapers.contains(id))
+                            c.discoveredWallpapers.append(id);
+                    });
+                qInfo() << "[wallpaper] discovered:" << id;
+            }
         };
 
         m_tickTimer = new QTimer(this);

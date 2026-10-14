@@ -3935,6 +3935,39 @@ int main(int argc, char *argv[])
         return app.exec();
     }
 
+    if (argc >= 4 && QString(argv[1]) == "--gen-thumb") {
+        // One-shot: render a wallpaper into a small image and save.
+        // Used to build thumbnails for wallpapers that are drawn in
+        // code and have no source file (Starfield, Aurora).
+        QApplication app(argc, argv);
+        QString id   = QString::fromLocal8Bit(argv[2]);
+        QString path = QString::fromLocal8Bit(argv[3]);
+        Wallpaper *wp = WallpaperConfig::makeById(id);
+        if (!wp) return 1;
+        if (wp->animated()) {
+            // Let animated wallpapers advance a bit so the frame
+            // isn't the very first (often black) one.
+            QDateTime start = QDateTime::currentDateTime();
+            while (start.msecsTo(QDateTime::currentDateTime()) < 800) {
+                wp->tick();
+                QApplication::processEvents(
+                    QEventLoop::AllEvents, 16);
+            }
+        }
+        QImage img(400, 240, QImage::Format_ARGB32_Premultiplied);
+        img.fill(Qt::black);
+        QPainter p(&img);
+        wp->paint(p, QRect(0, 0, 400, 240));
+        p.end();
+        delete wp;
+        if (!img.save(path)) {
+            qWarning() << "[gen-thumb] save failed:" << path;
+            return 2;
+        }
+        qInfo() << "[gen-thumb] wrote" << path;
+        return 0;
+    }
+
     if (argc >= 2 && QString(argv[1]) == "--settings") {
         QApplication app(argc, argv);
         app.setApplicationName("Apokolips Settings");
