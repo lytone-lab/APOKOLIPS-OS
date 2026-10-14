@@ -93,6 +93,7 @@ struct VisualConfig {
     int     genieSCount       = 1;     // 1..5 S-wiggles on genie path
     QStringList discoveredWallpapers; // dev wallpapers user has found
     QString customWallpaperPath;      // user-picked image (absolute path)
+    QVariantMap upscaleDecisions;     // path -> "quick" | "sharp" | "skip"
     QVariantMap desktopIconPos;   // id -> {x, y}
     bool    launcherEnabled    = true;
     bool    spotlightEnabled   = true;
@@ -350,6 +351,11 @@ public:
         if (o.contains("customWallpaperPath"))
             m_cfg.customWallpaperPath =
                 o["customWallpaperPath"].toString();
+        if (o.contains("upscaleDecisions")
+            && o["upscaleDecisions"].isObject()) {
+            m_cfg.upscaleDecisions =
+                o["upscaleDecisions"].toObject().toVariantMap();
+        }
         m_cfg.genieSCount         = getI("genieSCount",
                                          m_cfg.genieSCount);
         if (o.contains("desktopIconPos")
@@ -588,6 +594,8 @@ public:
             discArr.append(id);
         o["discoveredWallpapers"] = discArr;
         o["customWallpaperPath"]  = m_cfg.customWallpaperPath;
+        o["upscaleDecisions"]     = QJsonObject::fromVariantMap(
+                                        m_cfg.upscaleDecisions);
         o["genieSCount"]         = m_cfg.genieSCount;
         o["desktopIconPos"]      = QJsonObject::fromVariantMap(
                                        m_cfg.desktopIconPos);

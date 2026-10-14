@@ -5042,6 +5042,72 @@ private:
                     if (dlg.exec() != QDialog::Accepted) return;
                     QString path = dlg.selectedFiles().value(0);
                     if (path.isEmpty()) return;
+
+                    // ---- Check image size. Small images look soft
+                    // when stretched to the screen. Offer to sharpen.
+                    QImage test(path);
+                    const int srcW = test.width();
+                    const int srcH = test.height();
+                    const int screenW = QApplication::primaryScreen()
+                        ? QApplication::primaryScreen()
+                              ->geometry().width()
+                        : 1920;
+
+                    if (srcW > 0 && srcW < 2560) {
+                        auto &cfg =
+                            VisualConfigManager::instance().cfg();
+                        QString prior = cfg.upscaleDecisions
+                                            .value(path).toString();
+
+                        if (prior.isEmpty()) {
+                            bool remember = false;
+                            int ch = SigilDialog::ask(this,
+                                "Make wallpaper sharper?",
+                                QString("This image is %1 \xC3\x97 %2. "
+                                        "It will look soft on your "
+                                        "%3-wide screen. Sharpen it?")
+                                    .arg(srcW).arg(srcH).arg(screenW),
+                                { "Quick (about 10 seconds)",
+                                  "Leave as-is" },
+                                "Don't ask again for this image",
+                                &remember);
+                            prior = (ch == 0) ? "quick" : "skip";
+                            if (remember) {
+                                QString p = path, d = prior;
+                                VisualConfigManager::instance()
+                                    .setAndSave([p, d](VisualConfig &c) {
+                                        c.upscaleDecisions[p] = d;
+                                    });
+                            }
+                        }
+
+                        if (prior == "quick") {
+                            QString cacheDir = QDir::homePath()
+                                + "/.cache/apokolips/wallpapers";
+                            QDir().mkpath(cacheDir);
+                            QString hash = QString::number(
+                                qHash(path), 16);
+                            QString cached = cacheDir + "/"
+                                + hash + ".jpg";
+                            if (!QFile::exists(cached)) {
+                                QImage img(path);
+                                if (!img.isNull()) {
+                                    QImage big = img.scaledToWidth(
+                                        3840,
+                                        Qt::SmoothTransformation);
+                                    if (big.save(cached, "JPEG", 92)) {
+                                        qInfo() << "[wallpaper] "
+                                                   "quick-upscaled to"
+                                                << big.width()
+                                                << "x" << big.height()
+                                                << "->" << cached;
+                                    }
+                                }
+                            }
+                            if (QFile::exists(cached)) path = cached;
+                        }
+                    }
+
                     VisualConfigManager::instance().setAndSave(
                         [path](VisualConfig &c) {
                             c.customWallpaperPath = path;
