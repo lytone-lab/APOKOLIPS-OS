@@ -92,6 +92,7 @@ struct VisualConfig {
     QString mymachGraphStyle   = "line";  // line | bar | area | radial
     int     genieSCount       = 1;     // 1..5 S-wiggles on genie path
     QStringList discoveredWallpapers; // dev wallpapers user has found
+    QString customWallpaperPath;      // user-picked image (absolute path)
     QVariantMap desktopIconPos;   // id -> {x, y}
     bool    launcherEnabled    = true;
     bool    spotlightEnabled   = true;
@@ -346,6 +347,9 @@ public:
             for (const auto &v : o["discoveredWallpapers"].toArray())
                 m_cfg.discoveredWallpapers.append(v.toString());
         }
+        if (o.contains("customWallpaperPath"))
+            m_cfg.customWallpaperPath =
+                o["customWallpaperPath"].toString();
         m_cfg.genieSCount         = getI("genieSCount",
                                          m_cfg.genieSCount);
         if (o.contains("desktopIconPos")
@@ -583,6 +587,7 @@ public:
         for (const QString &id : m_cfg.discoveredWallpapers)
             discArr.append(id);
         o["discoveredWallpapers"] = discArr;
+        o["customWallpaperPath"]  = m_cfg.customWallpaperPath;
         o["genieSCount"]         = m_cfg.genieSCount;
         o["desktopIconPos"]      = QJsonObject::fromVariantMap(
                                        m_cfg.desktopIconPos);

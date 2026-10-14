@@ -147,6 +147,13 @@ public:
                 "/usr/share/apokolips/wallpapers/mount-everest.jpg"
             }, "everest", "Mount Everest");
         }
+        if (id == "custom") {
+            QString path =
+                VisualConfigManager::instance().cfg().customWallpaperPath;
+            if (path.isEmpty() || !QFile::exists(path))
+                return new ImageWallpaper({}, "custom", "Custom");
+            return new ImageWallpaper({path}, "custom", "Custom");
+        }
         if (id == "apocalypse") {
             return new ImageWallpaper({
                 QDir::homePath() +
