@@ -7476,6 +7476,49 @@ private:
                         [on](VisualConfig &c) { c.cursorGlow = on; });
                 }));
 
+            // Trail style dropdown
+            {
+                QWidget *row = new QWidget;
+                QHBoxLayout *h = new QHBoxLayout(row);
+                h->setContentsMargins(0, 6, 0, 6);
+                h->setSpacing(14);
+
+                QVBoxLayout *left = new QVBoxLayout;
+                left->setContentsMargins(0, 0, 0, 0);
+                left->setSpacing(2);
+                QLabel *t = new QLabel("Trail style");
+                t->setStyleSheet(QString(
+                    "color: %1; font-size: 13px;"
+                    " background: transparent;")
+                    .arg(Sigil::textPrimary().name()));
+                QLabel *s = new QLabel(
+                    "Soft halo, or a sharp bright line through the trail");
+                s->setStyleSheet(QString(
+                    "color: %1; font-size: 11px;"
+                    " background: transparent;")
+                    .arg(Sigil::textDim().name()));
+                left->addWidget(t);
+                left->addWidget(s);
+                h->addLayout(left, 1);
+
+                QStringList opts = { "Glow", "Arrow" };
+                QStringList vals = { "glow", "arrow" };
+                int idx = vals.indexOf(vc.cursorGlowStyle);
+                if (idx < 0) idx = 0;
+
+                Sigil::Dropdown *dd = new Sigil::Dropdown(
+                    opts, idx, [vals](int i) {
+                        if (i < 0 || i >= vals.size()) return;
+                        QString v = vals[i];
+                        VisualConfigManager::instance().setAndSave(
+                            [v](VisualConfig &c) {
+                                c.cursorGlowStyle = v; });
+                    });
+                dd->setMinimumWidth(160);
+                h->addWidget(dd);
+                cv->addWidget(row);
+            }
+
             auto addGlowSlider = [&](const QString &title,
                                      int lo, int hi, int val,
                                      std::function<void(int)> onCh) {
@@ -7524,7 +7567,7 @@ private:
                 cv->addWidget(row);
             };
 
-            addGlowSlider("Brightness", 20, 200,
+            addGlowSlider("Brightness", 20, 255,
                           vc.cursorGlowBrightness, [](int x) {
                 VisualConfigManager::instance().setAndSave(
                     [x](VisualConfig &c) {
@@ -7536,11 +7579,23 @@ private:
                     [x](VisualConfig &c) {
                         c.cursorGlowRadius = x; });
             });
-            addGlowSlider("Trail length", 0, 16,
+            addGlowSlider("Trail length", 0, 24,
                           vc.cursorGlowTrail, [](int x) {
                 VisualConfigManager::instance().setAndSave(
                     [x](VisualConfig &c) {
                         c.cursorGlowTrail = x; });
+            });
+            addGlowSlider("Softness", 0, 100,
+                          vc.cursorGlowSoftness, [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) {
+                        c.cursorGlowSoftness = x; });
+            });
+            addGlowSlider("Fade", 0, 100,
+                          vc.cursorGlowFade, [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) {
+                        c.cursorGlowFade = x; });
             });
 
             v->addWidget(c);

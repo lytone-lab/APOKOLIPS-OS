@@ -3343,57 +3343,136 @@ public:
         QObject::connect(m_timer, &QTimer::timeout,
                          this, [this]() { tick(); });
         m_timer->start();
-    }
-
-    void setEnabled(bool on) {
-        m_enabled = on;
-        if (on) { show(); raise(); m_timer->start(); }
-        else    { hide(); m_timer->stop(); m_trail.clear(); }
+        show();
+        raise();
     }
 
 protected:
     void paintEvent(QPaintEvent *) override {
-        if (!m_enabled || m_trail.isEmpty()) return;
+        if (m_trail.isEmpty()) return;
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        if (!cfg.cursorGlow) return;
+
+        const int bright   = qBound(20, cfg.cursorGlowBrightness, 255);
+        const int coreRad  = qBound(20, cfg.cursorGlowRadius, 100);
+        const int softness = qBound(0,  cfg.cursorGlowSoftness, 100);
+        const int fadePct  = qBound(0,  cfg.cursorGlowFade, 100);
+
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
+        p.setRenderHint(QPainter::SmoothPixmapTransform);
         const QColor base = Sigil::accent();
 
-        // Trail — oldest first, faintest and smallest.
-        for (int i = m_trail.size() - 1; i >= 1; --i) {
-            const qreal fade = 1.0 - qreal(i) / qreal(m_trail.size());
-            const int rad = int(52 * fade);
-            if (rad <= 0) continue;
-            QColor c = base;
-            c.setAlpha(int(50 * fade));
-            QRadialGradient g(QPointF(m_trail[i]), rad);
-            g.setColorAt(0.0, c);
-            QColor c2 = c; c2.setAlpha(0);
-            g.setColorAt(1.0, c2);
-            p.fillRect(rect(), g);
+        const int n = m_trail.size();
+
+        // Smooth curve through the trail — quad-to midpoints.
+        QPainterPath path;
+        path.moveTo(m_trail[0]);
+        if (n >= 3) {
+            for (int i = 1; i < n - 1; ++i) {
+                qreal mx = (m_trail[i].x() + m_trail[i + 1].x()) * 0.5;
+                qreal my = (m_trail[i].y() + m_trail[i + 1].y()) * 0.5;
+                path.quadTo(QPointF(m_trail[i]), QPointF(mx, my));
+            }
+            path.lineTo(m_trail[n - 1]);
+        } else if (n == 2) {
+            path.lineTo(m_trail[1]);
         }
 
-        // Core — brightest, at the pointer.
-        const QPoint cur = m_trail.first();
-        QColor core = base;
-        core.setAlpha(95);
-        QRadialGradient g2(QPointF(cur), 42);
-        g2.setColorAt(0.0, core);
-        QColor core2 = core; core2.setAlpha(0);
-        g2.setColorAt(1.0, core2);
-        p.fillRect(rect(), g2);
+        // Braces avoid the most-vexing-parse.
+        QLinearGradient grad{QPointF(m_trail[0]),
+                             QPointF(m_trail[n - 1])};
+
+        QColor head = base.lighter(150);
+        head.setAlpha(bright);
+
+        QColor mid = base;
+        int midAlpha = int(bright * (1.0 - fadePct / 140.0));
+        if (midAlpha < 0) midAlpha = 0;
+        mid.setAlpha(midAlpha);
+
+        QColor tail = base;
+        tail.setAlpha(0);
+
+        grad.setColorAt(0.0, head);
+        double midPos = 0.9 - fadePct * 0.008;
+        midPos = qBound(0.05, midPos, 0.95);
+        grad.setColorAt(midPos, mid);
+        grad.setColorAt(1.0, tail);
+
+        if (softness > 0 && n >= 2) {
+            QColor softC = base;
+            softC.setAlpha(int(bright * (0.15 + softness * 0.003)));
+            QLinearGradient softGrad{QPointF(m_trail[0]),
+                                     QPointF(m_trail[n - 1])};
+            softGrad.setColorAt(0.0, softC);
+            QColor softC2 = softC; softC2.setAlpha(0);
+            softGrad.setColorAt(1.0, softC2);
+
+            qreal glowW = coreRad * (1.2 + softness * 0.02);
+            QPen glowPen(QBrush(softGrad), glowW, Qt::SolidLine,
+                         Qt::RoundCap, Qt::RoundJoin);
+            p.setPen(glowPen);
+            p.drawPath(path);
+        }
+
+        if (cfg.cursorGlowStyle == "arrow") {
+            const qreal lineW = coreRad * 0.35;
+            QPen pen(QBrush(grad), lineW, Qt::SolidLine,
+                     Qt::RoundCap, Qt::RoundJoin);
+            p.setPen(pen);
+            p.drawPath(path);
+
+            QColor headCore = base.lighter(190);
+            headCore.setAlpha(qMin(255, bright + 60));
+            p.setPen(Qt::NoPen);
+            p.setBrush(headCore);
+            const qreal hRad = lineW * 1.3;
+            p.drawEllipse(QPointF(m_trail[0]), hRad, hRad);
+        } else {
+            const qreal lineW = coreRad * 0.85;
+            QPen pen(QBrush(grad), lineW, Qt::SolidLine,
+                     Qt::RoundCap, Qt::RoundJoin);
+            p.setPen(pen);
+            p.drawPath(path);
+
+            QColor headCore = base.lighter(140);
+            headCore.setAlpha(bright);
+            QRadialGradient core(QPointF(m_trail[0]), coreRad * 0.8);
+            core.setColorAt(0.0, headCore);
+            QColor core2 = headCore; core2.setAlpha(0);
+            core.setColorAt(1.0, core2);
+            p.setPen(Qt::NoPen);
+            p.fillRect(rect(), core);
+        }
     }
 
 private:
     void tick() {
-        if (!m_enabled || !parentWidget()) return;
+        if (!parentWidget()) return;
+        // Read the current setting each tick so toggles apply live.
+        const bool on =
+            VisualConfigManager::instance().cfg().cursorGlow;
+        if (!on) {
+            if (isVisible()) { hide(); m_trail.clear(); }
+            return;
+        }
+        if (!isVisible()) show();
         if (size() != parentWidget()->size())
             setGeometry(0, 0, parentWidget()->width(),
                         parentWidget()->height());
+
+        // Trim the trail to the configured length.
+        const int maxTrail = qMax(0,
+            VisualConfigManager::instance().cfg().cursorGlowTrail);
+        while (m_trail.size() > maxTrail + 1)
+            m_trail.removeLast();
+
         const QPoint global = QCursor::pos();
         const QPoint local  = parentWidget()->mapFromGlobal(global);
         if (!m_trail.isEmpty() && m_trail.first() == local) return;
         m_trail.prepend(local);
-        while (m_trail.size() > 8) m_trail.removeLast();
+        while (m_trail.size() > maxTrail + 1) m_trail.removeLast();
         update();
     }
 

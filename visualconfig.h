@@ -17,6 +17,12 @@ struct VisualConfig {
     bool   dndEnabled         = false;
     bool   wallpaperParallax  = true;
     bool   cursorGlow         = true;
+    int    cursorGlowBrightness = 95;   // 20..200
+    int    cursorGlowRadius     = 42;   // 20..100
+    int    cursorGlowTrail      = 8;    // 0..16
+    QString cursorGlowStyle    = "glow"; // glow | arrow
+    int    cursorGlowSoftness   = 40;   // 0..100  extra bloom around line
+    int    cursorGlowFade       = 50;   // 0..100  0=no fade, 100=fast tail fade
     QString sigilAccent      = "oxblood";
     int    notificationBannerMs = 6000;
     int    dockPosition       = 0;   // 0=Bottom, 1=Left, 2=Right
@@ -412,6 +418,24 @@ public:
                                    : m_cfg.dndEnabled;
         if (o.contains("cursorGlow"))
             m_cfg.cursorGlow = o["cursorGlow"].toBool(true);
+        if (o.contains("cursorGlowBrightness"))
+            m_cfg.cursorGlowBrightness =
+                o["cursorGlowBrightness"].toInt(95);
+        if (o.contains("cursorGlowRadius"))
+            m_cfg.cursorGlowRadius =
+                o["cursorGlowRadius"].toInt(42);
+        if (o.contains("cursorGlowTrail"))
+            m_cfg.cursorGlowTrail =
+                o["cursorGlowTrail"].toInt(8);
+        if (o.contains("cursorGlowStyle"))
+            m_cfg.cursorGlowStyle =
+                o["cursorGlowStyle"].toString();
+        if (o.contains("cursorGlowSoftness"))
+            m_cfg.cursorGlowSoftness =
+                o["cursorGlowSoftness"].toInt(40);
+        if (o.contains("cursorGlowFade"))
+            m_cfg.cursorGlowFade =
+                o["cursorGlowFade"].toInt(50);
         if (o.contains("wallpaperParallax"))
             m_cfg.wallpaperParallax = o["wallpaperParallax"].toBool(true);
         if (o.contains("sigilAccent"))
@@ -636,7 +660,11 @@ public:
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["sigilAccent"]        = m_cfg.sigilAccent;
         o["wallpaperParallax"]  = m_cfg.wallpaperParallax;
-        o["cursorGlow"]         = m_cfg.cursorGlow;
+        o["cursorGlow"]           = m_cfg.cursorGlow;
+        o["cursorGlowBrightness"] = m_cfg.cursorGlowBrightness;
+        o["cursorGlowRadius"]     = m_cfg.cursorGlowRadius;
+        o["cursorGlowTrail"]      = m_cfg.cursorGlowTrail;
+        o["cursorGlowStyle"]      = m_cfg.cursorGlowStyle;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
         o["clock24Hour"]         = m_cfg.clock24Hour;
