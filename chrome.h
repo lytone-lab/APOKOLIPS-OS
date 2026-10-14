@@ -3330,15 +3330,12 @@ public:
         // focused window's offset from screen center. Only polls
         // when the feature is enabled in config. 25 Hz poll,
         // 60 Hz smoothing, max 12 px shift.
-        qInfo() << "[parallax] ctor, cfg flag ="
-                << VisualConfigManager::instance().cfg().wallpaperParallax;
         if (VisualConfigManager::instance().cfg().wallpaperParallax) {
             m_parallaxPollTimer = new QTimer(this);
             m_parallaxPollTimer->setInterval(250);
             QObject::connect(m_parallaxPollTimer, &QTimer::timeout,
                              this, [this]() { pollParallax(); });
             m_parallaxPollTimer->start();
-            qInfo() << "[parallax] timer armed";
 
             m_parallaxSmoothTimer = new QTimer(this);
             m_parallaxSmoothTimer->setInterval(16);
@@ -3692,9 +3689,7 @@ protected:
                     break;
                 }
             }
-            if (!s_swaySock.isEmpty())
-                qInfo() << "[parallax] SWAYSOCK=" << s_swaySock;
-            else
+            if (s_swaySock.isEmpty())
                 qWarning() << "[parallax] no sway socket found";
         }
 
@@ -3713,37 +3708,24 @@ protected:
                 p->deleteLater();
                 m_parallaxBusy = false;
 
-                static int s_verbose = 0;
-                ++s_verbose;
-                if (s_verbose % 10 == 1)
-                    qInfo() << "[parallax] poll"
-                            << "exit=" << code
-                            << "st=" << int(st)
-                            << "out=" << raw.size()
-                            << "err=" << err.size()
-                            << QString::fromUtf8(err.left(80));
-
+                if (code != 0) {
+                    static int s_err = 0;
+                    if (++s_err % 20 == 1)
+                        qWarning() << "[parallax] swaymsg err"
+                                   << QString::fromUtf8(err.left(80));
+                }
                 QJsonDocument doc = QJsonDocument::fromJson(raw);
                 if (!doc.isObject()) return;
 
                 QRect wr;
                 if (!findFocusedRect(doc.object(), wr)) {
-                    static int s_nof = 0;
-                    if (++s_nof % 20 == 1)
-                        qInfo() << "[parallax] no focused window";
                     m_parallaxTargetX = 0.0;
                     m_parallaxTargetY = 0.0;
                     return;
                 }
                 // Ignore tiny popups and anything covering the
                 // whole screen (the shell root, maximized apps).
-                if (wr.width()  < 200 || wr.height() < 200) {
-                    static int s_rs = 0;
-                    if (++s_rs % 20 == 1)
-                        qInfo() << "[parallax] focused too small:"
-                                << wr;
-                    return;
-                }
+                if (wr.width()  < 200 || wr.height() < 200) return;
                 if (wr.width() >= width() - 10) {
                     m_parallaxTargetX = 0.0;
                     m_parallaxTargetY = 0.0;
@@ -3757,9 +3739,6 @@ protected:
                 const qreal MAX = 60.0;    // px ceiling — was 12, too subtle
                 m_parallaxTargetX = -dx * MAX;
                 m_parallaxTargetY = -dy * MAX;
-                qInfo() << "[parallax] focused rect=" << wr
-                        << "target=(" << m_parallaxTargetX
-                        << "," << m_parallaxTargetY << ")";
             });
         p->start("swaymsg", { "-t", "get_tree", "-r" });
     }
