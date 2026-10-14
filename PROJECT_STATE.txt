@@ -278,35 +278,6 @@ PENDING — Session C (Tier 3)
   [ ] Printers & Scanners (CUPS)
   [ ] Screensaver
 
-  [ ] True macOS fullscreen (green button, mode B)
-      Currently the green button = Windows-style maximize (fill the
-      safe area, keep dock + top bar visible). The plan is to add
-      real macOS fullscreen: green button takes over the entire
-      screen, hides the top bar and dock, gives the window everything.
-      Option+click = old maximize behaviour.
-
-      Work required:
-        - Shell hides top bar + dock on request from the focused app
-        - App covers full screen
-        - Exit reverses cleanly (no orphaned hidden shell elements)
-        - Genie/minimize animations must still work in fullscreen
-        - Gate via VisualConfig so it can be turned off
-
-      NOTE: mode A (what exists now) is broken — window flickers
-      between fullscreen and normal when the green button is clicked.
-      Fix the flicker BEFORE adding mode B.
-
-      Estimated: 1-2 sessions.
-
-  [ ] True macOS fullscreen (green button)
-      Currently green button fills the safe area (top bar + dock
-      stay visible). Plan is to add real macOS fullscreen: green
-      takes over the whole screen, hides the top bar and dock,
-      gives the window everything. Option+click = current behaviour.
-      Work: shell hides chrome on request from focused app; exit
-      reverses cleanly; genie/minimize must still work in fullscreen.
-      Estimated: 1-2 sessions.
-
   [ ] Replace remaining QMessageBox calls with SigilDialog
       ~60 raw QMessageBox sites across the codebase. Each should
       use SigilDialog::ask() so every dialog matches the shell's
@@ -326,13 +297,6 @@ PENDING — Session C (Tier 3)
       so the shell's right edge feels like one system.
       Estimated: 2 sessions (paired).
 
-  [ ] True macOS fullscreen (green button)
-      Currently green button fills the safe area (top bar + dock
-      stay visible). Plan is to add real macOS fullscreen: green
-      takes over the whole screen, hides the top bar and dock,
-      gives the window everything. Option+click = current behaviour.
-      Estimated: 1-2 sessions.
-
   [ ] Replace remaining QMessageBox calls with SigilDialog
       ~60 raw QMessageBox sites across the codebase. Each should
       use SigilDialog::ask() so every dialog matches the shell's
@@ -349,6 +313,71 @@ PENDING — Session C (Tier 3)
       panel. Redesign to match the widget cards so the shell's
       right edge feels like one system.
       Estimated: 2 sessions (paired).
+
+  [ ] macOS fullscreen V2 — auto-hide chrome reveal
+      While a window is fullscreen, moving the pointer to the
+      top edge slides the top bar down; bottom edge brings the
+      dock back. Move away — both hide again. Needs the shell
+      to know when an app is fullscreen (marker file / IPC) and
+      a peek-mode animation on both edges.
+      Estimated: 1 session.
+
+  [x] True macOS fullscreen (green button) — DONE 2026-10-14
+      Green button toggles fullscreen via Qt's showFullScreen()
+      / showNormal(). Wayland hides the top bar and dock natively
+      because the app surface covers the whole screen.
+
+  [ ] macOS fullscreen V2 — auto-hide chrome reveal
+      While a window is fullscreen, moving the pointer to the
+      top edge slides the top bar down; bottom edge brings the
+      dock back. Move away — both hide again. Needs the shell
+      to know when an app is fullscreen (marker file / IPC) and
+      a peek-mode animation on both edges.
+      Estimated: 1 session.
+
+  [ ] Window glass V2 — real glass (real backdrop, not wallpaper)
+      Currently the app header strip shows a *blurred wallpaper*
+      behind the traffic lights. Real macOS glass blurs what is
+      actually behind the window — other windows, desktop icons,
+      the dock. On Wayland apps cannot read pixels behind them
+      directly, so the only path is:
+        1. Shell captures the screen (grim) around the window's
+           rect when the window moves, resizes, or a window
+           beneath it changes.
+        2. Shell writes the cropped region to a shared file or
+           socket keyed by the app's sway conId.
+        3. App reads the file, blurs it, paints it as the header
+           backdrop.
+      Cost: IPC channel, capture scheduling, cache invalidation.
+      Substantial but genuinely new capability — the shell
+      becoming a "glass server" for apps. Users notice this.
+      Estimated: 2-3 sessions.
+
+  [ ] Dock window previews on hover
+      Hover a dock icon with multiple windows open → thumbnail
+      popup above the dock showing each window's actual content.
+      Click a thumbnail to focus that window.
+
+      Behaviour (Windows 11 / Aero-Peek flavoured):
+        - Hover the dock icon → small preview panel slides up
+        - Each open window of that app becomes a card with:
+            * a live thumbnail (grim -g <window rect>)
+            * the window title truncated to 40 chars
+            * a close button (X) per window
+        - Move off the dock icon → panel slides away
+        - Click a thumbnail → swaymsg focus that con, panel closes
+
+      Implementation notes:
+        - Poll or listen: `swaymsg -t get_tree` for windows per
+          app_id. The shell already does this for the running dot.
+        - Screenshot each window: `grim -g "x,y wxh" /tmp/prev.png`
+          Throttle to 1 Hz, or on demand when the hover opens.
+        - Widget: new class DockPreviewPopup, child of the shell
+          root, positioned above the dock icon. Same visual
+          language as the notification cards (glassy, rounded).
+        - Auto-timeout the preview after 5s idle.
+
+      Estimated: 1 session.
 
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
