@@ -14,6 +14,7 @@
 #include <QShortcut>
 #include <QHash>
 #include <QCoreApplication>
+#include <QPointer>
 
 class ShellApp : public QWidget {
 public:
@@ -121,14 +122,48 @@ protected:
                          [this, preferred]() {
             static QHash<ShellApp *, bool> s_zoomed;
             bool z = s_zoomed.value(this, false);
-            if (z) setShellWindowGeometry(this, preferred);
-            else   setGeometry(shellSafeArea());
+            QRect target = z
+                ? shellWindowRect(preferred, QPoint(), true)
+                : shellSafeArea();
+            qInfo() << "[green] clicked zoomed=" << z
+                    << "current=" << geometry()
+                    << "target=" << target;
+            snapShellResize(this, target);
             s_zoomed[this] = !z;
         });
 
         if (titleOut)  *titleOut  = titleLabel;
         if (maxBtnOut) *maxBtnOut = maxBtn;
         return hdr;
+    }
+
+    // Snap the shell window to a target rect.
+    //
+    // NOTE: we used to animate this via QPropertyAnimation on the
+    // "geometry" property. That does not work on Wayland — each
+    // animation frame is a resize *request* to the compositor, and
+    // the compositor answers with a configure event. At 60 fps the
+    // two sides talk over each other and the window visibly
+    // oscillates. Direct setGeometry is one request; the compositor
+    // ack's it once and we are done. Smooth motion for this case
+    // requires an overlay-based approach (grab the pixmap, animate
+    // the pixmap, snap the real window) — tracked separately.
+    void snapShellResize(QWidget *w, const QRect &target)
+    {
+        if (!w) return;
+        if (w->layout()) {
+            w->layout()->setSizeConstraint(QLayout::SetNoConstraint);
+        }
+        w->setGeometry(target);
+    }
+
+    // Log every resize so we can see oscillation in the journal.
+    // Remove this once green button is stable.
+    void resizeEvent(QResizeEvent *e) override
+    {
+        QWidget::resizeEvent(e);
+        qInfo() << "[shellapp-resize]" << objectName()
+                << e->oldSize() << "->" << e->size();
     }
 
     void installStandardShortcuts()
