@@ -69,6 +69,9 @@
 #include <QEventLoop>
 #include <QDialog>
 #include <QCheckBox>
+#include <QGraphicsOpacityEffect>
+#include <QPropertyAnimation>
+#include <QEasingCurve>
 #include <QWidgetAction>
 #include <QDate>
 #include <QCalendarWidget>

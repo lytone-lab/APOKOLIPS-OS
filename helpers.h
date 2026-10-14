@@ -532,6 +532,41 @@ private:
     }
 };
 
+// ----------------------------------------------------------------
+// Menu fade-in — install one filter per process; every QMenu
+// fades in from transparent over 120 ms. No per-menu edits.
+// ----------------------------------------------------------------
+class MenuFadeFilter : public QObject {
+public:
+    using QObject::QObject;
+protected:
+    bool eventFilter(QObject *obj, QEvent *e) override {
+        if (e->type() == QEvent::Show) {
+            if (auto *m = qobject_cast<QMenu *>(obj)) {
+                if (!m->property("_fadeDone").toBool()) {
+                    m->setProperty("_fadeDone", true);
+                    auto *eff = new QGraphicsOpacityEffect(m);
+                    m->setGraphicsEffect(eff);
+                    auto *anim = new QPropertyAnimation(eff, "opacity", m);
+                    anim->setDuration(120);
+                    anim->setStartValue(0.0);
+                    anim->setEndValue(1.0);
+                    anim->setEasingCurve(QEasingCurve::OutCubic);
+                    anim->start(QAbstractAnimation::DeleteWhenStopped);
+                }
+            }
+        }
+        return QObject::eventFilter(obj, e);
+    }
+};
+
+inline void installMenuFade() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    if (qApp) qApp->installEventFilter(new MenuFadeFilter(qApp));
+}
+
 class ApokolipsInputDialog : public QDialog {
 public:
     static QString getText(QWidget *parent,

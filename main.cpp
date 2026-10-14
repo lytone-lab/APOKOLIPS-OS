@@ -332,6 +332,7 @@ static QString discoverSwaySock();
 static QString minimizeStyleFlag()
 {
     VisualConfigManager::instance().load();
+    installMenuFade();
     const QString s = VisualConfigManager::instance().cfg().minimizeStyle;
     if (s == "scale") return "--scale";
     if (s == "suck")  return "--suck";
