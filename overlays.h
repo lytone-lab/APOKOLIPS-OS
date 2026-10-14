@@ -289,9 +289,13 @@ protected:
             qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
         if (m_reverse) t = 1.0 - t;
 
+        // Fade window is fixed so every particle dissolves over
+        // the same slice of time — the delay alone shifts when
+        // each one starts. That gives a clean progressive wave.
+        constexpr qreal kFadeWindow = 0.5;
+
         for (const Particle &pt : m_particles) {
-            qreal raw = (t - pt.delay)
-                / qMax<qreal>(0.0001, 1.0 - pt.delay);
+            qreal raw = (t - pt.delay) / kFadeWindow;
             raw = qBound<qreal>(0.0, raw, 1.0);
             const qreal eased = raw * raw * (3.0 - 2.0 * raw);
             const qreal x = pt.origin.x() + pt.driftX * eased;
@@ -354,7 +358,18 @@ private:
                 pt.origin = QPointF(m_start.left() + rx,
                                     m_start.top()  + ry);
                 pt.color  = avg;
-                pt.delay  = nextRand() * 0.35;
+
+                // Diagonal sweep: top-right dissolves first, wave
+                // travels to bottom-left. delay 0 = head of wave,
+                // delay 0.5 = tail. Small jitter so it doesn't look
+                // mechanically regular.
+                const qreal nx = qreal(rx)
+                    / qMax<qreal>(1.0, m_pix.width() - 1.0);
+                const qreal ny = qreal(ry)
+                    / qMax<qreal>(1.0, m_pix.height() - 1.0);
+                const qreal diag = ((1.0 - nx) + ny) * 0.5;
+                pt.delay  = diag * 0.5 + nextRand() * 0.04;
+
                 pt.driftX = 20.0 + nextRand() * 90.0;
                 pt.driftY = -40.0 + nextRand() * 60.0;
                 m_particles.append(pt);
