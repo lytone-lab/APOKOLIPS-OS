@@ -5036,18 +5036,9 @@ private:
             QObject::connect(btn, &QPushButton::clicked,
                              [this, id = QString(wp.id)]() {
                 if (id == "custom") {
-                    // Force the Qt-native dialog (not GTK) so we can
-                    // control the size. GTK's chooser ignores size
-                    // hints and fills half the screen.
-                    QFileDialog dlg(this, "Pick Wallpaper Image",
-                                    QDir::homePath() + "/Pictures",
-                                    "Images (*.jpg *.jpeg *.png *.webp *.bmp)");
-                    dlg.setOption(QFileDialog::DontUseNativeDialog, true);
-                    dlg.setFileMode(QFileDialog::ExistingFile);
-                    dlg.setAcceptMode(QFileDialog::AcceptOpen);
-                    dlg.resize(760, 520);
-                    dlg.setMinimumSize(560, 400);
-                    dlg.setMaximumSize(1000, 700);
+                    SigilFileDialog dlg(this, "Pick Wallpaper Image",
+                                        QDir::homePath() + "/Pictures",
+                                        "Images (*.jpg *.jpeg *.png *.webp *.bmp)");
                     if (dlg.exec() != QDialog::Accepted) return;
                     QString path = dlg.selectedFiles().value(0);
                     if (path.isEmpty()) return;

@@ -68,6 +68,7 @@
 #include <QNetworkAccessManager>
 #include <QEventLoop>
 #include <QDialog>
+#include <QCheckBox>
 #include <QWidgetAction>
 #include <QDate>
 #include <QCalendarWidget>
