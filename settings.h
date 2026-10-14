@@ -8,6 +8,8 @@
 #include "shared_fwd.h"
 #include "helpers.h"
 
+#include <QFileDialog>
+
 class SettingsWindow : public QWidget {
 public:
     explicit SettingsWindow(QWidget *parent = nullptr) : QWidget(parent) {
@@ -4919,18 +4921,26 @@ private:
         g->setSpacing(10);
 
         auto &wpCfg = VisualConfigManager::instance().cfg();
-        struct WP { const char *id; const char *name; bool dev; };
+        // thumbName: filename inside assets/wallpapers/thumbs/
+        //            (empty = no thumbnail, text-only tile)
+        struct WP {
+            const char *id;
+            const char *name;
+            bool        dev;
+            const char *thumbName;
+        };
         const WP wps[] = {
-            { "ruby",       "Magnific",       false },
-            { "starfield",  "Starfield",      false },
-            { "aurora",     "Aurora",         false },
-            { "goldengate", "Golden Gate",    false },
-            { "everest",    "Mount Everest",  false },
-            { "neonjinx",   "Neon Jinx",      false },
-            { "gif",        "GIF…",           false },
-            { "apocalypse", "Apocalypse",     true  },
-            { "mob",        "Mob",            true  },
-            { "vander",     "Vander Warwick", true  }
+            { "ruby",       "Magnific",       false, "magnific.jpg"       },
+            { "starfield",  "Starfield",      false, "starfield.jpg"      },
+            { "aurora",     "Aurora",         false, "aurora.jpg"         },
+            { "goldengate", "Golden Gate",    false, "goldengate.jpg"     },
+            { "everest",    "Mount Everest",  false, "mount-everest.jpg"  },
+            { "neonjinx",   "Neon Jinx",      false, "neonjinx.jpg"       },
+            { "gif",        "GIF…",           false, nullptr              },
+            { "custom",     "Pick Image…",    false, nullptr              },
+            { "apocalypse", "Apocalypse",     true,  "apocalypse.jpg"     },
+            { "mob",        "Mob",            true,  "mob.jpg"            },
+            { "vander",     "Vander Warwick", true,  "vander.jpg"         }
         };
         auto resolveThumb = [](const QString &rel) -> QString {
             if (rel.isEmpty()) return {};
@@ -4960,29 +4970,38 @@ private:
             btn->setFixedHeight(46);
             btn->setProperty("wpId", wp.id);
 
-            // Thumbnails live in assets/wallpapers/thumbs/<id>.jpg
-            QString thumbRel = QString("assets/wallpapers/thumbs/%1.jpg")
-                                   .arg(QString::fromUtf8(wp.id));
-            QString thumb = resolveThumb(thumbRel);
-            // Golden Gate's thumbnail is named goldengate.jpg
-            if (thumb.isEmpty() && QString(wp.id) == "goldengate")
+            // Resolve thumbnail path from the explicit filename.
+            // Empty thumbName = text-only tile.
+            QString thumb;
+            if (wp.thumbName && *wp.thumbName) {
                 thumb = resolveThumb(
-                    "assets/wallpapers/thumbs/goldengate.jpg");
+                    QString("assets/wallpapers/thumbs/%1")
+                        .arg(QString::fromUtf8(wp.thumbName)));
+            }
+            // "Pick Image…" tile shows the user's chosen image
+            if (QString(wp.id) == "custom"
+                && !wpCfg.customWallpaperPath.isEmpty()
+                && QFile::exists(wpCfg.customWallpaperPath))
+                thumb = wpCfg.customWallpaperPath;
 
             if (!thumb.isEmpty()) {
+                // Use border-image (Qt understands it and stretches)
+                // instead of background-image + background-size
+                // (which Qt does not understand — see journal:
+                // "Unknown property background-size"). Qt caches
+                // border-image per file path, so loading is once.
                 btn->setStyleSheet(QString(
                     "QPushButton {"
-                    "  background-image: url(%1);"
-                    "  background-position: center;"
-                    "  background-repeat: no-repeat;"
-                    "  background-size: cover;"
+                    "  border-image: url(%1) 0 0 0 0 stretch stretch;"
                     "  border: 1px solid rgba(255,255,255,55);"
-                    "  border-radius: 8px; }"
+                    "  border-radius: 8px;"
+                    "  padding: 0; }"
                     "QPushButton:hover {"
                     "  border: 1px solid rgba(255,255,255,140); }"
                     "QPushButton[selected=\"true\"] {"
                     "  border: 2px solid #ffffff; }")
                     .arg(thumb));
+                btn->update();
 
                 QVBoxLayout *bl = new QVBoxLayout(btn);
                 bl->setContentsMargins(8, 8, 8, 6);
@@ -5016,6 +5035,28 @@ private:
             m_wpButtons.append(btn);
             QObject::connect(btn, &QPushButton::clicked,
                              [this, id = QString(wp.id)]() {
+                if (id == "custom") {
+                    // Force the Qt-native dialog (not GTK) so we can
+                    // control the size. GTK's chooser ignores size
+                    // hints and fills half the screen.
+                    QFileDialog dlg(this, "Pick Wallpaper Image",
+                                    QDir::homePath() + "/Pictures",
+                                    "Images (*.jpg *.jpeg *.png *.webp *.bmp)");
+                    dlg.setOption(QFileDialog::DontUseNativeDialog, true);
+                    dlg.setFileMode(QFileDialog::ExistingFile);
+                    dlg.setAcceptMode(QFileDialog::AcceptOpen);
+                    dlg.resize(760, 520);
+                    dlg.setMinimumSize(560, 400);
+                    dlg.setMaximumSize(1000, 700);
+                    if (dlg.exec() != QDialog::Accepted) return;
+                    QString path = dlg.selectedFiles().value(0);
+                    if (path.isEmpty()) return;
+                    VisualConfigManager::instance().setAndSave(
+                        [path](VisualConfig &c) {
+                            c.customWallpaperPath = path;
+                        });
+                    qInfo() << "[wallpaper] custom picked:" << path;
+                }
                 if (id == "gif") {
                     bool ok = false;
                     QString path = ApokolipsInputDialog::getText(
