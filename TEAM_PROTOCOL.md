@@ -57,6 +57,27 @@ it didn't.
 4. Features the user is excited about. Within the safe sandbox.
 5. Polish (defaults, tours, edge cases). Ongoing, opportunistic.
 
+## Feature delivery — propose 3 variants
+
+When starting a feature, do not pick one implementation and build it.
+Propose **3 concrete variants** before writing any code:
+
+1. **Familiar** — how the OS being cloned would do it (safe, expected).
+2. **Apokolips** — a version flavoured for this shell's identity.
+3. **Wildcard** — visually striking or technically interesting, even
+   if it might not be the right default.
+
+The user picks. Reasoning: the user is not a programmer. Presented
+with one option, they take it. Presented with three, they learn what
+they actually want. Pre-picking robs them of taste decisions.
+
+Show the menu, then cook the chosen dish.
+
+Applies especially to visual features — animation, colour, motion,
+layout, sounds, transitions. For pure bug fixes, one correct path is
+usually right; propose variants only when there is a genuine
+trade-off.
+
 ## Commit discipline
 
 - Every successful patch is committed with a one-line message.
