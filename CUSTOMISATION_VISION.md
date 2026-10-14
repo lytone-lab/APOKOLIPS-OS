@@ -301,3 +301,99 @@ wallpapers, mod marketplace, mod authoring tool.
 ------------------------------------------------------------------------
 END OF VISION
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+CUSTOMISATION PRIORITY LIST (added 2026-10-14)
+------------------------------------------------------------------------
+
+Extracted from user-count data of Windhawk, Rainmeter, and KDE Plasma.
+Ranked by how much users actually love them, then phased by effort.
+
+The strategy is NOT to build every customisation. It is to build the
+ones users use most, love most, and that attract new users. Every
+other item goes on the pile and waits.
+
+## TIER 1 — I can't live without this
+
+These are the features people install third-party tools specifically
+to get.
+
+  #  Feature                                    Source         Phase
+  1  Start menu / launcher restyling            Windhawk #1    V1
+  2  Taskbar restyling (transparency, etc)      Windhawk #1    V1
+  3  Taskbar icon size independent of scale     Windhawk       V1
+  4  System monitors as desktop widgets         Rainmeter #1   V1
+  5  Taskbar on any edge                        Windhawk       V1 (shipped)
+  6  Right-click context menu styling           Windhawk       V1
+  7  Volume control per app                     Windhawk       V1
+  8  Window rules — open apps how you want      KDE Plasma     V2
+  9  Custom global shortcuts for anything       KDE Plasma     V1
+  10 Now playing / media controls on desktop    Rainmeter      V1
+
+## TIER 2 — Oh that's nice
+
+  #  Feature                                    Source         Phase
+  11 Music visualizer reacting to audio         Rainmeter      V2
+  12 Weather widget with forecast               Rainmeter      V1
+  13 Calendar widget with events                Rainmeter      V1
+  14 Screenshot drag-to-target                  KDE Plasma     V2
+  15 Night light / colour temperature           KDE Plasma     V1
+  16 Window scroll-to-opacity                   KDE Plasma     V1
+  17 Cursor magnifier                           KDE Plasma     V2
+  18 QR code from clipboard                     KDE Plasma     V2
+  19 Middle-click window to close on taskbar    KDE Plasma     V1
+  20 Right-click taskbar entry -> recent files  KDE Plasma     V2
+
+## TIER 3 — Power user flex
+
+  #  Feature                                    Source         Phase
+  21 Draw on screen with red lines              KDE Plasma     V2
+  22 Wiggle mouse -> cursor gets bigger         KDE Plasma     V1
+  23 Sticky note in the panel                   KDE Plasma     V1
+  24 Colour picker widget                       KDE Plasma     V2
+  25 Always-on-top toggle per window            KDE Plasma     V1
+  26 Meta+click to move/resize any window       KDE Plasma     V1
+  27 Screen corner peek at desktop              KDE Plasma     V1
+  28 Live volume meter in sliders               KDE Plasma     V2
+  29 Video playback speed from media ctrl       KDE Plasma     V2
+  30 Vertical taskbar layout                    Windhawk       V1
+
+## THE FOUR FLAGSHIP ITEMS (the ones you personally want)
+
+  Item                             Phase
+  Rules engine (drag-drop builder) V2 basic -> V3 visual
+  Theme marketplace                V3
+  Auto-themes from wallpapers      V2
+  Per-app chrome rewrite           V2
+
+## SHIP-ORDER FOR V1 (attract new users first)
+
+The five with highest wow-per-hour:
+
+  1. System monitors as widgets — CPU / RAM / GPU / network graphs
+     Rainmeter's #1 use case. myMach's data already exists.
+     Present as floating desktop cards.
+  2. Launcher theming — grid size, blur, icon size
+     Windhawk's #1 mod. Launchpad exists. One settings page.
+  3. Now playing widget on desktop
+     Rainmeter top-3. BoomTube exists. Just a floating widget.
+  4. Per-app chrome rewrite — Finder light, Notes flat, etc
+     Nobody else has this. macOS doesn't. Windows doesn't.
+     Genuinely new category of customisation.
+  5. Weather widget with forecast
+     Rainmeter top-5. Weather data already in the top bar.
+
+## SCOPE, HONEST NUMBER
+
+  V1: ~15 features × 1-3 sessions = ~25 sessions
+  V2: ~10 features × 1-2 sessions = ~20 sessions
+  V3: ~5 features  × 2-4 sessions = ~15 sessions
+
+  Total: ~60 sessions ≈ 6 months of evenings.
+
+That is the honest size. Not a weekend, not a month.
+The whole point is worth it because nobody has done it.
+
+------------------------------------------------------------------------
+END OF PRIORITY LIST
+------------------------------------------------------------------------
