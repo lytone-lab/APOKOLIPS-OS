@@ -22,7 +22,7 @@ struct VisualConfig {
     int    dockIconSize       = 52;   // base visual size (before magnify)
     bool   genieEnabled       = true;
     QString minimizeStyle     = "genie";   // genie | scale | suck
-    int    genieDurationMs    = 480;
+    int    genieDurationMs    = 700;
     int    genieStrips        = 140;
     double genieStagger       = 0.35;
     double genieCurve         = 0.4;
@@ -90,6 +90,7 @@ struct VisualConfig {
     bool    boomtubeShuffle    = false;
     QString boomtubeLoop       = "off";   // off | all | one
     QString mymachGraphStyle   = "line";  // line | bar | area | radial
+    int     genieSCount       = 1;     // 1..5 S-wiggles on genie path
     QVariantMap desktopIconPos;   // id -> {x, y}
     bool    launcherEnabled    = true;
     bool    spotlightEnabled   = true;
@@ -338,6 +339,8 @@ public:
         m_cfg.mymachGraphStyle    = o.contains("mymachGraphStyle")
                                    ? o["mymachGraphStyle"].toString()
                                    : m_cfg.mymachGraphStyle;
+        m_cfg.genieSCount         = getI("genieSCount",
+                                         m_cfg.genieSCount);
         if (o.contains("desktopIconPos")
             && o["desktopIconPos"].isObject()) {
             m_cfg.desktopIconPos = o["desktopIconPos"].toObject()
@@ -480,6 +483,8 @@ public:
         // to pick up the new default.
         if (m_cfg.dockMagnifyMax     < 0.05) m_cfg.dockMagnifyMax    = 0.05;
         if (m_cfg.dockSigma          < 15)  m_cfg.dockSigma          = 15;
+        if (m_cfg.genieSCount < 1) m_cfg.genieSCount = 1;
+        if (m_cfg.genieSCount > 5) m_cfg.genieSCount = 5;
     }
 
     void resetToDefaults() {
@@ -567,6 +572,7 @@ public:
         o["boomtubeShuffle"]     = m_cfg.boomtubeShuffle;
         o["boomtubeLoop"]        = m_cfg.boomtubeLoop;
         o["mymachGraphStyle"]    = m_cfg.mymachGraphStyle;
+        o["genieSCount"]         = m_cfg.genieSCount;
         o["desktopIconPos"]      = QJsonObject::fromVariantMap(
                                        m_cfg.desktopIconPos);
         o["launcherEnabled"]     = m_cfg.launcherEnabled;

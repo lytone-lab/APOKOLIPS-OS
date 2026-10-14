@@ -106,7 +106,13 @@ protected:
         hdr->addStretch();
 
         QObject::connect(closeBtn, &QPushButton::clicked, [this]() {
+            // Red light: minimize animation, then exit the process.
+            // Without the quit, the app stays alive as a hidden
+            // QWidget and the dock's running dot stays lit forever.
             shellCloseViaGenie(this);
+            QTimer::singleShot(900, this, []() {
+                QCoreApplication::quit();
+            });
         });
         QObject::connect(minBtn, &QPushButton::clicked, []() {
             shellMinimizeFocusedWindow();
