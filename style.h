@@ -228,10 +228,47 @@ inline QColor textSecondary(){ return QColor(176, 173, 168); }
 inline QColor textDim()     { return QColor(122, 120, 115); }
 inline QColor rowHover()    { return QColor(255, 255, 255, 18); }
 inline QColor rowSelected() { return QColor(58, 58, 62); }
-// Oxblood accent — the seal
-inline QColor accent()      { return QColor(168,  50,  50); }
-inline QColor accentHover() { return QColor(200,  74,  74); }
-inline QColor accentPress() { return QColor(139,  26,  26); }
+// ---- Seal: the accent colour ----
+// Sigil ships 7 curated seals. Every seal keeps the same
+// three-tone structure (base / hover / press) and obeys the
+// palette rule: warm, muted, earth-bound. No neon, no default blue.
+inline QString &sealIdRef() {
+    static QString id = "oxblood";
+    return id;
+}
+inline void  setSealId(const QString &id) { sealIdRef() = id; }
+inline QString sealId() { return sealIdRef(); }
+
+inline QColor accent() {
+    const QString id = sealIdRef();
+    if (id == "violet")   return QColor(122, 106, 159);
+    if (id == "cyan")     return QColor( 74, 143, 168);
+    if (id == "gold")     return QColor(168, 138,  74);
+    if (id == "forest")   return QColor( 74, 122,  90);
+    if (id == "rose")     return QColor(168,  90, 122);
+    if (id == "graphite") return QColor(106, 106, 112);
+    return QColor(168, 50, 50);
+}
+inline QColor accentHover() {
+    const QString id = sealIdRef();
+    if (id == "violet")   return QColor(143, 127, 184);
+    if (id == "cyan")     return QColor( 95, 176, 204);
+    if (id == "gold")     return QColor(196, 168,  96);
+    if (id == "forest")   return QColor( 92, 148, 112);
+    if (id == "rose")     return QColor(196, 116, 148);
+    if (id == "graphite") return QColor(130, 130, 138);
+    return QColor(200, 74, 74);
+}
+inline QColor accentPress() {
+    const QString id = sealIdRef();
+    if (id == "violet")   return QColor( 92,  78, 125);
+    if (id == "cyan")     return QColor( 53, 111, 133);
+    if (id == "gold")     return QColor(133, 112,  47);
+    if (id == "forest")   return QColor( 53,  96,  69);
+    if (id == "rose")     return QColor(133,  68,  99);
+    if (id == "graphite") return QColor( 79,  79,  84);
+    return QColor(139, 26, 26);
+}
 
 // ---- Icon badge: colored rounded square with a glyph ----
 class IconBadge : public QWidget {
