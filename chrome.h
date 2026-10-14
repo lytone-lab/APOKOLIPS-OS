@@ -74,19 +74,38 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        // Soft left-side shadow — many thin rings
+        // Deeper, softer shadow — wider ring cascade
         p.setPen(Qt::NoPen);
-        for (int i = 12; i >= 1; --i) {
+        for (int i = 20; i >= 1; --i) {
             QColor sh(0, 0, 0);
-            sh.setAlphaF(0.015 * m_slide);
+            sh.setAlphaF(0.022 * m_slide * (i / 20.0));
             p.setBrush(sh);
-            p.drawRoundedRect(rect().adjusted(-i - 2, -i, 0, i),
-                              14 + i, 14 + i);
+            p.drawRoundedRect(rect().adjusted(-i - 3, -i, 0, i),
+                              16 + i, 16 + i);
         }
 
         QRectF ncRect(rect());
         StyleRenderer::drawPanel(p, ncRect, 0, m_theme,
                                  int(230 * m_slide));
+
+        // Glassy vertical gradient — the panel catches light
+        // from above, sits in slight shade at the bottom.
+        QLinearGradient glass(0, 0, 0, height());
+        glass.setColorAt(0.00, QColor(255, 255, 255,
+                                      int(14 * m_slide)));
+        glass.setColorAt(0.55, QColor(255, 255, 255, 0));
+        glass.setColorAt(1.00, QColor(0, 0, 0,
+                                      int(22 * m_slide)));
+        p.fillRect(rect(), glass);
+
+        // Bright soft edge on the left — the light coming
+        // through the panel from the desktop behind it.
+        QLinearGradient edgeGrad(0, 0, 6, 0);
+        edgeGrad.setColorAt(0.0, QColor(255, 255, 255,
+                                        int(90 * m_slide)));
+        edgeGrad.setColorAt(1.0, QColor(255, 255, 255, 0));
+        p.fillRect(QRect(0, 0, 6, height()), edgeGrad);
+
         QColor edge = m_theme.chromeBorder;
         edge.setAlpha(int(230 * m_slide));
         p.setPen(QPen(edge, 1));
@@ -119,18 +138,32 @@ private:
     {
         QWidget *card = new QWidget;
         card->setAttribute(Qt::WA_StyledBackground, true);
+        card->setAttribute(Qt::WA_Hover, true);
+        QColor cardTop = m_theme.chromeBg.lighter(120);
+        QColor cardBot = m_theme.chromeBg.lighter(105);
+        QColor hoverBg = m_theme.chromeBg.lighter(135);
+        QColor inner   = m_theme.chromeBorder;
+        inner.setAlpha(70);
         card->setStyleSheet(QString(
             "QWidget {"
-            "  background: %1;"
-            "  border: none;"
-            "  border-left: 3px solid %2;"
-            "  border-radius: 12px;"
-            "}").arg(rgba(m_theme.chromeBg.lighter(110)),
-                     rgba(accent)));
+            "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
+            "    stop:0 %1, stop:1 %2);"
+            "  border: 1px solid %3;"
+            "  border-left: 3px solid %4;"
+            "  border-radius: 14px;"
+            "}"
+            "QWidget:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
+            "    stop:0 %5, stop:1 %1);"
+            "}").arg(cardTop.name(),
+                     cardBot.name(),
+                     rgba(inner),
+                     rgba(accent),
+                     hoverBg.name()));
 
         QVBoxLayout *v = new QVBoxLayout(card);
-        v->setContentsMargins(14, 12, 14, 12);
-        v->setSpacing(4);
+        v->setContentsMargins(16, 14, 16, 14);
+        v->setSpacing(5);
 
         QHBoxLayout *top = new QHBoxLayout;
         top->setSpacing(8);
@@ -267,7 +300,8 @@ private:
 
         QLabel *title = new QLabel("NOTIFICATIONS");
         title->setStyleSheet(QString(
-            "color: %1; font-size: 11px; letter-spacing: 4px;"
+            "color: %1; font-size: 11px; letter-spacing: 2px;"
+            " font-weight: 600;"
             " background: transparent;").arg(m_theme.accent.name()));
         hdr->addWidget(title);
         hdr->addStretch();
