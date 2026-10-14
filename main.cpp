@@ -3968,6 +3968,143 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    if (argc >= 4 && QString(argv[1]) == "--upscale-worker") {
+        // Background AI upscaler. Called by Settings (or the shell)
+        // when a user accepts "make it sharper".
+        //
+        //   apokolips-shell --upscale-worker <input-image> <output-jpg>
+        //
+        // Runs Real-ESRGAN, converts to JPG, fires a notification,
+        // writes a state marker for the shell to notice, exits.
+        // No window, no UI, no blocking of the caller.
+        QApplication app(argc, argv);
+
+        QString inputPath  = QString::fromLocal8Bit(argv[2]);
+        QString outputPath = QString::fromLocal8Bit(argv[3]);
+
+        if (!QFile::exists(inputPath)) {
+            qWarning() << "[upscale] input missing:" << inputPath;
+            return 2;
+        }
+
+        QImage src(inputPath);
+        if (src.isNull()) {
+            qWarning() << "[upscale] cannot read:" << inputPath;
+            return 3;
+        }
+
+        const int srcW = src.width();
+        // Aim for 3840 wide. Use the smallest Real-ESRGAN pass that
+        // reaches it, so we do not waste minutes on a 2× image.
+        int scale;
+        if      (srcW >= 1920) scale = 2;
+        else if (srcW >= 1280) scale = 3;
+        else                   scale = 4;
+
+        // Locate the upscaler next to the repo (dev) or in the
+        // system install prefix (shipped).
+        QStringList binCandidates = {
+            QCoreApplication::applicationDirPath()
+                + "/../tools/realesrgan/realesrgan-ncnn-vulkan",
+            QCoreApplication::applicationDirPath()
+                + "/tools/realesrgan/realesrgan-ncnn-vulkan",
+            QDir::homePath()
+                + "/apokolips-shell/tools/realesrgan/realesrgan-ncnn-vulkan",
+            "/usr/lib/apokolips/realesrgan/realesrgan-ncnn-vulkan",
+            "/usr/share/apokolips/realesrgan/realesrgan-ncnn-vulkan"
+        };
+        QString binPath;
+        for (const QString &c : binCandidates) {
+            if (QFile::exists(c) && QFileInfo(c).isExecutable()) {
+                binPath = c;
+                break;
+            }
+        }
+        if (binPath.isEmpty()) {
+            qWarning() << "[upscale] upscaler binary not found";
+            return 4;
+        }
+
+        QString tmpPng = QDir::tempPath()
+            + QString("/apokolips-upscale-%1.png")
+                  .arg(QCoreApplication::applicationPid());
+
+        QProcess up;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        // Force the software Vulkan driver if the user has no GPU.
+        if (!env.contains("VK_ICD_FILENAMES"))
+            env.insert("VK_ICD_FILENAMES",
+                       "/usr/share/vulkan/icd.d/lvp_icd.json");
+        up.setProcessEnvironment(env);
+        up.start(binPath, {
+            "-i", inputPath,
+            "-o", tmpPng,
+            "-n", "realesrgan-x4plus",
+            "-s", QString::number(scale)
+        });
+
+        qInfo() << "[upscale] start src=" << inputPath
+                << "width=" << srcW
+                << "scale=" << scale
+                << "out=" << outputPath;
+
+        if (!up.waitForStarted(5000)) {
+            qWarning() << "[upscale] failed to start upscaler";
+            return 5;
+        }
+        up.waitForFinished(-1);   // block until done
+
+        if (up.exitCode() != 0 || !QFile::exists(tmpPng)) {
+            qWarning() << "[upscale] upscaler failed code=" << up.exitCode()
+                       << "stderr=" << up.readAllStandardError();
+            QFile::remove(tmpPng);
+            return 6;
+        }
+
+        QImage big(tmpPng);
+        QFile::remove(tmpPng);
+
+        if (big.isNull()) {
+            qWarning() << "[upscale] cannot read result";
+            return 7;
+        }
+
+        // If the pass overshot 3840, shrink back. Never double-upscale.
+        if (big.width() > 3840) {
+            big = big.scaledToWidth(3840, Qt::SmoothTransformation);
+        }
+
+        QDir().mkpath(QFileInfo(outputPath).absolutePath());
+        if (!big.save(outputPath, "JPEG", 92)) {
+            qWarning() << "[upscale] cannot write:" << outputPath;
+            return 8;
+        }
+
+        qInfo() << "[upscale] done" << outputPath
+                << big.width() << "x" << big.height();
+
+        // State marker — the shell watches this file to learn that a
+        // fresh upscale is ready to apply.
+        QJsonObject marker;
+        marker["src"] = inputPath;
+        marker["dst"] = outputPath;
+        marker["w"]   = big.width();
+        marker["h"]   = big.height();
+        marker["ts"]  = (double)QDateTime::currentMSecsSinceEpoch();
+        QFile mf("/tmp/apokolips-upscale-last.json");
+        if (mf.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            mf.write(QJsonDocument(marker).toJson());
+
+        // Notify the user. Long summary, short body.
+        QProcess::startDetached("notify-send", {
+            "Apokolips",
+            QString("Wallpaper upscaled to %1×%2")
+                .arg(big.width()).arg(big.height())
+        });
+
+        return 0;
+    }
+
     if (argc >= 2 && QString(argv[1]) == "--settings") {
         QApplication app(argc, argv);
         app.setApplicationName("Apokolips Settings");
