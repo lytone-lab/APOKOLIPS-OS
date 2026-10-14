@@ -14,6 +14,12 @@ class SettingsWindow : public QWidget {
 public:
     explicit SettingsWindow(QWidget *parent = nullptr) : QWidget(parent) {
         StyleManager::load();   // <-- read saved style so buttons highlight correctly
+        // Apply the saved seal before anything draws.
+        {
+            const QString sid = VisualConfigManager::instance()
+                                    .cfg().sigilAccent;
+            if (!sid.isEmpty()) Sigil::setSealId(sid);
+        }
         setWindowFlags(Qt::FramelessWindowHint);
         setWindowTitle("Apokolips Settings");
         setAttribute(Qt::WA_TranslucentBackground, true);
@@ -636,6 +642,120 @@ private:
         v->addWidget(Sigil::sectionTitle("Appearance"));
 
         auto &vc = VisualConfigManager::instance().cfg();
+
+        // ---- Seal card (accent colour picker) ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 18);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("SEAL"));
+
+            QLabel *desc = new QLabel(
+                "The accent colour of the shell. Every surface that "
+                "carries the seal — selected rows, toggles, focus "
+                "rings, the notification header — follows this.");
+            desc->setWordWrap(true);
+            desc->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            cv->addWidget(desc);
+
+            struct Seal { const char *id; const char *name; QColor col; };
+            const Seal seals[] = {
+                { "oxblood",  "Oxblood",  QColor(168,  50,  50) },
+                { "violet",   "Violet",   QColor(122, 106, 159) },
+                { "cyan",     "Cyan",     QColor( 74, 143, 168) },
+                { "gold",     "Gold",     QColor(168, 138,  74) },
+                { "forest",   "Forest",   QColor( 74, 122,  90) },
+                { "rose",     "Rose",     QColor(168,  90, 122) },
+                { "graphite", "Graphite", QColor(106, 106, 112) }
+            };
+
+            QString current = vc.sigilAccent.isEmpty()
+                              ? QString("oxblood")
+                              : vc.sigilAccent;
+
+            QHBoxLayout *row = new QHBoxLayout;
+            row->setSpacing(16);
+            row->setContentsMargins(0, 6, 0, 0);
+            row->addStretch();
+
+            QList<QPushButton *> swatches;
+
+            for (const Seal &s : seals) {
+                QWidget *col = new QWidget;
+                QVBoxLayout *cl = new QVBoxLayout(col);
+                cl->setContentsMargins(0, 0, 0, 0);
+                cl->setSpacing(6);
+
+                QPushButton *sw = new QPushButton;
+                sw->setFixedSize(44, 44);
+                sw->setCursor(Qt::PointingHandCursor);
+                sw->setProperty("sealId", s.id);
+                QString ring = (QString(s.id) == current)
+                    ? "3px solid #ffffff" : "2px solid rgba(255,255,255,40)";
+                sw->setStyleSheet(QString(
+                    "QPushButton { background: %1;"
+                    "  border: %2; border-radius: 12px; }"
+                    "QPushButton:hover {"
+                    "  border: 3px solid rgba(255,255,255,120); }")
+                    .arg(s.col.name(), ring));
+                swatches.append(sw);
+
+                QLabel *lbl = new QLabel(s.name);
+                lbl->setAlignment(Qt::AlignHCenter);
+                lbl->setStyleSheet(QString(
+                    "color: %1; font-size: 10px;"
+                    " background: transparent;")
+                    .arg(Sigil::textDim().name()));
+
+                cl->addWidget(sw, 0, Qt::AlignHCenter);
+                cl->addWidget(lbl);
+                row->addWidget(col);
+
+                QObject::connect(sw, &QPushButton::clicked,
+                    [this, s, swatches, col = QColor(s.col)]() {
+                    VisualConfigManager::instance().setAndSave(
+                        [s](VisualConfig &c) {
+                            c.sigilAccent = s.id;
+                        });
+                    Sigil::setSealId(QString::fromUtf8(s.id));
+
+                    // Update ring on all swatches
+                    for (QPushButton *b : swatches) {
+                        QString sid = b->property("sealId").toString();
+                        QString r = (sid == QString::fromUtf8(s.id))
+                            ? "3px solid #ffffff"
+                            : "2px solid rgba(255,255,255,40)";
+                        QColor bc = col;
+                        if (sid == "violet")   bc = QColor(122, 106, 159);
+                        if (sid == "cyan")     bc = QColor( 74, 143, 168);
+                        if (sid == "gold")     bc = QColor(168, 138,  74);
+                        if (sid == "forest")   bc = QColor( 74, 122,  90);
+                        if (sid == "rose")     bc = QColor(168,  90, 122);
+                        if (sid == "graphite") bc = QColor(106, 106, 112);
+                        if (sid == "oxblood")  bc = QColor(168,  50,  50);
+                        b->setStyleSheet(QString(
+                            "QPushButton { background: %1;"
+                            "  border: %2; border-radius: 12px; }"
+                            "QPushButton:hover {"
+                            "  border: 3px solid rgba(255,255,255,120); }")
+                            .arg(bc.name(), r));
+                    }
+
+                    qInfo() << "[seal] set to" << s.id;
+                    restyleAll();
+                    for (QWidget *ch : findChildren<QWidget *>())
+                        ch->update();
+                });
+            }
+
+            row->addStretch();
+            cv->addLayout(row);
+
+            v->addWidget(c);
+        }
 
         // ---- Transparency card ----
         {
