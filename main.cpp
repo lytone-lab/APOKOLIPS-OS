@@ -1818,6 +1818,15 @@ static int runShell(int argc, char *argv[])
     notifications->hide();
     root->setNotifications(notifications);
 
+    // Cursor glow — seal-coloured halo that follows the pointer.
+    // Raised above everything else in the shell so it draws on
+    // top of the top bar, dock, notifications, launcher.
+    if (VisualConfigManager::instance().cfg().cursorGlow) {
+        CursorGlowOverlay *cursorGlow = new CursorGlowOverlay(root);
+        cursorGlow->raise();
+        qInfo() << "[cursorglow] installed";
+    }
+
     // ---- Upscale completion watcher ----
     // The --upscale-worker mode writes /tmp/apokolips-upscale-last.json
     // when a job finishes. When that file changes, and the currently-

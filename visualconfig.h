@@ -16,6 +16,7 @@ struct VisualConfig {
     bool   widgetsVisible     = true;
     bool   dndEnabled         = false;
     bool   wallpaperParallax  = true;
+    bool   cursorGlow         = true;
     QString sigilAccent      = "oxblood";
     int    notificationBannerMs = 6000;
     int    dockPosition       = 0;   // 0=Bottom, 1=Left, 2=Right
@@ -409,6 +410,8 @@ public:
         m_cfg.dndEnabled         = o.contains("dndEnabled")
                                    ? o["dndEnabled"].toBool(false)
                                    : m_cfg.dndEnabled;
+        if (o.contains("cursorGlow"))
+            m_cfg.cursorGlow = o["cursorGlow"].toBool(true);
         if (o.contains("wallpaperParallax"))
             m_cfg.wallpaperParallax = o["wallpaperParallax"].toBool(true);
         if (o.contains("sigilAccent"))
@@ -633,6 +636,7 @@ public:
         o["dndEnabled"]         = m_cfg.dndEnabled;
         o["sigilAccent"]        = m_cfg.sigilAccent;
         o["wallpaperParallax"]  = m_cfg.wallpaperParallax;
+        o["cursorGlow"]         = m_cfg.cursorGlow;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
         o["clock24Hour"]         = m_cfg.clock24Hour;

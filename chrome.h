@@ -3320,6 +3320,88 @@ private:
     Theme        m_theme;
 };
 
+// ----------------------------------------------------------------
+// CursorGlowOverlay — soft seal-coloured glow that follows the
+// pointer. Trails 8 positions behind with falloff. Sits above
+// every shell surface, ignores mouse events.
+// ----------------------------------------------------------------
+class CursorGlowOverlay : public QWidget {
+public:
+    explicit CursorGlowOverlay(QWidget *parent = nullptr)
+        : QWidget(parent)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAttribute(Qt::WA_ShowWithoutActivating, true);
+        setFocusPolicy(Qt::NoFocus);
+        if (parent)
+            setGeometry(0, 0, parent->width(), parent->height());
+
+        m_timer = new QTimer(this);
+        m_timer->setInterval(16);
+        QObject::connect(m_timer, &QTimer::timeout,
+                         this, [this]() { tick(); });
+        m_timer->start();
+    }
+
+    void setEnabled(bool on) {
+        m_enabled = on;
+        if (on) { show(); raise(); m_timer->start(); }
+        else    { hide(); m_timer->stop(); m_trail.clear(); }
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        if (!m_enabled || m_trail.isEmpty()) return;
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        const QColor base = Sigil::accent();
+
+        // Trail — oldest first, faintest and smallest.
+        for (int i = m_trail.size() - 1; i >= 1; --i) {
+            const qreal fade = 1.0 - qreal(i) / qreal(m_trail.size());
+            const int rad = int(52 * fade);
+            if (rad <= 0) continue;
+            QColor c = base;
+            c.setAlpha(int(50 * fade));
+            QRadialGradient g(QPointF(m_trail[i]), rad);
+            g.setColorAt(0.0, c);
+            QColor c2 = c; c2.setAlpha(0);
+            g.setColorAt(1.0, c2);
+            p.fillRect(rect(), g);
+        }
+
+        // Core — brightest, at the pointer.
+        const QPoint cur = m_trail.first();
+        QColor core = base;
+        core.setAlpha(95);
+        QRadialGradient g2(QPointF(cur), 42);
+        g2.setColorAt(0.0, core);
+        QColor core2 = core; core2.setAlpha(0);
+        g2.setColorAt(1.0, core2);
+        p.fillRect(rect(), g2);
+    }
+
+private:
+    void tick() {
+        if (!m_enabled || !parentWidget()) return;
+        if (size() != parentWidget()->size())
+            setGeometry(0, 0, parentWidget()->width(),
+                        parentWidget()->height());
+        const QPoint global = QCursor::pos();
+        const QPoint local  = parentWidget()->mapFromGlobal(global);
+        if (!m_trail.isEmpty() && m_trail.first() == local) return;
+        m_trail.prepend(local);
+        while (m_trail.size() > 8) m_trail.removeLast();
+        update();
+    }
+
+    QTimer        *m_timer = nullptr;
+    QList<QPoint>  m_trail;
+    bool           m_enabled = true;
+};
+
 class DesktopBackground : public QWidget {
 public:
     explicit DesktopBackground(QWidget *parent = nullptr) : QWidget(parent) {
