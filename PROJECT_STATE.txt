@@ -814,3 +814,14 @@ HOW TO UPDATE THIS FILE
 ========================================================================
 END OF PROJECT STATE
 ========================================================================
+
+  [ ] Sigil treatment for system dialogs
+      File picker, alert boxes, and input dialogs all use stock
+      Qt / GTK chrome. Should match the shell's look.
+      - One shared Sigil::messageBox() helper — replace every
+        QMessageBox in the codebase with it.
+      - Custom QFileDialog subclass or heavy stylesheet — file
+        picker is the biggest.
+      - ApokolipsInputDialog already exists — just needs to be
+        used everywhere (some sites still use QInputDialog).
+      Estimated 1-2 sessions.
