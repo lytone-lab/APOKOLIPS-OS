@@ -165,14 +165,11 @@ protected:
                               14 + i, 14 + i);
         }
 
-        // ---- Blurred wallpaper backdrop ----
-        if (!m_blurredBg.isNull()) {
-            p.save();
-            p.setClipPath(path);
-            p.setOpacity(0.85);
-            p.drawPixmap(rect(), m_blurredBg);
-            p.restore();
-        }
+        // Blurred wallpaper backdrop was drawn here. It made Finder
+        // show a static copy of the wallpaper instead of revealing
+        // whatever is actually behind the window. Other apps use a
+        // plain translucent panel via StyleRenderer::drawPanel and
+        // show real transparency; Finder now does the same.
 
         // ---- Style-aware body ----
         const auto &vc = VisualConfigManager::instance().cfg();

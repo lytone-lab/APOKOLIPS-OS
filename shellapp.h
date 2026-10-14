@@ -123,13 +123,25 @@ protected:
                          [this, preferred]() {
             static QHash<ShellApp *, bool> s_zoomed;
             bool z = s_zoomed.value(this, false);
-            QRect target = z
-                ? shellWindowRect(preferred, QPoint(), true)
-                : shellSafeArea();
             qInfo() << "[green] clicked zoomed=" << z
-                    << "current=" << geometry()
-                    << "target=" << target;
-            snapShellResize(this, target);
+                    << "current=" << geometry();
+            if (z) {
+                // Exit fullscreen — Qt restores the geometry that
+                // was active before showFullScreen(). Reapply our
+                // preferred size on the next event-loop tick so
+                // the window lands where the shell expects.
+                showNormal();
+                QTimer::singleShot(0, this, [this, preferred]() {
+                    snapShellResize(this,
+                        shellWindowRect(preferred, QPoint(), true));
+                });
+            } else {
+                // Enter fullscreen natively. Qt + Wayland handle
+                // the resize and the compositor natively hides
+                // everything else (top bar, dock) because the
+                // surface covers the whole screen.
+                showFullScreen();
+            }
             s_zoomed[this] = !z;
         });
 
@@ -183,6 +195,26 @@ protected:
         QPainterPath full;
         full.addRoundedRect(body, 14, 14);
         p.fillPath(full, Sigil::contentBg());
+
+        // Glassy header — blurred wallpaper behind the traffic
+        // lights instead of a flat colour. Tinted dark for
+        // legibility. Only for top-level windows; embedded apps
+        // skip it.
+        if (!m_embedded) {
+            const QPixmap &bg = ThemeManager::instance().blurredBg();
+            if (!bg.isNull() && height() > 40 && width() > 40) {
+                p.save();
+                p.setClipPath(full);
+                constexpr int HDR = 40;
+                QRect srcRect(0, 0, bg.width(),
+                    qMax(1, bg.height() * HDR / qMax(1, height())));
+                p.drawPixmap(QRect(0, 0, width(), HDR),
+                             bg, srcRect);
+                p.fillRect(0, 0, width(), HDR, QColor(0, 0, 0, 95));
+                p.restore();
+            }
+        }
+
         p.setPen(QPen(Sigil::border(), 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(full);
