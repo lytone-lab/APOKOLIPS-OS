@@ -66,17 +66,28 @@ protected:
     // Build a traffic-light button in the standard style.
     QPushButton *makeTrafficLight(const QString &idle,
                                   const QString &hover,
+                                  const QString &glyph = QString(),
                                   int size = 13)
     {
-        QPushButton *b = new QPushButton;
+        QPushButton *b = new QPushButton(glyph);
         b->setFixedSize(size, size);
         b->setCursor(Qt::PointingHandCursor);
+        // Colour scheme: idle dark, hover bright, glyph invisible
+        // at rest and dark on hover (macOS style).
         b->setStyleSheet(QString(
             "QPushButton { background: %1;"
             "  border: 1px solid rgba(0,0,0,60);"
-            "  border-radius: %2px; }"
-            "QPushButton:hover { background: %3; }")
-            .arg(idle, QString::number(size / 2), hover));
+            "  border-radius: %2px;"
+            "  color: transparent;"
+            "  font-size: %3px;"
+            "  font-weight: bold;"
+            "  padding: 0; }"
+            "QPushButton:hover { background: %4;"
+            "  color: rgba(0,0,0,180); }")
+            .arg(idle,
+                 QString::number(size / 2),
+                 QString::number(qMax(9, size - 3)),
+                 hover));
         return b;
     }
 
@@ -91,9 +102,13 @@ protected:
                                      QPushButton  **maxBtnOut = nullptr)
     {
         QHBoxLayout *hdr = new QHBoxLayout;
-        QPushButton *closeBtn = makeTrafficLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn   = makeTrafficLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn   = makeTrafficLight("#155c1e", "#28c840");
+        // macOS-style hover glyphs: × − + appear on hover.
+        QPushButton *closeBtn = makeTrafficLight("#7a2b25", "#ff5f57",
+                                                 QString::fromUtf8("\xC3\x97"));
+        QPushButton *minBtn   = makeTrafficLight("#7a5b18", "#febc2e",
+                                                 QString::fromUtf8("\xE2\x88\x92"));
+        QPushButton *maxBtn   = makeTrafficLight("#155c1e", "#28c840",
+                                                 "+");
         hdr->addWidget(closeBtn);
         hdr->addWidget(minBtn);
         hdr->addWidget(maxBtn);
