@@ -380,6 +380,57 @@ PENDING — Session C (Tier 3)
       Estimated: 1 session.
 
 ------------------------------------------------------------------------
+VISUAL STATUS BOARD (snapshot 2026-10-14)
+------------------------------------------------------------------------
+
+SHIPPED — visual work
+  Notification Center restyle          glassy gradient, warmer cards
+  Seal colour picker (7 seals)         live recolour, Appearance page
+  Dock hover bloom                     lift + white glow ring
+  Menu fade-in                         200ms filter, shell-wide
+  Wallpaper parallax                   60px shift, follows focused window
+  Cursor glow (Glow / Arrow styles)    seal-coloured, 5 tunables
+  macOS fullscreen                     green button fills whole screen
+  Finder real transparency             blurred-copy backdrop removed
+  Wallpaper thumbnails                 live previews in Settings tiles
+  Live video wallpapers                Neon Jinx / Mob / Vander
+  Three 4x AI-upscaled wallpapers      Apocalypse, Magnific, Everest
+  Completion toast                     Sigil card on upscale finish
+
+EASY QUEUE (5-20 min each)
+  Traffic-light hover glyphs           x / - / + on hover
+  Dark-mode accent glow                focused input glow
+  Desktop icon shadow                  text shadow for legibility
+  Menu highlight sweep                 soft fade on hover, not hard cut
+  Dock indicator dot pulse             gentle pulse when app busy
+  Window shadow depth                  focused/unfocused shadow dial
+
+ONE-SESSION JOBS
+  Dock window previews on hover        thumbnails above dock icon
+  Launcher spring                      icons spring in with overshoot
+  Snap window animation                drag to edge slides/grows
+  Spotlight glass                      blurred screen behind
+  Sigil lock screen                    custom lock, big clock
+  Widget cards v2                      independent floating cards
+  Notification cards redesign          match widget cards
+  Fullscreen auto-hide chrome          top bar peeks at screen edge
+
+MULTI-SESSION BUILDS
+  Genie option A (4-6 bands)           code exists, apply after G7
+  Window body real glass               shell as "glass server"
+  Mission Control                      F3 / swipe -> grid of windows
+  Thanos Snap                          particle dissolve
+
+HARDCORE
+  V2 mesh warp genie                   vertex mesh, zero smear
+  Windhawk customisation layer         see CUSTOMISATION_VISION.md
+  App-transparent toasts               floating glass notifications
+
+SEE ALSO: CUSTOMISATION_VISION.md — full plan for the Windhawk-style
+layer: every knob, the rules engine, theme marketplace, auto-themes
+from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
+
+------------------------------------------------------------------------
 DEFERRED / FUTURE
 ------------------------------------------------------------------------
   [ ] Reverse Genie (un-minimize animation)
