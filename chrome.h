@@ -997,7 +997,14 @@ protected:
             VisualConfigManager::instance().cfg().dockIconSize;
         int visual = int(baseSize * m_current);
         int x = (width()  - visual) / 2;
-        int y = (height() - visual) / 2 - 4 + m_bounceOffset;
+
+        // Hover amount — recomputed here so we can lift the icon.
+        const qreal boost0 = (m_current > 1.0)
+            ? qBound(0.0, (m_current - 1.0) / 0.42, 1.0)
+            : 0.0;
+        const int liftPx = int(boost0 * 3.0);
+
+        int y = (height() - visual) / 2 - 4 + m_bounceOffset - liftPx;
 
         // Icon is full-bleed — no wrapper margin. Chip is drawn at
         // the same bounds and same radius (0.22). At rest it's
@@ -1021,6 +1028,19 @@ protected:
                                     baseRadius + pad);
             p.fillPath(chipPath,
                        QColor(0, 0, 0, chipAlpha));
+        }
+
+        // Bloom ring — soft white glow right around the icon on
+        // hover. Alpha follows the boost so it fades in smoothly.
+        if (boost > 0.05) {
+            QPainterPath ringPath;
+            QRectF ringRect = chipRect.adjusted(-1, -1, 1, 1);
+            ringPath.addRoundedRect(ringRect, baseRadius + pad + 1,
+                                    baseRadius + pad + 1);
+            QColor bloom(255, 255, 255, int(boost * 90));
+            p.setPen(QPen(bloom, 1.5));
+            p.setBrush(Qt::NoBrush);
+            p.drawPath(ringPath);
         }
 
         // App icon on top.
