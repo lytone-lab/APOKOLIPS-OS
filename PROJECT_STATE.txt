@@ -825,3 +825,13 @@ END OF PROJECT STATE
       - ApokolipsInputDialog already exists — just needs to be
         used everywhere (some sites still use QInputDialog).
       Estimated 1-2 sessions.
+
+  [ ] Sigil notification IPC
+      The shell already has a NotificationCenter with its own
+      banner UI, but nothing talks to it except the shell itself.
+      Add a simple file-based IPC so external tools — like the
+      upscale worker — can trigger a native Sigil notification
+      without needing notify-send or a system notification daemon.
+      Also: replace notify-send calls in the upscale worker with
+      this so the completion toast matches the shell's look.
+      Estimated: 1 short session.
