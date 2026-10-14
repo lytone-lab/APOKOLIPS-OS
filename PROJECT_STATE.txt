@@ -298,6 +298,58 @@ PENDING — Session C (Tier 3)
 
       Estimated: 1-2 sessions.
 
+  [ ] True macOS fullscreen (green button)
+      Currently green button fills the safe area (top bar + dock
+      stay visible). Plan is to add real macOS fullscreen: green
+      takes over the whole screen, hides the top bar and dock,
+      gives the window everything. Option+click = current behaviour.
+      Work: shell hides chrome on request from focused app; exit
+      reverses cleanly; genie/minimize must still work in fullscreen.
+      Estimated: 1-2 sessions.
+
+  [ ] Replace remaining QMessageBox calls with SigilDialog
+      ~60 raw QMessageBox sites across the codebase. Each should
+      use SigilDialog::ask() so every dialog matches the shell's
+      look. Mechanical but needs to be done in batches per file.
+      Start with settings.h (49 sites), then main.cpp (12),
+      then chrome.h + shell.h (1 each).
+      Estimated: 2-3 short sessions.
+
+  [ ] Widget redesign + Notification Center redesign
+      Do these together — they share a visual language and should
+      land in the same session so the look is consistent.
+      Widget side: DesktopWidgets is currently one stacked column
+      on the right. Redesign as independent floating cards
+      (Sonoma-style) with per-widget positioning.
+      NC side: current NotificationCenter is a sliding right
+      panel. Redesign to match whatever the widget cards become
+      so the shell's right edge feels like one system.
+      Estimated: 2 sessions (paired).
+
+  [ ] True macOS fullscreen (green button)
+      Currently green button fills the safe area (top bar + dock
+      stay visible). Plan is to add real macOS fullscreen: green
+      takes over the whole screen, hides the top bar and dock,
+      gives the window everything. Option+click = current behaviour.
+      Estimated: 1-2 sessions.
+
+  [ ] Replace remaining QMessageBox calls with SigilDialog
+      ~60 raw QMessageBox sites across the codebase. Each should
+      use SigilDialog::ask() so every dialog matches the shell's
+      look. Start with settings.h (49), then main.cpp (12),
+      then chrome.h + shell.h (1 each).
+      Estimated: 2-3 short sessions.
+
+  [ ] Widget redesign + Notification Center redesign
+      Do these together — they share a visual language.
+      Widget side: DesktopWidgets is currently one stacked column
+      on the right. Redesign as independent floating cards with
+      per-widget positioning.
+      NC side: current NotificationCenter is a sliding right
+      panel. Redesign to match the widget cards so the shell's
+      right edge feels like one system.
+      Estimated: 2 sessions (paired).
+
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
 ------------------------------------------------------------------------

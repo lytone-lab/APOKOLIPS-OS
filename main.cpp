@@ -1825,7 +1825,7 @@ static int runShell(int argc, char *argv[])
     {
         QTimer *uw = new QTimer(root);
         uw->setInterval(3000);
-        QObject::connect(uw, &QTimer::timeout, []() {
+        QObject::connect(uw, &QTimer::timeout, [notifications]() {
             static qint64 lastTs = 0;
             QFile f("/tmp/apokolips-upscale-last.json");
             if (!f.exists()) return;
@@ -1846,14 +1846,24 @@ static int runShell(int argc, char *argv[])
 
             auto &cfg = VisualConfigManager::instance().cfg();
             if (cfg.customWallpaperPath == src) {
-                // Still the same wallpaper — swap in the sharp one.
                 VisualConfigManager::instance().setAndSave(
                     [dst](VisualConfig &c) {
                         c.customWallpaperPath = dst;
                     });
+                if (notifications) {
+                    notifications->flash("APOKOLIPS",
+                        "Wallpaper upscaled",
+                        "Switched to the sharp 4K version.");
+                }
                 qInfo() << "[upscale] swapped wallpaper to sharp:"
                         << dst;
             } else {
+                if (notifications) {
+                    notifications->flash("APOKOLIPS",
+                        "Upscale finished",
+                        "You picked a different wallpaper, so the "
+                        "sharp version is saved but not applied.");
+                }
                 qInfo() << "[upscale] completed but wallpaper "
                            "changed since launch:"
                         << src;

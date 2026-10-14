@@ -44,6 +44,31 @@ public:
     void showCenter() { raise(); show(); m_target = 1.0; m_animTimer->start(); }
     void hideCenter() { m_target = 0.0; m_animTimer->start(); }
 
+    void flash(const QString &app, const QString &title,
+               const QString &body, int ms = 6000)
+    {
+        if (!m_cardsLayout) return;
+        const bool weOpened = !isVisible();
+
+        QString time = QTime::currentTime().toString("HH:mm");
+        QWidget *card = makeNote(app, title, body, time, m_theme.accent);
+        m_cardsLayout->addWidget(card);
+        m_cards.append(card);
+        if (m_emptyLabel) m_emptyLabel->setVisible(false);
+
+        if (weOpened) showCenter();
+
+        QPointer<QWidget> guard(card);
+        QTimer::singleShot(ms, this, [this, guard, weOpened]() {
+            if (!guard) return;
+            m_cards.removeAll(guard);
+            if (m_cardsLayout) m_cardsLayout->removeWidget(guard);
+            guard->deleteLater();
+            if (m_emptyLabel) m_emptyLabel->setVisible(m_cards.isEmpty());
+            if (weOpened && m_cards.isEmpty()) hideCenter();
+        });
+    }
+
 protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
