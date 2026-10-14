@@ -3326,6 +3326,27 @@ public:
         setAttribute(Qt::WA_OpaquePaintEvent, true);
         setMouseTracking(true);
 
+        // ---- Parallax: wallpaper shifts a few px opposite the
+        // focused window's offset from screen center. Only polls
+        // when the feature is enabled in config. 25 Hz poll,
+        // 60 Hz smoothing, max 12 px shift.
+        qInfo() << "[parallax] ctor, cfg flag ="
+                << VisualConfigManager::instance().cfg().wallpaperParallax;
+        if (VisualConfigManager::instance().cfg().wallpaperParallax) {
+            m_parallaxPollTimer = new QTimer(this);
+            m_parallaxPollTimer->setInterval(250);
+            QObject::connect(m_parallaxPollTimer, &QTimer::timeout,
+                             this, [this]() { pollParallax(); });
+            m_parallaxPollTimer->start();
+            qInfo() << "[parallax] timer armed";
+
+            m_parallaxSmoothTimer = new QTimer(this);
+            m_parallaxSmoothTimer->setInterval(16);
+            QObject::connect(m_parallaxSmoothTimer, &QTimer::timeout,
+                             this, [this]() { tickParallax(); });
+            m_parallaxSmoothTimer->start();
+        }
+
         // Install wallpaper-switch hook so DesktopCanvas's menu can
         // trigger a wallpaper change without needing a class-order
         // forward reference.
@@ -3617,10 +3638,164 @@ protected:
         QWidget::mousePressEvent(e);
     }
 
+    // Recursively find the focused con in a sway tree node.
+    // Returns true and fills out when found.
+    static bool findFocusedRect(const QJsonObject &node, QRect &out) {
+        const QString type = node.value("type").toString();
+        if (node.value("focused").toBool()
+            && (type == "con" || type == "floating_con")) {
+            QJsonObject r = node.value("rect").toObject();
+            int w = r.value("width").toInt();
+            int h = r.value("height").toInt();
+            if (w > 0 && h > 0) {
+                out = QRect(r.value("x").toInt(),
+                            r.value("y").toInt(), w, h);
+                return true;
+            }
+        }
+        for (const QJsonValue &v : node.value("nodes").toArray()) {
+            if (findFocusedRect(v.toObject(), out)) return true;
+        }
+        for (const QJsonValue &v :
+             node.value("floating_nodes").toArray()) {
+            if (findFocusedRect(v.toObject(), out)) return true;
+        }
+        return false;
+    }
+
+    void pollParallax() {
+        static int s_tick = 0;
+        ++s_tick;
+        if (!VisualConfigManager::instance().cfg().wallpaperParallax)
+            return;
+        // Skip if the previous poll is still running.
+        if (m_parallaxBusy) return;
+        m_parallaxBusy = true;
+
+        // Discover the sway IPC socket. Some environments don't
+        // export SWAYSOCK into the shell's environment, and
+        // swaymsg's auto-discovery does not always work.
+        static QString s_swaySock;
+        if (s_swaySock.isEmpty()) {
+            s_swaySock = qEnvironmentVariable("SWAYSOCK");
+            if (s_swaySock.isEmpty()) {
+                QString xdg = qEnvironmentVariable("XDG_RUNTIME_DIR");
+                if (xdg.isEmpty())
+                    xdg = QString("/run/user/%1").arg(getuid());
+                QDir d(xdg);
+                // QDir::Files excludes Unix sockets, so include
+                // QDir::System. sway-ipc sock is type 'srwx'.
+                for (const QString &e :
+                     d.entryList({ "sway-ipc.*.sock" },
+                                 QDir::Files | QDir::System)) {
+                    s_swaySock = d.filePath(e);
+                    break;
+                }
+            }
+            if (!s_swaySock.isEmpty())
+                qInfo() << "[parallax] SWAYSOCK=" << s_swaySock;
+            else
+                qWarning() << "[parallax] no sway socket found";
+        }
+
+        auto *p = new QProcess(this);
+        if (!s_swaySock.isEmpty()) {
+            QProcessEnvironment env =
+                QProcessEnvironment::systemEnvironment();
+            env.insert("SWAYSOCK", s_swaySock);
+            p->setProcessEnvironment(env);
+        }
+        QObject::connect(p,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, p](int code, QProcess::ExitStatus st) {
+                QByteArray raw = p->readAllStandardOutput();
+                QByteArray err = p->readAllStandardError();
+                p->deleteLater();
+                m_parallaxBusy = false;
+
+                static int s_verbose = 0;
+                ++s_verbose;
+                if (s_verbose % 10 == 1)
+                    qInfo() << "[parallax] poll"
+                            << "exit=" << code
+                            << "st=" << int(st)
+                            << "out=" << raw.size()
+                            << "err=" << err.size()
+                            << QString::fromUtf8(err.left(80));
+
+                QJsonDocument doc = QJsonDocument::fromJson(raw);
+                if (!doc.isObject()) return;
+
+                QRect wr;
+                if (!findFocusedRect(doc.object(), wr)) {
+                    static int s_nof = 0;
+                    if (++s_nof % 20 == 1)
+                        qInfo() << "[parallax] no focused window";
+                    m_parallaxTargetX = 0.0;
+                    m_parallaxTargetY = 0.0;
+                    return;
+                }
+                // Ignore tiny popups and anything covering the
+                // whole screen (the shell root, maximized apps).
+                if (wr.width()  < 200 || wr.height() < 200) {
+                    static int s_rs = 0;
+                    if (++s_rs % 20 == 1)
+                        qInfo() << "[parallax] focused too small:"
+                                << wr;
+                    return;
+                }
+                if (wr.width() >= width() - 10) {
+                    m_parallaxTargetX = 0.0;
+                    m_parallaxTargetY = 0.0;
+                    return;
+                }
+
+                const QPoint scrC(width() / 2, height() / 2);
+                const QPoint winC = wr.center();
+                const qreal dx = qreal(winC.x() - scrC.x()) / scrC.x();
+                const qreal dy = qreal(winC.y() - scrC.y()) / scrC.y();
+                const qreal MAX = 60.0;    // px ceiling — was 12, too subtle
+                m_parallaxTargetX = -dx * MAX;
+                m_parallaxTargetY = -dy * MAX;
+                qInfo() << "[parallax] focused rect=" << wr
+                        << "target=(" << m_parallaxTargetX
+                        << "," << m_parallaxTargetY << ")";
+            });
+        p->start("swaymsg", { "-t", "get_tree", "-r" });
+    }
+
+    void tickParallax() {
+        const qreal k = 0.15;
+        qreal dx = m_parallaxTargetX - m_parallaxX;
+        qreal dy = m_parallaxTargetY - m_parallaxY;
+        if (qAbs(dx) < 0.05 && qAbs(dy) < 0.05) {
+            if (m_parallaxX != m_parallaxTargetX
+                || m_parallaxY != m_parallaxTargetY) {
+                m_parallaxX = m_parallaxTargetX;
+                m_parallaxY = m_parallaxTargetY;
+                update();
+            }
+            return;
+        }
+        m_parallaxX += dx * k;
+        m_parallaxY += dy * k;
+        update();
+    }
+
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
-        if (m_wallpaper) m_wallpaper->paint(p, rect());
-        else             p.fillRect(rect(), QColor(20, 4, 12));
+        if (m_wallpaper) {
+            // Oversize the paint rect by MAX so the parallax shift
+            // never reveals an edge. Wallpaper subclasses scale
+            // to whatever rect we hand them, so the cache remains
+            // valid (the oversized size is constant).
+            const int MAX = 80;
+            QRect big = rect().adjusted(-MAX, -MAX, MAX, MAX);
+            big.translate(int(m_parallaxX), int(m_parallaxY));
+            m_wallpaper->paint(p, big);
+        } else {
+            p.fillRect(rect(), QColor(20, 4, 12));
+        }
 
         const Theme &t = ThemeManager::instance().current();
         const int TOP_H = 30;
@@ -3639,6 +3814,13 @@ protected:
 
 private:
     Wallpaper          *m_wallpaper = nullptr;
+    QTimer             *m_parallaxPollTimer = nullptr;
+    bool                m_parallaxBusy = false;
+    QTimer             *m_parallaxSmoothTimer = nullptr;
+    qreal               m_parallaxX = 0.0;
+    qreal               m_parallaxY = 0.0;
+    qreal               m_parallaxTargetX = 0.0;
+    qreal               m_parallaxTargetY = 0.0;
     AppLauncher        *m_launcher = nullptr;
     NotificationCenter *m_notifications = nullptr;
     ControlCenter      *m_controlCenter = nullptr;
