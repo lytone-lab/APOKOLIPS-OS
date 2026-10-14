@@ -6,3 +6,7 @@ compile_commands.json
 main.cpp.pre-*
 *.pre-*
 CMakeLists.txt.pre-*
+
+# Dev-only video wallpapers (not for users)
+/assets/wallpapers/videos/mob-*.mp4
+/assets/wallpapers/videos/vander-*.mp4

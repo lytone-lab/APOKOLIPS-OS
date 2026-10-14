@@ -2160,7 +2160,8 @@ static int runShell(int argc, char *argv[])
         { "starfield",  "Starfield"     },
         { "aurora",     "Aurora"        },
         { "goldengate", "Golden Gate"   },
-        { "everest",    "Mount Everest" }
+        { "everest",    "Mount Everest" },
+        { "neonjinx",   "Neon Jinx"     }
     };
     for (const auto &w : wallpapers) {
         QAction *a = wallSub->addAction(w.name);

@@ -2284,6 +2284,14 @@ public:
 
     QList<DesktopIcon*> icons() const { return m_icons; }
 
+    // Wallpaper switching hook — set by DesktopBackground at construction.
+    // Lets the canvas menu call into the background's setWallpaper without
+    // needing a class-order forward reference.
+    static std::function<void(const QString &)> &wallpaperHook() {
+        static std::function<void(const QString &)> fn;
+        return fn;
+    }
+
     void showCanvasMenu(const QPoint &pos) {
         QMenu m(this);
         m.setStyleSheet(
@@ -2303,12 +2311,97 @@ public:
             "  background: rgba(168, 50, 50, 90);"
             "}");
 
-        QAction *tidy = m.addAction("tidyUp");
+        // ---- New ----
+        QAction *aNewFolder = m.addAction("New Folder");
+        QAction *aNewFile   = m.addAction("New Text File");
+        m.addSeparator();
+
+        // ---- Open ----
+        QAction *aOpenTerminal = m.addAction("Open Terminal");
+        QAction *aOpenFiles    = m.addAction("Open File Manager");
+        QAction *aOpenHome     = m.addAction("Open Home Folder");
+        m.addSeparator();
+
+        // ---- Wallpaper submenu ----
+        QMenu *wallSub = m.addMenu("Change Wallpaper");
+        struct WP { const char *id; const char *name; };
+        const WP wps[] = {
+            { "ruby",       "Magnific"             },
+            { "starfield",  "Starfield"            },
+            { "aurora",     "Aurora"               },
+            { "goldengate", "Golden Gate"          },
+            { "everest",    "Mount Everest"        },
+            { "neonjinx",   "Neon Jinx"            },
+            { "mob",        "Mob (dev)"            },
+            { "vander",     "Vander Warwick (dev)" }
+        };
+        for (const auto &w : wps) {
+            QAction *wa = wallSub->addAction(w.name);
+            QString id = QString::fromUtf8(w.id);
+            QObject::connect(wa, &QAction::triggered, [id]() {
+                auto &hook = DesktopCanvas::wallpaperHook();
+                if (hook) hook(id);
+            });
+        }
+        m.addSeparator();
+
+        // ---- Desktop ----
+        QAction *tidy = m.addAction("Tidy Up");
         QAction *refresh = m.addAction("Refresh Icons");
+        m.addSeparator();
+
+        // ---- System ----
+        QAction *aSettings = m.addAction("System Settings…");
+        QAction *aAbout    = m.addAction("About Apokolips");
 
         QAction *chosen = m.exec(mapToGlobal(pos));
         if (chosen == tidy) tidyUp();
         else if (chosen == refresh) rebuildIcons();
+        else if (chosen == aNewFolder) {
+            QString base = QDir::homePath() + "/Desktop";
+            QDir().mkpath(base);
+            QString path = base + "/New Folder";
+            int n = 1;
+            while (QDir(path).exists())
+                path = base + QString("/New Folder %1").arg(++n);
+            QDir().mkpath(path);
+        }
+        else if (chosen == aNewFile) {
+            QString base = QDir::homePath() + "/Desktop";
+            QDir().mkpath(base);
+            QString path = base + "/New Text File.txt";
+            int n = 1;
+            while (QFile::exists(path))
+                path = base + QString("/New Text File %1.txt").arg(++n);
+            QFile f(path);
+            if (f.open(QIODevice::WriteOnly)) f.close();
+        }
+        else if (chosen == aOpenTerminal) {
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                { "--node" });
+        }
+        else if (chosen == aOpenFiles) {
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                { "--files" });
+        }
+        else if (chosen == aOpenHome) {
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                { "--files", QDir::homePath() });
+        }
+        else if (chosen == aSettings) {
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                { "--settings" });
+        }
+        else if (chosen == aAbout) {
+            QMessageBox::about(this, "About Apokolips",
+                "<b>Apokolips OS</b><br>"
+                "macOS polish. Windows compatibility. "
+                "Linux foundation.");
+        }
     }
 
     void tidyUp() {
@@ -3153,12 +3246,31 @@ public:
         setAttribute(Qt::WA_OpaquePaintEvent, true);
         setMouseTracking(true);
 
+        // Install wallpaper-switch hook so DesktopCanvas's menu can
+        // trigger a wallpaper change without needing a class-order
+        // forward reference.
+        DesktopCanvas::wallpaperHook() = [this](const QString &id) {
+            Wallpaper *nw = WallpaperConfig::makeById(id);
+            if (!nw) return;
+            setWallpaper(nw);
+            ThemeManager::instance().setTheme(nw->theme());
+            WallpaperConfig::saveId(id);
+        };
+
         m_tickTimer = new QTimer(this);
         m_tickTimer->setInterval(16);
         QObject::connect(m_tickTimer, &QTimer::timeout, this, [this]() {
             if (m_wallpaper && m_wallpaper->animated()) {
                 m_wallpaper->tick();
                 update();
+                // Refresh the blurred dock backdrop every ~500 ms
+                // so it tracks animated wallpapers (video, gif,
+                // starfield, aurora) instead of freezing on the
+                // first (often black) frame.
+                if (++m_blurTickCounter >= 30) {   // 30 × 16 ms
+                    m_blurTickCounter = 0;
+                    m_blurTimer->start();
+                }
             }
         });
         m_tickTimer->start();
@@ -3318,11 +3430,14 @@ protected:
             {
                 struct WP { const char *id; const char *name; };
                 const WP wps[] = {
-                    { "ruby",       "Magnific"      },
-                    { "starfield",  "Starfield"     },
-                    { "aurora",     "Aurora"        },
-                    { "goldengate", "Golden Gate"   },
-                    { "everest",    "Mount Everest" }
+                    { "ruby",       "Magnific"             },
+                    { "starfield",  "Starfield"            },
+                    { "aurora",     "Aurora"               },
+                    { "goldengate", "Golden Gate"          },
+                    { "everest",    "Mount Everest"        },
+                    { "neonjinx",   "Neon Jinx"            },
+                    { "mob",        "Mob (dev)"            },
+                    { "vander",     "Vander Warwick (dev)" }
                 };
                 for (const auto &w : wps) {
                     QAction *wa = wallSub->addAction(w.name);
@@ -3442,6 +3557,7 @@ private:
     QWidget            *m_missionControl = nullptr;
     QTimer             *m_tickTimer = nullptr;
     QTimer             *m_blurTimer = nullptr;
+    int                 m_blurTickCounter = 0;
 };
 
 class MissionControl : public QWidget {

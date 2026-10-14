@@ -4885,6 +4885,7 @@ private:
             { "aurora",     "Aurora",        nullptr },
             { "goldengate", "Golden Gate",   "macos-golden-gate-dark.jpg" },
             { "everest",    "Mount Everest", "assets/wallpapers/mount-everest.jpg" },
+            { "neonjinx",   "Neon Jinx",     nullptr },
             { "gif",        "GIF…",          nullptr }
         };
         auto resolveThumb = [](const QString &rel) -> QString {

@@ -5,6 +5,10 @@
 
 #include "shell.h"
 #include "theme.h"
+#include <QMediaPlayer>
+#include <QVideoSink>
+#include <QVideoFrame>
+#include <QUrl>
 
 class Wallpaper {
 public:
@@ -77,6 +81,106 @@ private:
     QPixmap m_source;
     QPixmap m_cached;
     QSize   m_cachedSize;
+};
+
+// Looping muted video wallpaper. Frames arrive on the main thread
+// via QVideoSink; tick() picks up the newest one and invalidates
+// the scaled cache. paint() draws from the cache.
+class VideoWallpaper : public Wallpaper {
+public:
+    VideoWallpaper(const QStringList &candidates,
+                   const QString &id,
+                   const QString &name)
+        : m_id(id), m_name(name)
+    {
+        QString found;
+        for (const QString &p : candidates) {
+            if (QFile::exists(p)) { found = p; break; }
+        }
+        if (found.isEmpty()) return;
+
+        m_sink = new QVideoSink;
+        m_player = new QMediaPlayer;
+        m_player->setVideoSink(m_sink);
+        m_player->setLoops(QMediaPlayer::Infinite);
+
+        QObject::connect(m_sink, &QVideoSink::videoFrameChanged,
+                         [this](const QVideoFrame &frame) {
+            m_pendingFrame = frame.toImage();
+            m_hasNewFrame = true;
+        });
+
+        m_player->setSource(QUrl::fromLocalFile(found));
+        m_player->play();
+    }
+
+    ~VideoWallpaper() override {
+        if (m_player) {
+            m_player->stop();
+            m_player->setVideoSink(nullptr);
+            delete m_player;
+            m_player = nullptr;
+        }
+        delete m_sink;
+        m_sink = nullptr;
+    }
+
+    QString id() const override { return m_id; }
+    QString displayName() const override { return m_name; }
+    bool animated() const override { return true; }
+
+    Theme theme() const override {
+        Theme t;
+        t.chromeBg      = QColor(28, 28, 34);
+        t.chromeBorder  = QColor(200, 210, 220, 110);
+        t.accent        = QColor(220, 220, 230);
+        t.accentSoft    = QColor(220, 220, 230, 60);
+        t.accentStrong  = QColor(220, 220, 230, 120);
+        t.textPrimary   = QColor(240, 240, 245);
+        t.textSecondary = QColor(190, 195, 200);
+        t.textDim       = QColor(130, 135, 145);
+        t.panelBg       = QColor(24, 24, 28, 220);
+        return t;
+    }
+
+    void tick() override {
+        if (m_hasNewFrame) {
+            m_current = m_pendingFrame;
+            m_hasNewFrame = false;
+            m_cached = QPixmap();
+            m_cachedSize = QSize();
+        }
+    }
+
+    void paint(QPainter &p, const QRect &r) override {
+        if (m_current.isNull() || r.isEmpty()) {
+            p.fillRect(r, QColor(18, 18, 22));
+            return;
+        }
+        p.setRenderHint(QPainter::SmoothPixmapTransform);
+        if (m_cached.isNull() || m_cachedSize != r.size()) {
+            QPixmap src = QPixmap::fromImage(m_current);
+            QPixmap scaled = src.scaled(r.size(),
+                Qt::KeepAspectRatioByExpanding,
+                Qt::SmoothTransformation);
+            int sx = (scaled.width()  - r.width())  / 2;
+            int sy = (scaled.height() - r.height()) / 2;
+            m_cached = scaled.copy(sx, sy, r.width(), r.height());
+            m_cachedSize = r.size();
+        }
+        p.drawPixmap(r.topLeft(), m_cached);
+    }
+
+private:
+    QString       m_id;
+    QString       m_name;
+    QMediaPlayer *m_player = nullptr;
+    QVideoSink   *m_sink   = nullptr;
+    QImage        m_current;
+    QImage        m_pendingFrame;
+    bool          m_hasNewFrame = false;
+    QPixmap       m_cached;
+    QSize         m_cachedSize;
 };
 
 class GifWallpaper : public Wallpaper {

@@ -126,6 +126,18 @@ public:
         if (id == "starfield")  return new StarfieldWallpaper;
         if (id == "aurora")     return new AuroraWallpaper;
         if (id == "goldengate") return new GoldenGateWallpaper;
+        if (id == "neonjinx" || id == "mob" || id == "vander") {
+            QString file, name;
+            if (id == "neonjinx")     { file = "neon-jinx-1080p.mp4";  name = "Neon Jinx";      }
+            else if (id == "mob")     { file = "mob-1080p.mp4";        name = "Mob";            }
+            else                      { file = "vander-1080p.mp4";     name = "Vander Warwick"; }
+            return new VideoWallpaper({
+                QDir::homePath() + "/apokolips-shell/assets/wallpapers/videos/" + file,
+                "/home/lytone/apokolips-shell/assets/wallpapers/videos/" + file,
+                "assets/wallpapers/videos/" + file,
+                "/usr/share/apokolips/wallpapers/videos/" + file
+            }, id, name);
+        }
         if (id == "everest") {
             return new ImageWallpaper({
                 QDir::homePath() +
