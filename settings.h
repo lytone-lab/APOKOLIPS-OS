@@ -57,7 +57,6 @@ public:
 
             const QSize minSize(qMin(880, usable.width()),
                                 qMin(620, usable.height()));
-            setMinimumSize(minSize);
             if (layout()) {
                 layout()->setSizeConstraint(QLayout::SetNoConstraint);
                 layout()->activate();
@@ -67,9 +66,23 @@ public:
                               qMin(700, usable.height()));
             initialSize.setWidth(qMax(initialSize.width(), minSize.width()));
             initialSize.setHeight(qMax(initialSize.height(), minSize.height()));
+
+            // Force the initial Wayland surface to be exactly
+            // initialSize. Wayland honours set_min_size at the first
+            // xdg_toplevel commit; a plain resize() before show() is
+            // silently dropped, which caused Settings to appear at a
+            // default size and then visibly grow.
+            setMinimumSize(initialSize);
             resize(initialSize);
             move(usable.center() - QPoint(initialSize.width() / 2,
                                           initialSize.height() / 2));
+            qInfo() << "[settings-geom] ctor set to" << initialSize;
+
+            // Release the tight minimum once the surface is up so the
+            // user can still resize freely.
+            QTimer::singleShot(0, this, [this, minSize]() {
+                setMinimumSize(minSize);
+            });
         } else {
             setMinimumSize(880, 620);
             resize(1100, 700);
@@ -135,37 +148,10 @@ protected:
 
     void showEvent(QShowEvent *e) override {
         QWidget::showEvent(e);
-
-        // Wayland ignores resize() called before the surface is mapped.
-        // Re-apply the dock-aware geometry now that we have a real
-        // surface, and again on the next event-loop turn (some
-        // compositors apply layout asynchronously).
-        auto applyGeom = [this]() {
-            if (QScreen *s = QApplication::primaryScreen()) {
-                QRect usable = s->availableGeometry();
-                constexpr int dockExtent = 96;
-                constexpr int bottomReserve = dockExtent + 14;
-                constexpr int sideReserve = dockExtent + 14 + 8;
-                const int dockPosition = VisualConfigManager::instance()
-                                            .cfg().dockPosition;
-                if (dockPosition == 0)
-                    usable.setHeight(usable.height() - bottomReserve);
-                else if (dockPosition == 1)
-                    usable.setLeft(usable.left() + sideReserve);
-                else if (dockPosition == 2)
-                    usable.setWidth(usable.width() - sideReserve);
-                if (usable.width() < 1 || usable.height() < 1)
-                    usable = s->geometry();
-
-                QSize target(qMin(1100, usable.width()),
-                             qMin(700, usable.height()));
-                resize(target);
-                move(usable.center()
-                     - QPoint(target.width() / 2, target.height() / 2));
-            }
-        };
-        applyGeom();
-        QTimer::singleShot(0, this, applyGeom);
+        // Geometry was finalised in the constructor via setMinimumSize
+        // so the surface maps at the correct size on the first frame.
+        // No post-show resize — that used to race the constructor and
+        // the layout, causing visible small-then-big jumps.
     }
 
     void changeEvent(QEvent *e) override {
@@ -200,6 +186,14 @@ protected:
 
             QSize target(qMin(1100, usable.width()),
                          qMin(700, usable.height()));
+
+            // Already correct? Do nothing. This used to fire on every
+            // activation / show event and generate a redundant Wayland
+            // resize request — visible as a small flicker.
+            if (size() == target) return;
+
+            qInfo() << "[settings-geom] reapply"
+                    << size() << "->" << target;
             resize(target);
             move(usable.center()
                  - QPoint(target.width() / 2, target.height() / 2));
