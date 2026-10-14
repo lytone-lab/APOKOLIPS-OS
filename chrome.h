@@ -931,6 +931,233 @@ private:
     QHBoxLayout *m_gridRow = nullptr;
 };
 
+// ----------------------------------------------------------------
+// DockPreviewPopup — Windows 11 style window thumbnails shown
+// above a dock icon on hover. Queries sway for every window of
+// the app, captures a screenshot of each, shows them side by
+// side. Click a thumbnail → focus that window. Move off → closes.
+// ----------------------------------------------------------------
+class DockPreviewPopup : public QWidget {
+public:
+    DockPreviewPopup(const QString &appId,
+                     const QString &titleMatch,
+                     QWidget *anchorIcon,
+                     QWidget *parentRoot)
+        : QWidget(parentRoot),
+          m_appId(appId), m_titleMatch(titleMatch),
+          m_anchor(anchorIcon)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents, false);
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAttribute(Qt::WA_ShowWithoutActivating, true);
+        setAttribute(Qt::WA_DeleteOnClose, true);
+
+        m_theme = ThemeManager::instance().current();
+
+        QVBoxLayout *outer = new QVBoxLayout(this);
+        outer->setContentsMargins(8, 8, 8, 8);
+        outer->setSpacing(0);
+
+        Sigil::Card *card = new Sigil::Card;
+        outer->addWidget(card);
+
+        m_row = new QHBoxLayout(card);
+        m_row->setContentsMargins(12, 12, 12, 12);
+        m_row->setSpacing(10);
+
+        m_closeTimer = new QTimer(this);
+        m_closeTimer->setSingleShot(true);
+        QObject::connect(m_closeTimer, &QTimer::timeout,
+                         this, [this]() { close(); });
+
+        QTimer::singleShot(0, this, [this]() { loadWindows(); });
+    }
+
+    void keepAlive() { if (m_closeTimer) m_closeTimer->stop(); }
+    void scheduleClose(int ms = 200) {
+        if (m_closeTimer) m_closeTimer->start(ms);
+    }
+
+protected:
+    void enterEvent(QEnterEvent *) override { keepAlive(); }
+    void leaveEvent(QEvent *)      override { scheduleClose(300); }
+
+    void paintEvent(QPaintEvent *) override {
+        // Let the Sigil::Card render — nothing to add on top.
+    }
+
+private:
+    void loadWindows() {
+        QProcess p;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        const QString sock = discoverSwaySock();
+        if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+        p.setProcessEnvironment(env);
+        p.start("swaymsg", { "-t", "get_tree", "-r" });
+        if (!p.waitForFinished(600)) { close(); return; }
+        QJsonDocument doc = QJsonDocument::fromJson(
+            p.readAllStandardOutput());
+        if (!doc.isObject()) { close(); return; }
+
+        QList<QJsonObject> windows;
+        collectWindows(doc.object(), windows);
+        qInfo() << "[preview] appId=" << m_appId
+                << "title=" << m_titleMatch
+                << "windows=" << windows.size();
+
+        if (windows.size() < 2) { close(); return; }
+
+        for (const QJsonObject &w : windows) addCard(w);
+        adjustSize();
+        positionAboveAnchor();
+        show();
+        raise();
+    }
+
+    void collectWindows(const QJsonObject &node,
+                        QList<QJsonObject> &out) {
+        const QString type = node.value("type").toString();
+        if (type == "con" || type == "floating_con") {
+            const QString app = node.value("app_id").toString();
+            const QString title = node.value("name").toString();
+            const bool appMatch = !m_appId.isEmpty() && app == m_appId;
+            const bool titleOk = m_titleMatch.isEmpty()
+                || title.contains(m_titleMatch, Qt::CaseInsensitive);
+            // Skip windows whose title is empty (scratchpad shells).
+            if (appMatch && titleOk && !title.isEmpty())
+                out.append(node);
+        }
+        for (const QJsonValue &v : node.value("nodes").toArray())
+            collectWindows(v.toObject(), out);
+        for (const QJsonValue &v :
+             node.value("floating_nodes").toArray())
+            collectWindows(v.toObject(), out);
+    }
+
+    void addCard(const QJsonObject &w) {
+        const int conId = w.value("id").toInt();
+        const QString title = w.value("name").toString();
+        QJsonObject r = w.value("rect").toObject();
+        const QRect rect(r.value("x").toInt(), r.value("y").toInt(),
+                         r.value("width").toInt(),
+                         r.value("height").toInt());
+
+        QWidget *cardW = new QWidget;
+        cardW->setFixedSize(240, 170);
+        cardW->setAttribute(Qt::WA_StyledBackground, true);
+        cardW->setStyleSheet(QString(
+            "QWidget { background: %1;"
+            "  border: 1px solid rgba(255,255,255,55);"
+            "  border-radius: 10px; }"
+            "QWidget:hover { border: 1px solid rgba(255,255,255,150); }")
+            .arg(rgba(m_theme.chromeBg.lighter(115))));
+
+        QVBoxLayout *v = new QVBoxLayout(cardW);
+        v->setContentsMargins(8, 8, 8, 8);
+        v->setSpacing(6);
+
+        QLabel *thumb = new QLabel;
+        thumb->setFixedSize(224, 126);
+        thumb->setAlignment(Qt::AlignCenter);
+        thumb->setStyleSheet(
+            "QLabel { background: rgba(0,0,0,60);"
+            "  border-radius: 6px; color: rgba(255,255,255,90);"
+            "  font-size: 11px; }");
+        thumb->setText("Loading…");
+        v->addWidget(thumb);
+
+        QLabel *titleLbl = new QLabel;
+        titleLbl->setFixedHeight(20);
+        titleLbl->setStyleSheet(QString(
+            "QLabel { color: %1; font-size: 11px;"
+            "  background: transparent; border: none; }")
+            .arg(m_theme.textPrimary.name()));
+        QFontMetrics fm(titleLbl->font());
+        titleLbl->setText(fm.elidedText(title, Qt::ElideMiddle, 220));
+        v->addWidget(titleLbl);
+
+        cardW->setCursor(Qt::PointingHandCursor);
+        cardW->setProperty("conId", conId);
+        cardW->installEventFilter(this);
+        m_row->addWidget(cardW);
+
+        captureThumbnail(conId, rect, thumb);
+    }
+
+    bool eventFilter(QObject *obj, QEvent *e) override {
+        if (e->type() == QEvent::MouseButtonRelease) {
+            QWidget *w = qobject_cast<QWidget *>(obj);
+            if (w) {
+                int conId = w->property("conId").toInt();
+                if (conId > 0) {
+                    QProcess::startDetached("swaymsg",
+                        { QString("[con_id=%1]").arg(conId), "focus" });
+                    QTimer::singleShot(80, this, [this]() { close(); });
+                    return true;
+                }
+            }
+        }
+        if (e->type() == QEvent::Enter) keepAlive();
+        if (e->type() == QEvent::Leave) scheduleClose(300);
+        return QWidget::eventFilter(obj, e);
+    }
+
+    void captureThumbnail(int conId, const QRect &rect, QLabel *label) {
+        auto *p = new QProcess(this);
+        QString tmpPath = QDir::tempPath()
+            + QString("/apokolips-preview-%1.png").arg(conId);
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        const QString sock = discoverSwaySock();
+        if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+        p->setProcessEnvironment(env);
+        p->start("grim", {
+            "-g", QString("%1,%2 %3x%4")
+                .arg(rect.x()).arg(rect.y())
+                .arg(rect.width()).arg(rect.height()),
+            "-t", "png", tmpPath });
+        QObject::connect(p,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [p, label, tmpPath](int code, QProcess::ExitStatus) {
+                p->deleteLater();
+                if (code != 0) {
+                    if (label) label->setText("(no preview)");
+                    return;
+                }
+                QPixmap pm(tmpPath);
+                QFile::remove(tmpPath);
+                if (pm.isNull() || !label) return;
+                QPixmap scaled = pm.scaled(label->size(),
+                    Qt::KeepAspectRatioByExpanding,
+                    Qt::SmoothTransformation);
+                int sx = (scaled.width()  - label->width())  / 2;
+                int sy = (scaled.height() - label->height()) / 2;
+                label->setPixmap(scaled.copy(sx, sy,
+                    label->width(), label->height()));
+            });
+    }
+
+    void positionAboveAnchor() {
+        if (!m_anchor) return;
+        QWidget *root = parentWidget();
+        if (!root) return;
+        QPoint anchorInRoot = m_anchor->mapTo(root,
+            QPoint(m_anchor->width() / 2, 0));
+        int x = anchorInRoot.x() - width() / 2;
+        int y = anchorInRoot.y() - height() - 12;
+        x = qBound(8, x, root->width() - width() - 8);
+        y = qMax(8, y);
+        move(x, y);
+    }
+
+    QString            m_appId;
+    QString            m_titleMatch;
+    QPointer<QWidget>  m_anchor;
+    QHBoxLayout       *m_row = nullptr;
+    Theme              m_theme;
+    QTimer            *m_closeTimer = nullptr;
+};
+
 class DockIcon : public QWidget {
 public:
     DockIcon(const QString &icon, const QString &name, int index,
