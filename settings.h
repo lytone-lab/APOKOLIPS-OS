@@ -63,7 +63,7 @@ public:
             }
 
             QSize initialSize(qMin(1100, usable.width()),
-                              qMin(700, usable.height()));
+                              qMin(650, usable.height()));
             initialSize.setWidth(qMax(initialSize.width(), minSize.width()));
             initialSize.setHeight(qMax(initialSize.height(), minSize.height()));
 
@@ -185,7 +185,7 @@ protected:
                 usable = s->geometry();
 
             QSize target(qMin(1100, usable.width()),
-                         qMin(700, usable.height()));
+                         qMin(650, usable.height()));
 
             // Already correct? Do nothing. This used to fire on every
             // activation / show event and generate a redundant Wayland
