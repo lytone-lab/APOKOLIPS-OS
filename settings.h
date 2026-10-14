@@ -7459,6 +7459,93 @@ private:
             v->addWidget(c);
         }
 
+        // ---- Cursor Glow card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 18);
+            cv->setSpacing(14);
+            cv->addWidget(Sigil::groupLabel("CURSOR GLOW"));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Seal-coloured cursor glow",
+                "A soft halo that follows the pointer",
+                vc.cursorGlow,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.cursorGlow = on; });
+                }));
+
+            auto addGlowSlider = [&](const QString &title,
+                                     int lo, int hi, int val,
+                                     std::function<void(int)> onCh) {
+                QWidget *row = new QWidget;
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(6);
+
+                QHBoxLayout *top = new QHBoxLayout;
+                QLabel *t = new QLabel(title);
+                t->setStyleSheet(QString(
+                    "color: %1; font-size: 13px;"
+                    " background: transparent;")
+                    .arg(Sigil::textPrimary().name()));
+                QLabel *v = new QLabel(QString::number(val));
+                v->setStyleSheet(QString(
+                    "color: %1; font-size: 12px;"
+                    " background: transparent;")
+                    .arg(Sigil::textSecondary().name()));
+                v->setMinimumWidth(40);
+                v->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                top->addWidget(t);
+                top->addStretch();
+                top->addWidget(v);
+                rv->addLayout(top);
+
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(lo, hi);
+                sl->setValue(val);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px;"
+                    "  background: rgba(255,255,255,25);"
+                    "  border-radius: 2px; }"
+                    "QSlider::handle:horizontal {"
+                    "  background: #ffffff; width: 14px; height: 14px;"
+                    "  margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal {"
+                    "  background: rgb(168,50,50);"
+                    "  border-radius: 2px; }");
+                QObject::connect(sl, &QSlider::valueChanged,
+                                 [v, onCh](int x) {
+                    v->setText(QString::number(x));
+                    onCh(x);
+                });
+                rv->addWidget(sl);
+                cv->addWidget(row);
+            };
+
+            addGlowSlider("Brightness", 20, 200,
+                          vc.cursorGlowBrightness, [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) {
+                        c.cursorGlowBrightness = x; });
+            });
+            addGlowSlider("Radius", 20, 100,
+                          vc.cursorGlowRadius, [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) {
+                        c.cursorGlowRadius = x; });
+            });
+            addGlowSlider("Trail length", 0, 16,
+                          vc.cursorGlowTrail, [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) {
+                        c.cursorGlowTrail = x; });
+            });
+
+            v->addWidget(c);
+        }
+
         v->addStretch();
         return page;
     }
