@@ -616,6 +616,22 @@ private:
         m_pageCache.insert(idx, page);
     }
 
+    // Tear down the cached page for idx and rebuild it from its
+    // factory. Used when the seal colour changes — accent colours
+    // are baked into widget stylesheets at build time, so a live
+    // restyle is not enough; the page has to be reprinted.
+    void rebuildPage(int idx) {
+        if (idx < 0 || idx >= m_pageFactories.size()) return;
+        QWidget *old = m_pageCache.take(idx);
+        if (old) old->deleteLater();
+        ensurePageBuilt(idx);
+    }
+
+    void rebuildCurrentPage() {
+        if (!m_stack) return;
+        rebuildPage(m_stack->currentIndex());
+    }
+
     // Background warmer — builds one page every 60 ms while the window
     // is visible so idle time gets used and first click is instant.
     void warmNextPage() {
@@ -759,6 +775,10 @@ private:
                     restyleAll();
                     for (QWidget *ch : findChildren<QWidget *>())
                         ch->update();
+                    // Rebuild the current page so its cards pick up
+                    // the new accent colours. Toggles / sliders /
+                    // headers bake their stylesheet at build time.
+                    rebuildCurrentPage();
                 });
             }
 
