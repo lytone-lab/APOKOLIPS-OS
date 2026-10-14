@@ -5068,16 +5068,47 @@ private:
                                         "%3-wide screen. Sharpen it?")
                                     .arg(srcW).arg(srcH).arg(screenW),
                                 { "Quick (about 10 seconds)",
+                                  "Sharp (10-40 min, best quality)",
                                   "Leave as-is" },
                                 "Don't ask again for this image",
                                 &remember);
-                            prior = (ch == 0) ? "quick" : "skip";
+                            prior = (ch == 0) ? "quick"
+                                  : (ch == 1) ? "sharp"
+                                  :             "skip";
                             if (remember) {
                                 QString p = path, d = prior;
                                 VisualConfigManager::instance()
                                     .setAndSave([p, d](VisualConfig &c) {
                                         c.upscaleDecisions[p] = d;
                                     });
+                            }
+                        }
+
+                        if (prior == "sharp") {
+                            QString cacheDir = QDir::homePath()
+                                + "/.cache/apokolips/wallpapers";
+                            QDir().mkpath(cacheDir);
+                            QString hash = QString::number(
+                                qHash(path), 16);
+                            QString cached = cacheDir + "/"
+                                + hash + "-sharp.jpg";
+                            if (QFile::exists(cached)) {
+                                path = cached;
+                                qInfo() << "[wallpaper] sharp cached:"
+                                        << cached;
+                            } else {
+                                // Spawn the AI worker as a hidden
+                                // background process. It writes a
+                                // completion marker when done — the
+                                // shell watches for it and swaps
+                                // the wallpaper automatically.
+                                QProcess::startDetached(
+                                    QCoreApplication::applicationFilePath(),
+                                    { "--upscale-worker",
+                                      path, cached });
+                                qInfo() << "[wallpaper] sharp worker"
+                                        << "launched ->" << cached;
+                                // Keep the original path for now.
                             }
                         }
 

@@ -1817,6 +1817,51 @@ static int runShell(int argc, char *argv[])
     notifications->hide();
     root->setNotifications(notifications);
 
+    // ---- Upscale completion watcher ----
+    // The --upscale-worker mode writes /tmp/apokolips-upscale-last.json
+    // when a job finishes. When that file changes, and the currently-
+    // active custom wallpaper is still the blurry original, swap in
+    // the sharp version. The existing config watcher reloads it.
+    {
+        QTimer *uw = new QTimer(root);
+        uw->setInterval(3000);
+        QObject::connect(uw, &QTimer::timeout, []() {
+            static qint64 lastTs = 0;
+            QFile f("/tmp/apokolips-upscale-last.json");
+            if (!f.exists()) return;
+            if (!f.open(QIODevice::ReadOnly)) return;
+            QJsonDocument doc =
+                QJsonDocument::fromJson(f.readAll());
+            f.close();
+            if (!doc.isObject()) return;
+
+            QJsonObject o = doc.object();
+            qint64 ts = (qint64)o.value("ts").toDouble();
+            if (ts <= lastTs) return;
+            lastTs = ts;
+
+            QString src = o.value("src").toString();
+            QString dst = o.value("dst").toString();
+            if (dst.isEmpty() || !QFile::exists(dst)) return;
+
+            auto &cfg = VisualConfigManager::instance().cfg();
+            if (cfg.customWallpaperPath == src) {
+                // Still the same wallpaper — swap in the sharp one.
+                VisualConfigManager::instance().setAndSave(
+                    [dst](VisualConfig &c) {
+                        c.customWallpaperPath = dst;
+                    });
+                qInfo() << "[upscale] swapped wallpaper to sharp:"
+                        << dst;
+            } else {
+                qInfo() << "[upscale] completed but wallpaper "
+                           "changed since launch:"
+                        << src;
+            }
+        });
+        uw->start();
+    }
+
     // Omega button (Launchpad — vector, matches dock)
     class OmegaButton : public QPushButton {
     public:
