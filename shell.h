@@ -89,4 +89,42 @@
 #include <cmath>
 
 
+
+
+// ----------------------------------------------------------------
+// Menu fade-in — install once per process. Every QMenu fades in
+// from transparent over 200 ms.
+// ----------------------------------------------------------------
+class MenuFadeFilter : public QObject {
+public:
+    using QObject::QObject;
+protected:
+    bool eventFilter(QObject *obj, QEvent *e) override {
+        if (e->type() == QEvent::Show) {
+            if (auto *m = qobject_cast<QMenu *>(obj)) {
+                if (!m->property("_fadeDone").toBool()) {
+                    m->setProperty("_fadeDone", true);
+                    auto *eff = new QGraphicsOpacityEffect(m);
+                    m->setGraphicsEffect(eff);
+                    auto *anim = new QPropertyAnimation(eff, "opacity", m);
+                    anim->setDuration(200);
+                    anim->setStartValue(0.0);
+                    anim->setEndValue(1.0);
+                    anim->setEasingCurve(QEasingCurve::OutCubic);
+                    anim->start(QAbstractAnimation::DeleteWhenStopped);
+                    qInfo() << "[menufade] applied";
+                }
+            }
+        }
+        return QObject::eventFilter(obj, e);
+    }
+};
+
+inline void installMenuFade() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    if (qApp) qApp->installEventFilter(new MenuFadeFilter(qApp));
+}
+
 #endif // APOKOLIPS_SHELL_H
