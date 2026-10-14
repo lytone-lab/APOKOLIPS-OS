@@ -3226,6 +3226,14 @@ static int runShell(int argc, char *argv[])
         if (m != *lastMod) {
             *lastMod = m;
             VisualConfigManager::instance().load();
+            // Seal colour might have changed — push it into the
+            // global static Sigil::accent() reads from, so top bar,
+            // dock, NC, menus all recolour on the next repaint.
+            {
+                const QString sid = VisualConfigManager::instance()
+                                        .cfg().sigilAccent;
+                if (!sid.isEmpty()) Sigil::setSealId(sid);
+            }
             {
                 auto &cfg = VisualConfigManager::instance().cfg();
 

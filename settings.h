@@ -722,6 +722,17 @@ private:
                         });
                     Sigil::setSealId(QString::fromUtf8(s.id));
 
+                    // Cached theme used by restyleAll() — refresh the
+                    // accent fields so every widget picks up the new
+                    // seal on the same repaint.
+                    QColor nc = Sigil::accent();
+                    QColor nh = Sigil::accentHover();
+                    m_theme.accent       = nc;
+                    m_theme.accentSoft   = QColor(nc.red(), nc.green(),
+                                                  nc.blue(), 90);
+                    m_theme.accentStrong = nh;
+                    ThemeManager::instance().setTheme(m_theme);
+
                     // Update ring on all swatches
                     for (QPushButton *b : swatches) {
                         QString sid = b->property("sealId").toString();
@@ -8423,7 +8434,7 @@ private:
     }
 
     void restyleAll() {
-        const Theme &t = m_theme;
+        Theme &t = m_theme;
         updateWallpaperHighlight();
 
         // No global stylesheet — paintEvent handles window bg now
