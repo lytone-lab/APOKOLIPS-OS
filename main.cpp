@@ -334,8 +334,9 @@ static QString minimizeStyleFlag()
     VisualConfigManager::instance().load();
     installMenuFade();
     const QString s = VisualConfigManager::instance().cfg().minimizeStyle;
-    if (s == "scale") return "--scale";
-    if (s == "suck")  return "--suck";
+    if (s == "scale")  return "--scale";
+    if (s == "suck")   return "--suck";
+    if (s == "thanos") return "--thanos";
     return "--genie";
 }
 
@@ -1621,6 +1622,7 @@ static int runShell(int argc, char *argv[])
                     const QString styleFlag =
                         (chosenStyle == "scale") ? "--scale"
                         : (chosenStyle == "suck") ? "--suck"
+                        : (chosenStyle == "thanos") ? "--thanos"
                                                   : "--genie";
                     qDebug() << "[minimize] style=" << styleFlag;
 
@@ -3465,6 +3467,33 @@ int main(int argc, char *argv[])
             imagePath, QRect(x, y, w, h), QPoint(dx, dy),
             durationMs, readySock, reverse);
         suck->show();
+        return app.exec();
+    }
+
+    if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--thanos") {
+        QApplication app(argc, argv);
+        const QString png = QString::fromLocal8Bit(argv[2]);
+        QRect startRect(QString::fromLocal8Bit(argv[3]).toInt(),
+                        QString::fromLocal8Bit(argv[4]).toInt(),
+                        QString::fromLocal8Bit(argv[5]).toInt(),
+                        QString::fromLocal8Bit(argv[6]).toInt());
+        QPoint dock(QString::fromLocal8Bit(argv[7]).toInt(),
+                    QString::fromLocal8Bit(argv[8]).toInt());
+        int durationMs = 0;
+        QString readySock;
+        bool reverse = false;
+        for (int i = 9; i < argc; ++i) {
+            QString a = QString::fromLocal8Bit(argv[i]);
+            if (a == "--reverse") reverse = true;
+            else if (a == "--ms" && i + 1 < argc)
+                durationMs = QString::fromLocal8Bit(argv[++i]).toInt();
+            else if (a == "--ready-sock" && i + 1 < argc)
+                readySock = QString::fromLocal8Bit(argv[++i]);
+        }
+        ThanosOverlay *o = new ThanosOverlay(png, startRect, dock,
+                                              durationMs, readySock,
+                                              reverse);
+        o->show();
         return app.exec();
     }
 

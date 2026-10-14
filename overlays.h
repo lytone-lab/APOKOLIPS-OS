@@ -211,6 +211,179 @@ private:
 
     bool    m_readyPinged = false;};
 
+class ThanosOverlay : public QWidget {
+public:
+    ThanosOverlay(const QString &pngPath, QRect startRect,
+                  QPoint dockGlobal, int durationOverrideMs = 0,
+                  const QString &readySock = QString(),
+                  bool reverse = false,
+                  QWidget *parent = nullptr)
+        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint),
+          m_reverse(reverse)
+    {
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        setAttribute(Qt::WA_DeleteOnClose, true);
+
+        if (!m_pix.load(pngPath) || startRect.isEmpty()) {
+            qWarning() << "[thanos] load failed:" << pngPath;
+            QTimer::singleShot(0, qApp, &QApplication::quit);
+            return;
+        }
+        QFile::remove(pngPath);
+
+        QScreen *screen = QApplication::screenAt(startRect.center());
+        if (!screen) screen = QApplication::primaryScreen();
+        const QRect screenRect =
+            screen ? screen->geometry() : QRect(0, 0, 1, 1);
+
+        setGeometry(screenRect);
+        m_origin = screenRect.topLeft();
+        m_start = startRect.translated(-m_origin);
+        m_dock = dockGlobal - m_origin;
+
+        buildParticles();
+
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        // Thanos reads as a slow dissolve. 4.5x a normal genie
+        // gives the particles time to be seen individually.
+        const int requestedMs = durationOverrideMs > 0
+            ? durationOverrideMs
+            : int(cfg.genieDurationMs * 6.0);
+        const int durationMs = qBound(1500, requestedMs, 5000);
+        m_frames = qBound(20, (durationMs + 15) / 16, 200);
+
+        qInfo() << "[thanos] durationMs=" << durationMs
+                << "frames=" << m_frames
+                << "particles=" << m_particles.size();
+
+        m_timer = new QTimer(this);
+        m_timer->setInterval(16);
+        QObject::connect(m_timer, &QTimer::timeout,
+                         this, &ThanosOverlay::tick);
+        m_readySock = readySock;
+        QTimer::singleShot(30, this, [this]() {
+            if (m_timer) m_timer->start();
+        });
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        if (m_pix.isNull() || m_particles.isEmpty()
+            || width() <= 0 || height() <= 0)
+            return;
+
+        if (!m_readyPinged && !m_readySock.isEmpty()) {
+            m_readyPinged = true;
+            QTimer::singleShot(25, this, [this]() {
+                genieHandshakeReady(m_readySock);
+            });
+        }
+
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, false);
+
+        qreal t = qBound<qreal>(0.0,
+            qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
+        if (m_reverse) t = 1.0 - t;
+
+        for (const Particle &pt : m_particles) {
+            qreal raw = (t - pt.delay)
+                / qMax<qreal>(0.0001, 1.0 - pt.delay);
+            raw = qBound<qreal>(0.0, raw, 1.0);
+            const qreal eased = raw * raw * (3.0 - 2.0 * raw);
+            const qreal x = pt.origin.x() + pt.driftX * eased;
+            const qreal y = pt.origin.y() + pt.driftY * eased;
+            const int a = int((1.0 - eased) * 255.0);
+            if (a <= 0) continue;
+            QColor c = pt.color;
+            c.setAlpha(a);
+            p.fillRect(int(x), int(y), 3, 3, c);
+        }
+    }
+
+private:
+    struct Particle {
+        QPointF origin;
+        QColor  color;
+        qreal   delay;
+        qreal   driftX;
+        qreal   driftY;
+    };
+
+    void buildParticles()
+    {
+        m_particles.clear();
+        const int cellSize = 7;
+        const int cols = m_pix.width()  / cellSize;
+        const int rows = m_pix.height() / cellSize;
+        QImage img = m_pix.toImage();
+
+        quint32 seed = 0x9E3779B9u;
+        auto nextRand = [&seed]() -> qreal {
+            seed = seed * 1103515245u + 12345u;
+            return qreal(seed % 10000u) / 10000.0;
+        };
+
+        for (int cy = 0; cy < rows; ++cy) {
+            for (int cx = 0; cx < cols; ++cx) {
+                const int rx = cx * cellSize;
+                const int ry = cy * cellSize;
+                qint64 rSum = 0, gSum = 0, bSum = 0, aSum = 0;
+                int n = 0;
+                for (int y = ry; y < ry + cellSize
+                                && y < img.height(); y += 2) {
+                    for (int x = rx; x < rx + cellSize
+                                    && x < img.width(); x += 2) {
+                        QColor c = img.pixelColor(x, y);
+                        rSum += c.red();
+                        gSum += c.green();
+                        bSum += c.blue();
+                        aSum += c.alpha();
+                        ++n;
+                    }
+                }
+                if (n == 0) continue;
+                QColor avg(int(rSum / n), int(gSum / n),
+                           int(bSum / n), int(aSum / n));
+                if (avg.alpha() < 4) continue;
+
+                Particle pt;
+                pt.origin = QPointF(m_start.left() + rx,
+                                    m_start.top()  + ry);
+                pt.color  = avg;
+                pt.delay  = nextRand() * 0.35;
+                pt.driftX = 20.0 + nextRand() * 90.0;
+                pt.driftY = -40.0 + nextRand() * 60.0;
+                m_particles.append(pt);
+            }
+        }
+    }
+
+    void tick()
+    {
+        if (++m_frame >= m_frames) {
+            m_timer->stop();
+            close();
+        }
+        update();
+    }
+
+    QPixmap         m_pix;
+    QRect           m_start;
+    QPoint          m_origin;
+    QPoint          m_dock;
+    QList<Particle> m_particles;
+    int             m_frame = 0;
+    int             m_frames = 60;
+    bool            m_reverse = false;
+    QString         m_readySock;
+    bool            m_readyPinged = false;
+    QTimer         *m_timer = nullptr;
+};
+
 class ScaleOverlay : public QWidget {
 public:
     ScaleOverlay(const QString &pngPath, QRect startRect,
@@ -654,6 +827,9 @@ static int runAnimatorDaemon(int argc, char **argv)
                 else if (style == "suck")
                     w = new SuckOverlay(png, rect, dock, ms, ready,
                                         reverse);
+                else if (style == "thanos")
+                    w = new ThanosOverlay(png, rect, dock, ms, ready,
+                                          reverse);
                 else
                     w = new GenieOverlay(png, rect, dock, reverse, ms,
                                          ready);
