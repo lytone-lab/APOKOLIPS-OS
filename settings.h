@@ -1985,25 +1985,12 @@ private:
             QStringList appNames = appRegistry.keys();
             appNames.sort(Qt::CaseInsensitive);
 
+            // Build every row first with a placeholder dropdown,
+            // then fire all 8 queries at once. Each dropdown fills
+            // itself in when its query returns. No waiting in line.
+            QList<QPair<QString, Sigil::Dropdown *>> pending;
             for (const auto &e : entries) {
                 QString mime = QString(e.mime);
-
-                // Query current default
-                QProcess q;
-                q.start("xdg-mime", { "query", "default", mime });
-                q.waitForFinished(700);
-                QString current = QString::fromUtf8(
-                    q.readAllStandardOutput()).trimmed();
-
-                // Find a matching display name for the current default
-                QString currentName;
-                for (auto it = appRegistry.constBegin();
-                     it != appRegistry.constEnd(); ++it) {
-                    if (it.value() == current) {
-                        currentName = it.key();
-                        break;
-                    }
-                }
 
                 QWidget *row = new QWidget;
                 QHBoxLayout *h = new QHBoxLayout(row);
@@ -2025,16 +2012,8 @@ private:
                 left->addWidget(sub);
                 h->addLayout(left, 1);
 
-                // Dropdown — options are the app display names
-                QStringList options = appNames;
-                int currentIdx = 0;
-                if (!currentName.isEmpty()) {
-                    int idx = options.indexOf(currentName);
-                    if (idx >= 0) currentIdx = idx;
-                }
-
                 Sigil::Dropdown *dd = new Sigil::Dropdown(
-                    options, currentIdx,
+                    { "(Loading…)" }, 0,
                     [appRegistry, mime](int i) {
                         QStringList keys = appRegistry.keys();
                         keys.sort(Qt::CaseInsensitive);
@@ -2046,6 +2025,36 @@ private:
                 dd->setMinimumWidth(220);
                 h->addWidget(dd);
                 cv->addWidget(row);
+                pending.append({ mime, dd });
+            }
+
+            for (const auto &pair : pending) {
+                const QString mime = pair.first;
+                Sigil::Dropdown *dd = pair.second;
+                auto *p = new QProcess(this);
+                QObject::connect(p,
+                    QOverload<int, QProcess::ExitStatus>::of(
+                        &QProcess::finished),
+                    [p, dd, appRegistry, appNames]() {
+                        QString current = QString::fromUtf8(
+                            p->readAllStandardOutput()).trimmed();
+                        p->deleteLater();
+                        QString currentName;
+                        for (auto it = appRegistry.constBegin();
+                             it != appRegistry.constEnd(); ++it) {
+                            if (it.value() == current) {
+                                currentName = it.key();
+                                break;
+                            }
+                        }
+                        int currentIdx = 0;
+                        if (!currentName.isEmpty()) {
+                            int idx = appNames.indexOf(currentName);
+                            if (idx >= 0) currentIdx = idx;
+                        }
+                        if (dd) dd->setItemsSilent(appNames, currentIdx);
+                    });
+                p->start("xdg-mime", { "query", "default", mime });
             }
 
             v->addWidget(c);
@@ -2866,11 +2875,48 @@ private:
         auto &vc = VisualConfigManager::instance().cfg();
 
         // Helper: read/write gsettings
-        auto getGS = [](const QString &schema, const QString &key) -> QString {
-            QProcess p;
-            p.start("gsettings", { "get", schema, key });
-            p.waitForFinished(500);
-            return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+        // Prefetch every accessibility key at once, in parallel.
+        // One wait instead of nine — the page opens much faster,
+        // and the shell stays responsive while the answers arrive.
+        QHash<QString, QString> gsCache;
+        {
+            QProcess prefetch;
+            QString script = R"SCRIPT(
+                for spec in \
+                  "org.gnome.desktop.a11y.keyboard stickykeys-enable" \
+                  "org.gnome.desktop.a11y.keyboard slowkeys-enable" \
+                  "org.gnome.desktop.a11y.keyboard bouncekeys-enable" \
+                  "org.gnome.desktop.a11y.keyboard togglekeys-enable" \
+                  "org.gnome.desktop.a11y.keyboard mousekeys-enable" \
+                  "org.gnome.desktop.a11y.keyboard slowkeys-delay" \
+                  "org.gnome.desktop.a11y.keyboard bouncekeys-delay" \
+                  "org.gnome.desktop.a11y.mouse dwell-click-enabled" \
+                  "org.gnome.desktop.a11y always-show-text-caret"
+                do
+                    schema=${spec%% *}
+                    key=${spec##* }
+                    ( val=$(gsettings get "$schema" "$key" 2>/dev/null)
+                      printf '%s %s = %s\n' "$schema" "$key" "$val" ) &
+                done
+                wait
+            )SCRIPT";
+            prefetch.start("bash", { "-c", script });
+            prefetch.waitForFinished(1500);
+            QString out = QString::fromUtf8(
+                prefetch.readAllStandardOutput());
+            for (const QString &line :
+                 out.split('\n', Qt::SkipEmptyParts)) {
+                int eq = line.indexOf('=');
+                if (eq < 0) continue;
+                QString k = line.left(eq).trimmed();
+                QString v = line.mid(eq + 1).trimmed();
+                gsCache[k] = v;
+            }
+        }
+
+        auto getGS = [&gsCache](const QString &schema,
+                                const QString &key) -> QString {
+            return gsCache.value(schema + " " + key);
         };
         auto setGS = [](const QString &schema, const QString &key,
                         const QString &val) {
