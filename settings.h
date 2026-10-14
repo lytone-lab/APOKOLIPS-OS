@@ -5517,8 +5517,10 @@ private:
                 left->addWidget(subtitle);
                 h->addLayout(left, 1);
 
-                QStringList labels = { "Genie", "Scale", "Suck" };
-                QStringList values = { "genie", "scale", "suck" };
+                QStringList labels = { "Genie", "Scale", "Suck",
+                                       "Thanos (dissolve)" };
+                QStringList values = { "genie", "scale", "suck",
+                                       "thanos" };
                 int curIdx = values.indexOf(vc.minimizeStyle);
                 if (curIdx < 0) curIdx = 0;
 
