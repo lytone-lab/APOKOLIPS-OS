@@ -1130,24 +1130,39 @@ private:
                 .arg(rect.x()).arg(rect.y())
                 .arg(rect.width()).arg(rect.height()),
             "-t", "png", tmpPath });
+
+        // Guard: the popup (and its child widgets) can be destroyed
+        // while the process is still running. If the label is dead
+        // by the time the signal fires, skip. Same for the process
+        // — during destruction its own ~QProcess emits finished(),
+        // and touching the object from there crashes.
+        QPointer<QLabel>   labelGuard(label);
+        QPointer<QProcess> procGuard(p);
         QObject::connect(p,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            [p, label, tmpPath](int code, QProcess::ExitStatus) {
-                p->deleteLater();
+            [procGuard, labelGuard, tmpPath](int code,
+                                             QProcess::ExitStatus) {
+                if (!labelGuard) {
+                    // Popup is gone. Clean up the temp file and
+                    // do not touch anything else.
+                    QFile::remove(tmpPath);
+                    return;
+                }
+                if (procGuard) procGuard->deleteLater();
                 if (code != 0) {
-                    if (label) label->setText("(no preview)");
+                    labelGuard->setText("(no preview)");
                     return;
                 }
                 QPixmap pm(tmpPath);
                 QFile::remove(tmpPath);
-                if (pm.isNull() || !label) return;
-                QPixmap scaled = pm.scaled(label->size(),
+                if (pm.isNull()) return;
+                QPixmap scaled = pm.scaled(labelGuard->size(),
                     Qt::KeepAspectRatioByExpanding,
                     Qt::SmoothTransformation);
-                int sx = (scaled.width()  - label->width())  / 2;
-                int sy = (scaled.height() - label->height()) / 2;
-                label->setPixmap(scaled.copy(sx, sy,
-                    label->width(), label->height()));
+                int sx = (scaled.width()  - labelGuard->width())  / 2;
+                int sy = (scaled.height() - labelGuard->height()) / 2;
+                labelGuard->setPixmap(scaled.copy(sx, sy,
+                    labelGuard->width(), labelGuard->height()));
             });
     }
 
