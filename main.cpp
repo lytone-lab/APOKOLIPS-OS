@@ -2350,19 +2350,33 @@ static int runShell(int argc, char *argv[])
 
     apoMenu->addSeparator();
 
-    // --- Recent Items submenu
+    // --- Recent Items submenu (live from Recents store)
     {
         QMenu *recent = apoMenu->addMenu("Recent Items");
-        {
+        const auto entries = Recents::list(15);
+        if (entries.isEmpty()) {
             QAction *a = recent->addAction("(nothing yet)");
             a->setEnabled(false);
+        } else {
+            for (const Recents::Entry &e : entries) {
+                QString label = QFileInfo(e.path).fileName();
+                if (label.isEmpty()) label = e.path;
+                if (label.length() > 40)
+                    label = label.left(37) + "\xE2\x80\xA6";
+                QAction *a = recent->addAction(label);
+                a->setToolTip(e.path);
+                QString path = e.path;
+                QObject::connect(a, &QAction::triggered,
+                                 [path]() {
+                    QProcess::startDetached("xdg-open", { path });
+                });
+            }
         }
         recent->addSeparator();
         {
             QAction *a = recent->addAction("Clear Menu");
             QObject::connect(a, &QAction::triggered, []() {
-                QProcess::startDetached("bash", { "-c",
-                    "rm -f ~/.local/share/apokolips/recent.json" });
+                Recents::clear();
             });
         }
     }
@@ -4033,6 +4047,13 @@ int main(int argc, char *argv[])
         const QString path = (argc >= 3)
             ? QString::fromUtf8(argv[2]) : QString();
 
+        // Log every open (and every forward-to-running-instance)
+        // into the shared Recents store.
+        if (!path.isEmpty())
+            Recents::add(path,
+                QMimeDatabase().mimeTypeForFile(path).name(),
+                "apokolips-boombube");
+
         // Single-instance: forward to running BoomTube if one exists.
         {
             QLocalSocket probe;
@@ -4201,6 +4222,12 @@ int main(int argc, char *argv[])
 
         const QString filePath = (argc >= 3)
             ? QString::fromUtf8(argv[2]) : QString();
+
+        // Log into Recents before either launching or forwarding.
+        if (!filePath.isEmpty())
+            Recents::add(filePath,
+                QMimeDatabase().mimeTypeForFile(filePath).name(),
+                "apokolips-aperture");
 
         // Single-instance: if Aperture is already up, forward the
         // request (and optional new file) to the running instance and
