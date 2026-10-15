@@ -629,6 +629,31 @@ from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
       Estimated: 2-3 sessions minimum. Ship only after V2 has
       had weeks of real use.
 
+  [ ] Widget toggle — persistence across restarts
+      Top bar Ω → View → Toggle Desktop Widgets hides or shows
+      every floating card. Works in-session but does not persist:
+      the toggle mutates cfg.widgetsVisible in memory only.
+
+      Why in-memory only: VisualConfigManager::save() re-reads the
+      config from disk before writing, which overwrites our
+      in-memory change with the stale on-disk value. The config
+      watcher then fires on mtime change and re-shows the cards —
+      the "flash" bug that made the toggle useless.
+
+      Fix to try later (one of):
+        A) Fix save() to write m_cfg as-is without reloading.
+           Would also fix other settings that might have the same
+           race. Risky — save() may re-read for a reason (merging
+           external edits). Audit before touching.
+        B) Add a separate savePath() that skips the reload, use it
+           only for the toggle. Small, safe, one-off.
+        C) Write directly to visual.json in the toggle (mirroring
+           how Settings::setAndSave works). Duplicates a little
+           logic but is self-contained.
+
+      Recommendation: B. Small, safe, no risk to the rest of the
+      config system. One small session.
+
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
 ------------------------------------------------------------------------
