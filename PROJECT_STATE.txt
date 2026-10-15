@@ -967,3 +967,11 @@ END OF PROJECT STATE
       Also: replace notify-send calls in the upscale worker with
       this so the completion toast matches the shell's look.
       Estimated: 1 short session.
+
+  [ ] bluetoothctl process leak
+      Every shell restart leaves 1-2 stuck bluetoothctl children
+      behind (from Settings Bluetooth page QProcess calls). By
+      the end of a session ps aux shows 20+ orphaned children.
+      Fix: ensure QProcess has parent = this so it dies with the
+      widget; or call waitForFinished() + kill() in destructor.
+      Small.
