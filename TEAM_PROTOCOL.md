@@ -78,6 +78,29 @@ layout, sounds, transitions. For pure bug fixes, one correct path is
 usually right; propose variants only when there is a genuine
 trade-off.
 
+## Every list entry explains itself
+
+Every entry in PROJECT_STATE.txt, CUSTOMISATION_VISION.md, or any
+other todo / bug / plan list must be self-contained. A future AI
+reading that file — with no access to this chat — must understand:
+
+  1. **What it is** — the title, said plainly.
+  2. **Why it matters** — the user problem it solves, or the bug
+     it causes.
+  3. **Current state** — done / partial / planned / reverted.
+  4. **Constraints or decisions** — anything already tried and
+     rejected, and why. Anything that must be respected.
+  5. **Next step** — the concrete action to move it forward.
+
+A one-line title like "Desktop widgets — independent floating
+cards" is not enough. It tells the reader nothing they can act on.
+Add a paragraph. If it fits in one line, ask whether the entry is
+really understood by whoever wrote it.
+
+Rationale: sessions end. Chats close. The repo is the only
+continuous memory. A thin entry forces the next AI to re-derive
+context from scratch, or worse — guess.
+
 ## Notes must be written down
 
 When the AI says "noted for V2" or "logged for later" or "we'll come

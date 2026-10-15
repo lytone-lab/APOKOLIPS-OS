@@ -397,3 +397,84 @@ The whole point is worth it because nobody has done it.
 ------------------------------------------------------------------------
 END OF PRIORITY LIST
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+WIDGET FRAMEWORK (added 2026-10-15)
+------------------------------------------------------------------------
+
+## The system, not just the widgets
+
+Desktop widgets are not a single feature — they are a system. The
+system is the WidgetLayer + WidgetCard framework. Individual
+widgets (clock, CPU, weather) are plugins on top.
+
+## Architecture — Variant 2 (chosen)
+
+  DesktopRoot
+    └── WidgetLayer  (fullscreen, transparent, ignores empty mouse)
+          ├── WidgetCard(Clock)     x=100  y=200
+          ├── WidgetCard(CPU)       x=100  y=400
+          ├── WidgetCard(Weather)   x=1400 y=200
+          └── ...
+
+Why this and not top-level windows:
+  A previous attempt using per-widget top-level windows triggered
+  a screen-wide zoom (top bar + dock + wallpaper all rescaled).
+  Root cause unknown, but structural — top-level windows fight
+  the shell's own layout. Variant 2 keeps every card inside the
+  shell widget tree. The bug's cause is gone by construction.
+
+## Card anatomy
+
+  - Frosted dark background (blur of wallpaper behind)
+  - Corner radius ~20px
+  - Padding ~16px
+  - Optional header with icon + title + gear button
+  - Content area — widget decides layout
+  - Right-click menu: Remove / Size S-M-L / Change / Configure…
+  - Drag anywhere on the card moves it. Position saved to
+    visual.json under `widgetPositions[<id>]`.
+  - Snap-to-grid optional (Settings toggle).
+
+## Visual language (per user's reference images)
+
+  - Circular progress rings for stats — green fill for healthy,
+    amber for warning, red for critical
+  - Big number + small unit underneath
+  - Icon inside the ring (top area)
+  - Weather: big temp + condition + 5-day icon row
+  - Calendar: month grid, today highlighted with accent dot
+  - Screen time: bar chart + per-app breakdown list
+  - Small gear badge bottom-right opens per-widget settings
+
+## Settings access — two paths, not redundant
+
+  - Right-click widget → fast per-widget actions
+  - Settings → Desktop Widgets → catalogue: which widgets
+    exist, add new, global style, snap-to-grid, default position
+  - The right-click menu has "Configure…" that opens Settings
+    scrolled to that widget's section
+
+## Widget catalogue by phase
+
+  P1 (first shipped set):
+    - Clock (analog + digital toggle)
+    - CPU / RAM rings
+    - Weather (current + 5-day)
+    - Calendar (month grid)
+
+  P2:
+    - Now Playing (album art + controls)
+    - Battery / power
+    - Disk usage
+    - Network (up/down rates)
+
+  P3:
+    - Sticky notes
+    - Screen time
+    - GPU stats
+    - Music visualizer
+
+------------------------------------------------------------------------
+END OF WIDGET FRAMEWORK
+------------------------------------------------------------------------

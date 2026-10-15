@@ -430,6 +430,73 @@ SEE ALSO: CUSTOMISATION_VISION.md — full plan for the Windhawk-style
 layer: every knob, the rules engine, theme marketplace, auto-themes
 from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
 
+  [ ] Desktop widgets — full framework rewrite (Sonoma/Tahoe style)
+      Goal: each desktop widget is its own independent card, like
+      macOS Tahoe. Cards float on the wallpaper, drag freely, snap
+      to grid optionally, position persists across reboot.
+
+      Prior attempt (2026-10-09) used top-level windows parented
+      to the desktop root. Caused a screen-wide zoom bug — top
+      bar, dock, wallpaper all appeared enlarged. Reverted with
+      root cause unknown.
+
+      CHOSEN APPROACH — Variant 2: single transparent layer,
+      cards as children.
+        One fullscreen WidgetLayer widget as a child of the
+        desktop root. Transparent. Ignores mouse in empty areas.
+        Each card is a QWidget child of the layer, positioned
+        absolutely, handles its own drag + right-click. Same
+        architecture KDE Plasma / Rainmeter use. No top-level
+        windows, so the zoom bug's structural cause is gone.
+
+      VISUAL TARGET (from user's reference images):
+        - Dark frosted card, ~240px wide, corner radius ~20px
+        - Padding ~16px, small labels under big numbers
+        - Circular progress rings for stats (green fill, seal-
+          colour aware fallback)
+        - Icon inside ring, big number + unit below
+        - Weather: icon + temp + 5-day forecast row
+        - Screen time: bar chart + per-app list
+        - Calendar: month grid
+        - Small gear badge in corner opens per-widget settings
+        - "Edit Widgets…" pill appears when hovering the widget
+          zone (like macOS Tahoe)
+
+      BUILD PLAN (one session = framework + clock only):
+        Session 1: WidgetLayer + WidgetCard base + Clock widget +
+                   stripped-down test (verify no zoom, verify
+                   drag, verify persistence)
+        Session 2: System monitors (CPU / RAM / GPU / network)
+        Session 3: Weather widget
+        Session 4: Calendar widget
+        Session 5: Now Playing widget
+        Session 6+: Sticky notes, Screen time, Battery
+
+      SETTINGS ACCESS:
+        Right-click a widget = fast actions (Remove / Size /
+        Change this one). Settings → Desktop Widgets = the
+        catalogue (which widgets exist, add new, global style,
+        snap-to-grid toggle). A "Configure…" entry in the
+        right-click menu opens Settings to that widget's section.
+        Both paths — they serve different jobs.
+
+  [ ] Desktop widgets — Variant 1 (V2-3 backlog, strict diagnostics)
+      Top-level windows per widget (literally what macOS does).
+      Rejected for the first rewrite because it's what caused the
+      2026-10-09 zoom bug.
+
+      If we ever revisit: STRICT DIAGNOSTICS REQUIRED.
+        (1) Reproduce in isolation — a stripped shell with a single
+            top-level widget window, nothing else.
+        (2) Verify with Qt devicePixelRatio logged at every step,
+            sway scale logged, all screen geometry logged.
+        (3) Confirm z-order and geometry do not touch the top-bar
+            or dock layout. Log their rects before and after.
+        (4) If any of the above show drift, stop immediately.
+
+      Target release: V2 or V3 — only after Variant 2 has shipped
+      and proven stable for weeks. Not before.
+
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
 ------------------------------------------------------------------------
