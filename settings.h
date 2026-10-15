@@ -5407,6 +5407,114 @@ private:
             v->addWidget(c);
         }
 
+        // ---- Desktop Icon Behaviour card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 18);
+            cv->setSpacing(14);
+            cv->addWidget(Sigil::groupLabel("DESKTOP ICONS"));
+
+            QLabel *desc = new QLabel(
+                "How desktop icons react when a widget card is "
+                "dragged over them.");
+            desc->setWordWrap(true);
+            desc->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            cv->addWidget(desc);
+
+            // Two side-by-side buttons, current one highlighted.
+            auto makeModeButton = [&](const QString &id,
+                                      const QString &title,
+                                      const QString &sub) {
+                QPushButton *b = new QPushButton;
+                b->setCursor(Qt::PointingHandCursor);
+                b->setMinimumHeight(72);
+                b->setCheckable(true);
+
+                QString current = vc.poolBehavior;
+                if (current.isEmpty()) current = "water";
+                bool active = (current == id);
+                b->setChecked(active);
+
+                QString activeStyle = QString(
+                    "QPushButton { text-align: left; padding: 12px 16px;"
+                    "  background: rgba(168, 50, 50, 55);"
+                    "  color: %1;"
+                    "  border: 2px solid %2;"
+                    "  border-radius: 10px;"
+                    "  font-size: 13px; font-weight: 600; }")
+                    .arg(Sigil::textPrimary().name(),
+                         Sigil::accent().name());
+
+                QString idleStyle = QString(
+                    "QPushButton { text-align: left; padding: 12px 16px;"
+                    "  background: rgba(255,255,255,15);"
+                    "  color: %1;"
+                    "  border: 1px solid rgba(255,255,255,40);"
+                    "  border-radius: 10px;"
+                    "  font-size: 13px; }"
+                    "QPushButton:hover { background: rgba(255,255,255,30); }")
+                    .arg(Sigil::textPrimary().name());
+
+                b->setStyleSheet(active ? activeStyle : idleStyle);
+                b->setText(title);
+
+                QObject::connect(b, &QPushButton::clicked,
+                                 [this, id, sub]() {
+                    VisualConfigManager::instance().setAndSave(
+                        [id](VisualConfig &c) {
+                            c.poolBehavior = id; });
+                    qInfo() << "[thePool] behavior ->" << id;
+                    rebuildCurrentPage();
+                });
+
+                // Description tooltip
+                b->setToolTip(sub);
+                return b;
+            };
+
+            QHBoxLayout *row = new QHBoxLayout;
+            row->setSpacing(12);
+
+            QVBoxLayout *col1 = new QVBoxLayout;
+            col1->setSpacing(6);
+            col1->addWidget(makeModeButton("water", "Water",
+                "Icons flow around widgets and settle wherever there is "
+                "space. The arrangement evolves as you use the desktop."));
+            QLabel *lbl1 = new QLabel(
+                "Icons flow around widgets and settle wherever "
+                "there is space. Like dropping a hand into a pool — "
+                "the water parts and reforms around it.");
+            lbl1->setWordWrap(true);
+            lbl1->setStyleSheet(QString(
+                "color: %1; font-size: 10px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            col1->addWidget(lbl1);
+            row->addLayout(col1, 1);
+
+            QVBoxLayout *col2 = new QVBoxLayout;
+            col2->setSpacing(6);
+            col2->addWidget(makeModeButton("foam", "Foam",
+                "Icons bounce out of the way and return once the "
+                "widget moves on. Predictable and tidy."));
+            QLabel *lbl2 = new QLabel(
+                "Icons bounce out of the way and return to their "
+                "original places once the widget moves on. "
+                "Predictable and tidy.");
+            lbl2->setWordWrap(true);
+            lbl2->setStyleSheet(QString(
+                "color: %1; font-size: 10px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            col2->addWidget(lbl2);
+            row->addLayout(col2, 1);
+
+            cv->addLayout(row);
+
+            v->addWidget(c);
+        }
+
         // ---- Style card ----
         {
             Sigil::Card *c = new Sigil::Card;
