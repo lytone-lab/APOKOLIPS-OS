@@ -1087,10 +1087,10 @@ static QString menuStyle(const Theme &)
  // namespace Weather
 
 // =========================================================
-// DesktopIcon — draggable Sigil tile that lives on the wallpaper
+// PoolIcon — draggable Sigil tile that lives on the wallpaper
 // =========================================================
 // =========================================================
-// DesktopCanvas — transparent fullscreen overlay that hosts
+// PoolCanvas — transparent fullscreen overlay that hosts
 // desktop icons. Sits above the wallpaper, below top bar +
 // widgets + dock. Only intercepts clicks on icons.
 // =========================================================
@@ -1286,7 +1286,7 @@ static int runShell(int argc, char *argv[])
     BadgeRegistry::seedDefaults();
     StyleManager::load();
 
-    DesktopBackground *root = new DesktopBackground;
+    PoolBackground *root = new PoolBackground;
     root->setWallpaper(initialWallpaper);
 
     QVBoxLayout *rootLayout = new QVBoxLayout(root);
@@ -2192,18 +2192,29 @@ static int runShell(int argc, char *argv[])
     {
         QAction *a = viewMenu->addAction("Toggle Desktop Widgets");
         QObject::connect(a, &QAction::triggered, [root]() {
+            // Master switch for every floating widget card.
+            //
+            // NOTE: we do NOT call save() here. VisualConfigManager's
+            // save() re-reads the config from disk before writing,
+            // which would overwrite our in-memory change with the
+            // stale on-disk value. The config watcher then fires on
+            // mtime change and re-shows the cards — the "flash"
+            // bug. Keeping it in-memory only, the watcher never
+            // fires, so nothing fights the toggle.
+            auto &cfg = VisualConfigManager::instance().cfg();
+            bool nowVisible = !cfg.widgetsVisible;
+            cfg.widgetsVisible = nowVisible;
+            int shown = 0, hidden = 0;
             for (QWidget *w : root->findChildren<QWidget *>()) {
-                if (w->objectName() == "desktopWidgets") {
-                    bool nowVisible = !w->isVisible();
-                    w->setVisible(nowVisible);
-                    if (nowVisible) w->raise();
-                    auto &cfg = VisualConfigManager::instance().cfg();
-                    cfg.widgetsVisible = nowVisible;
-                    VisualConfigManager::instance().save();
-                    qDebug() << "[toggle] -> " << nowVisible;
-                    return;
+                if (auto *card = dynamic_cast<WidgetCard *>(w)) {
+                    card->setVisible(nowVisible);
+                    if (nowVisible) card->raise();
+                    if (nowVisible) ++shown; else ++hidden;
                 }
             }
+            qInfo() << "[toggle] -> visible =" << nowVisible
+                    << "shown =" << shown
+                    << "hidden =" << hidden;
         });
     }
     {
@@ -3067,7 +3078,7 @@ static int runShell(int argc, char *argv[])
 
     // ---- Desktop icon canvas (child of root, sits between top bar
     //      and dock) ----
-    DesktopCanvas *desktopIcons = new DesktopCanvas(root);
+    PoolCanvas *desktopIcons = new PoolCanvas(root);
     {
         auto &cfg = VisualConfigManager::instance().cfg();
 
@@ -3119,8 +3130,8 @@ static int runShell(int argc, char *argv[])
         };
 
         QPoint defaultPos(desktop->width() - 130, 40);
-        if (cfg.desktopIconPos.contains("mymach")) {
-            QVariantMap pos = cfg.desktopIconPos["mymach"].toMap();
+        if (cfg.poolIconPos.contains("mymach")) {
+            QVariantMap pos = cfg.poolIconPos["mymach"].toMap();
             defaultPos = QPoint(pos.value("x", defaultPos.x()).toInt(),
                                 pos.value("y", defaultPos.y()).toInt());
         }
@@ -3144,10 +3155,10 @@ static int runShell(int argc, char *argv[])
             [](const QString &id, const QPoint &p) {
             VisualConfigManager::instance().setAndSave(
                 [id, p](VisualConfig &c) {
-                    QVariantMap m = c.desktopIconPos[id].toMap();
+                    QVariantMap m = c.poolIconPos[id].toMap();
                     m["x"] = p.x();
                     m["y"] = p.y();
-                    c.desktopIconPos[id] = m;
+                    c.poolIconPos[id] = m;
                 });
         };
 
@@ -3259,7 +3270,7 @@ static int runShell(int argc, char *argv[])
                         << "new=" << g;
                 overlay->setGeometry(g);
             };
-            refit("desktopCanvas");
+            refit("thePool");
             refit("widgetLayer");
 
             // Force the canvas to clamp its icons even when its
@@ -3269,13 +3280,13 @@ static int runShell(int argc, char *argv[])
             {
                 QWidget *cnv =
                     middleGuard
-                        ? middleGuard->findChild<QWidget *>("desktopCanvas")
+                        ? middleGuard->findChild<QWidget *>("thePool")
                         : nullptr;
                 if (!cnv && middleGuard && middleGuard->window())
                     cnv = middleGuard->window()
-                              ->findChild<QWidget *>("desktopCanvas");
+                              ->findChild<QWidget *>("thePool");
                 if (cnv) {
-                    if (auto *dc = dynamic_cast<DesktopCanvas *>(cnv)) {
+                    if (auto *dc = dynamic_cast<PoolCanvas *>(cnv)) {
                         dc->clampIcons();
                         qInfo() << "[dock-reflow] clamped icons, canvas="
                                 << dc->size()
@@ -3285,7 +3296,7 @@ static int runShell(int argc, char *argv[])
                                    "failed";
                     }
                 } else {
-                    qInfo() << "[dock-reflow] desktopCanvas not found for "
+                    qInfo() << "[dock-reflow] thePool canvas not found for "
                                "clamp";
                 }
             }
@@ -3406,7 +3417,7 @@ static int runShell(int argc, char *argv[])
     QString *lastLauncherList = new QString(
         VisualConfigManager::instance().cfg().launcherApps.join(","));
     QString *lastDesktopList  = new QString(
-        VisualConfigManager::instance().cfg().desktopApps.join(","));
+        VisualConfigManager::instance().cfg().poolApps.join(","));
 
     QObject::connect(configPoll, &QTimer::timeout,
                      [configPath, lastMod, root, lastDockPos,
@@ -3476,7 +3487,7 @@ static int runShell(int argc, char *argv[])
                 }
 
                 // Rebuild desktop icons if its list changed
-                QString curDesk = cfg.desktopApps.join(",");
+                QString curDesk = cfg.poolApps.join(",");
                 if (curDesk != *lastDesktopList) {
                     *lastDesktopList = curDesk;
                     if (desktopIcons) desktopIcons->rebuildIcons();
