@@ -22,7 +22,7 @@ struct VisualConfig {
     QVariantMap widgetVariants;         // id -> variant string
     int    widgetOpacity      = 255;    // 0..255, applied to widget bg
     int    widgetRadius       = 20;     // 8..40, corner radius
-    int    widgetRimIntensity = 90;     // 0..200, diagonal rim brightness
+    int    widgetRimIntensity = 130;    // 0..200, diagonal rim brightness
     bool   widgetSnapToGrid   = false;  // snap drag to grid
     int    widgetGridSize     = 40;     // px grid unit
     QVariantMap widgetVisibility;       // id -> bool (visible?)

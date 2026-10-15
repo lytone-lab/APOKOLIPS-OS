@@ -2671,11 +2671,6 @@ static int runShell(int argc, char *argv[])
         qWarning() << "[clip] listen failed:" << clipServer->errorString();
     }
 
-    DesktopWidgets *widgets = new DesktopWidgets(root);
-    root->setDesktopWidgets(widgets);
-    widgets->setVisible(
-        VisualConfigManager::instance().cfg().widgetsVisible);
-
     // Widget framework — Session 1: ClockCard as root child.
     // Desktop layers (background, canvas) can raise themselves
     // during dock reflow and other housekeeping, putting them above
@@ -2711,11 +2706,6 @@ static int runShell(int argc, char *argv[])
     QObject::connect(cardRaise2, &QTimer::timeout, ringsCard,
         [ringsCard]() { ringsCard->raise(); });
     cardRaise2->start();
-
-    // Hide the old stacked widget column while the new floating
-    // cards are on screen. Old class isn't deleted — flip
-    // widgetsVisible back on to bring it back for comparison.
-    if (widgets) widgets->setVisible(false);
 
     qInfo() << "[widgets] RingsCard installed"
             << "pos=" << ringsCard->pos()
@@ -2769,20 +2759,42 @@ static int runShell(int argc, char *argv[])
             }
         }
     };
-    // Track last dock position; run clamp when it changes.
-    int *lastDockPosC = new int(
-        VisualConfigManager::instance().cfg().dockPosition);
+    // Dock awareness: when the dock moves, shift every card by
+    // the safe-area's top-left delta so the whole layout slides,
+    // instead of every card getting clamped to the same corner.
     QTimer *dockWatch = new QTimer(root);
     dockWatch->setInterval(400);
     QObject::connect(dockWatch, &QTimer::timeout, root,
-        [clampAllWidgets, lastDockPosC]() {
+        [root]() {
+        static int  lastPos = VisualConfigManager::instance()
+                                  .cfg().dockPosition;
+        static QRect lastSafe = WidgetCard::safeAreaForDock(
+            root->size());
         int p = VisualConfigManager::instance().cfg().dockPosition;
-        if (p != *lastDockPosC) {
-            *lastDockPosC = p;
-            qInfo() << "[widgets] dock moved to" << p
-                    << "-> clamping";
-            clampAllWidgets();
+        if (p == lastPos) return;
+        lastPos = p;
+
+        QRect newSafe = WidgetCard::safeAreaForDock(root->size());
+        QPoint delta = newSafe.topLeft() - lastSafe.topLeft();
+        qInfo() << "[widgets] dock moved to" << p
+                << "delta=" << delta;
+
+        // Shift every widget card by the delta, then persist.
+        for (QWidget *w : root->findChildren<QWidget *>()) {
+            if (auto *card = dynamic_cast<WidgetCard *>(w)) {
+                QPoint np = card->pos() + delta;
+                card->move(np);
+                // Persist
+                QString id = card->id();
+                VisualConfigManager::instance().setAndSave(
+                    [id, np](VisualConfig &c) {
+                        QVariantMap m;
+                        m["x"] = np.x(); m["y"] = np.y();
+                        c.widgetPositions[id] = m;
+                    });
+            }
         }
+        lastSafe = newSafe;
     });
     dockWatch->start();
 
@@ -2805,6 +2817,70 @@ static int runShell(int argc, char *argv[])
     qInfo() << "[widgets] CalendarCard installed"
             << "pos=" << calendarCard->pos()
             << "size=" << calendarCard->size();
+
+    // Deferred layout — root->size() is the QMainWindow default
+    // (640x480) at construction; the real size arrives after the
+    // Wayland surface is mapped. Wait for the real size before
+    // deciding layout, otherwise every position is computed for
+    // a 640-wide screen and lands wrong.
+    {
+        QTimer *layoutDelay = new QTimer(root);
+        layoutDelay->setInterval(100);
+        int *tries = new int(0);
+        QObject::connect(layoutDelay, &QTimer::timeout, root,
+            [root, layoutDelay, tries,
+             clockCard, ringsCard, weatherCard,
+             statsCard, calendarCard]() {
+            if (++(*tries) > 50) {  // give up after ~5 s
+                layoutDelay->stop();
+                qWarning() << "[widgets] layout wait timed out";
+                return;
+            }
+            if (root->width() < 500) return;  // still not sized
+            layoutDelay->stop();
+            const QSize realSize = root->size();
+            qInfo() << "[widgets] real root size =" << realSize;
+
+            auto &cfg = VisualConfigManager::instance().cfg();
+
+            // Treat saved positions as stale if any of them sit
+            // outside the current screen (typical after a resize
+            // or a reset computed at 640x480).
+            bool stale = cfg.widgetPositions.isEmpty();
+            for (auto it = cfg.widgetPositions.constBegin();
+                 it != cfg.widgetPositions.constEnd(); ++it) {
+                QVariantMap m = it.value().toMap();
+                int x = m.value("x").toInt();
+                int y = m.value("y").toInt();
+                if (x < 0 || y < 0
+                    || x > realSize.width()  - 40
+                    || y > realSize.height() - 40) {
+                    stale = true; break;
+                }
+            }
+
+            QList<WidgetCard *> all = {
+                clockCard, ringsCard, weatherCard,
+                statsCard, calendarCard
+            };
+
+            if (stale) {
+                qInfo() << "[widgets] stale/empty positions — "
+                           "auto-arranging";
+                WidgetCard::autoArrange(all, realSize);
+            } else {
+                qInfo() << "[widgets] using saved positions ("
+                        << cfg.widgetPositions.size() << ")";
+                for (WidgetCard *c : all) {
+                    c->placeAtSavedOr();
+                    c->clampToSafeArea(realSize);
+                    c->applyVisibility();
+                    c->raise();
+                }
+            }
+        });
+        layoutDelay->start();
+    }
     // Spotlight must sit above ALL other chrome so it dims everything
     if (spotlight) spotlight->raise();
 
@@ -3214,31 +3290,6 @@ static int runShell(int argc, char *argv[])
                 }
             }
 
-            // Reposition desktop widgets (clock, CPU, weather)
-            // so they don't overlap the dock on Left/Right edges.
-            // DesktopWidgets has no Q_OBJECT, so findChild<T*>()
-            // can't be used — walk children with dynamic_cast.
-            if (desktopGuard) {
-                QWidget *top = middleGuard->window();
-                if (top) {
-                    DesktopWidgets *dw = nullptr;
-                    for (QWidget *child : top->findChildren<QWidget *>()) {
-                        if (auto *c = dynamic_cast<DesktopWidgets *>(child)) {
-                            dw = c;
-                            break;
-                        }
-                    }
-                    if (dw) {
-                        dw->repositionTo(desktopGuard->size(), pos);
-                        qInfo() << "[dock-reflow] widgets repositioned to"
-                                << dw->geometry()
-                                << "dockPos=" << pos;
-                    } else {
-                        qInfo() << "[dock-reflow] DesktopWidgets not found";
-                    }
-                }
-            }
-
             if (dockGuard) dockGuard->raise();
             if (desktopGuard) desktopGuard->update();
             if (dockGuard) dockGuard->update();
@@ -3266,7 +3317,6 @@ static int runShell(int argc, char *argv[])
     // After show(), layout children (the middle placeholder widget) get
     // raised above our floating children. Raise them back in the right
     // z-order so mouse events reach the widgets.
-    if (widgets)         widgets->raise();
     if (notifications)   notifications->raise();
     if (controlCenter)   controlCenter->raise();
     if (clipboardPanel)  clipboardPanel->raise();
@@ -3376,14 +3426,29 @@ static int runShell(int argc, char *argv[])
                 if (!sid.isEmpty()) Sigil::setSealId(sid);
             }
             // Widget positions + visibility may have changed (drag,
-            // Settings reset, or a checkbox toggle). Re-place and
-            // re-apply visibility on every floating card.
-            if (root) {
-                for (QWidget *w : root->findChildren<QWidget *>()) {
-                    if (auto *card = dynamic_cast<WidgetCard *>(w)) {
-                        card->placeAtSavedOr();
-                        card->applyVisibility();
-                        card->update();
+            // Settings reset, or a checkbox toggle).
+            if (root && root->width() >= 500) {
+                auto &wc = VisualConfigManager::instance().cfg();
+                if (wc.widgetPositions.isEmpty()) {
+                    QList<WidgetCard *> all;
+                    for (QWidget *w :
+                         root->findChildren<QWidget *>()) {
+                        if (auto *c =
+                                dynamic_cast<WidgetCard *>(w))
+                            all.append(c);
+                    }
+                    WidgetCard::autoArrange(all, root->size());
+                    qInfo() << "[widgets] reset -> auto-arranged"
+                            << all.size() << "cards";
+                } else {
+                    for (QWidget *w :
+                         root->findChildren<QWidget *>()) {
+                        if (auto *card =
+                                dynamic_cast<WidgetCard *>(w)) {
+                            card->placeAtSavedOr();
+                            card->applyVisibility();
+                            card->update();
+                        }
                     }
                 }
             }
@@ -3421,14 +3486,7 @@ static int runShell(int argc, char *argv[])
                 // Apply widget visibility — Settings writes visual.json,
                 // shell polls and reacts here.
                 auto &cfg = VisualConfigManager::instance().cfg();
-                for (QWidget *w : root->findChildren<QWidget *>()) {
-                    if (w->objectName() == "desktopWidgets") {
-                        if (w->isVisible() != cfg.widgetsVisible) {
-                            w->setVisible(cfg.widgetsVisible);
-                            if (cfg.widgetsVisible) w->raise();
-                        }
-                    }
-                }
+
                 root->update();
                 for (QWidget *w : root->findChildren<QWidget *>()) w->update();
             }

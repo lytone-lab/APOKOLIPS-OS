@@ -39,15 +39,61 @@ public:
     // Safe area = screen minus the dock's reserved strip.
     // Keeps widgets from overlapping the dock when it moves.
     static QRect safeAreaForDock(const QSize &screen) {
-        constexpr int dockExtent   = 96;
+        constexpr int dockExtent    = 96;
         constexpr int bottomReserve = dockExtent + 14;
         constexpr int sideReserve   = dockExtent + 14 + 8;
+        constexpr int topReserve    = 34;   // top bar height + padding
         QRect area(0, 0, screen.width(), screen.height());
+        // Reserve the top bar strip for every dock position — the
+        // top bar is always at the top of the screen.
+        area.setTop(area.top() + topReserve);
         int pos = VisualConfigManager::instance().cfg().dockPosition;
         if (pos == 0)      area.setHeight(area.height() - bottomReserve);
         else if (pos == 1) area.setLeft(area.left() + sideReserve);
         else if (pos == 2) area.setWidth(area.width() - sideReserve);
         return area;
+    }
+
+    // Auto-arrange: place every visible card in a horizontal row
+    // that fits the current screen, wrapping to a second row if
+    // needed. Called on first install (no saved positions) and by
+    // the Reset button. No hardcoded coordinates, works on any
+    // resolution.
+    static void autoArrange(const QList<WidgetCard *> &cards,
+                            const QSize &screen) {
+        if (cards.isEmpty() || screen.width() <= 0) return;
+        const QRect safe = safeAreaForDock(screen);
+        const int gap     = 20;
+        const int rowPad  = 24;
+        const int startX  = safe.left()  + rowPad;
+        const int startY  = safe.top()   + rowPad;
+        int x = startX;
+        int y = startY;
+        int rowH = 0;
+        for (WidgetCard *c : cards) {
+            if (!c || !c->isVisible()) continue;
+            int w = c->width();
+            int h = c->height();
+            // Wrap if this card would poke past the safe area.
+            if (x + w > safe.right() - rowPad && x > startX) {
+                x = startX;
+                y += rowH + gap;
+                rowH = 0;
+            }
+            c->move(x, y);
+            x += w + gap;
+            rowH = qMax(rowH, h);
+
+            // Persist
+            QString id = c->id();
+            QPoint np = c->pos();
+            VisualConfigManager::instance().setAndSave(
+                [id, np](VisualConfig &c) {
+                    QVariantMap m;
+                    m["x"] = np.x(); m["y"] = np.y();
+                    c.widgetPositions[id] = m;
+                });
+        }
     }
 
     // Nudge this card back inside the safe area if the dock has
@@ -189,7 +235,7 @@ protected:
             p.drawPath(innerPath);
         }
 
-        const int pad = 16;
+        const int pad = 18;
         QRect content = rect().adjusted(pad, pad, -pad, -pad);
         paintContent(p, content);
     }
@@ -314,14 +360,14 @@ protected:
 class ClockCard : public WidgetCard {
 public:
     explicit ClockCard(QWidget *parent)
-        : WidgetCard("clock", QSize(240, 260),
+        : WidgetCard("clock", QSize(260, 290),
                      QPoint(40, 60), parent)
     {
         // Apply the stored variant's size before first paint.
         QString v0 = variant();
-        if (v0 == "world")        setFixedSize(380, 150);
-        else if (v0 == "digital") setFixedSize(240, 200);
-        else                      setFixedSize(240, 260);
+        if (v0 == "world")        setFixedSize(400, 165);
+        else if (v0 == "digital") setFixedSize(260, 220);
+        else                      setFixedSize(260, 290);
         m_tick = new QTimer(this);
         m_tick->setInterval(1000);
         QObject::connect(m_tick, &QTimer::timeout,
@@ -343,9 +389,9 @@ public:
     void setVariant(const QString &v) override {
         // Set size FIRST so any paint triggered downstream sees
         // the new geometry.
-        if (v == "world") setFixedSize(380, 150);
-        else if (v == "digital") setFixedSize(240, 200);
-        else              setFixedSize(240, 260);
+        if (v == "world")        setFixedSize(400, 165);
+        else if (v == "digital") setFixedSize(260, 220);
+        else                     setFixedSize(260, 290);
         WidgetCard::setVariant(v);
         qInfo() << "[clockcard] variant" << v
                 << "size ->" << size();
@@ -412,10 +458,10 @@ protected:
         }
 
         if (analogish) {
-            const int faceD = qMin(r.width() - 20, r.height() - 90);
+            const int faceD = qMin(r.width() - 16, r.height() - 88);
             const QPointF c(r.center().x(),
-                            r.top() + faceD / 2 + 6);
-            const qreal R = faceD / 2.0 - 4;
+                            r.top() + faceD / 2 + 4);
+            const qreal R = faceD / 2.0 - 2;
             paintAnalog(p, c, R, v == "analog");
 
             // City below the face
@@ -502,15 +548,15 @@ private:
                 const QString numStr = QString::number(
                     i == 0 ? 12 : i);
                 QFont nf = font();
-                nf.setPixelSize(int(R * 0.22));
+                nf.setPixelSize(int(R * 0.25));
                 nf.setWeight(QFont::DemiBold);
                 p.setFont(nf);
                 p.setPen(num);
-                QPointF tp(c.x() + R * 0.62 * sinA,
-                           c.y() - R * 0.62 * cosA);
-                QRectF tr(tp.x() - R * 0.18,
-                          tp.y() - R * 0.14,
-                          R * 0.36, R * 0.28);
+                QPointF tp(c.x() + R * 0.64 * sinA,
+                           c.y() - R * 0.64 * cosA);
+                QRectF tr(tp.x() - R * 0.20,
+                          tp.y() - R * 0.16,
+                          R * 0.40, R * 0.32);
                 p.drawText(tr, Qt::AlignCenter, numStr);
             }
         }
@@ -530,26 +576,26 @@ private:
         };
 
         // Hour hand — dark, thick
-        p.setPen(QPen(QColor(20, 20, 24), qMax(2.4, R * 0.06),
+        p.setPen(QPen(QColor(20, 20, 24), qMax(2.6, R * 0.065),
                       Qt::SolidLine, Qt::RoundCap));
         QPointF hv = handAngle(hourAng);
-        p.drawLine(c, c + QPointF(hv.x() * R * 0.45,
-                                  hv.y() * R * 0.45));
+        p.drawLine(c, c + QPointF(hv.x() * R * 0.52,
+                                  hv.y() * R * 0.52));
 
         // Minute hand — dark, thinner, longer
-        p.setPen(QPen(QColor(20, 20, 24), qMax(1.8, R * 0.045),
+        p.setPen(QPen(QColor(20, 20, 24), qMax(2.0, R * 0.05),
                       Qt::SolidLine, Qt::RoundCap));
         QPointF mv = handAngle(minuteAng);
-        p.drawLine(c, c + QPointF(mv.x() * R * 0.72,
-                                  mv.y() * R * 0.72));
+        p.drawLine(c, c + QPointF(mv.x() * R * 0.80,
+                                  mv.y() * R * 0.80));
 
         // Second hand — orange
         const qreal secondAng = now.second() * 6.0;
-        p.setPen(QPen(QColor(220, 130, 30), 1.4,
+        p.setPen(QPen(QColor(220, 130, 30), 1.6,
                       Qt::SolidLine, Qt::RoundCap));
         QPointF sv = handAngle(secondAng);
-        p.drawLine(c, c + QPointF(sv.x() * R * 0.82,
-                                  sv.y() * R * 0.82));
+        p.drawLine(c, c + QPointF(sv.x() * R * 0.90,
+                                  sv.y() * R * 0.90));
 
         // Center dot
         p.setPen(Qt::NoPen);
@@ -573,8 +619,8 @@ private:
 class RingsCard : public WidgetCard {
 public:
     explicit RingsCard(QWidget *parent)
-        : WidgetCard("rings", QSize(340, 140),
-                     QPoint(460, 60), parent)
+        : WidgetCard("rings", QSize(360, 160),
+                     QPoint(480, 60), parent)
     {
         m_tick = new QTimer(this);
         m_tick->setInterval(1500);
@@ -587,10 +633,10 @@ public:
 protected:
     void paintContent(QPainter &p, const QRect &r) override {
         const int n = 4;
-        const int ringD = 58;               // outer diameter
-        const qreal ringStroke = 5.0;
-        const int gap = qMax(4, (r.width() - n * ringD) / (n - 1));
-        const int cy = r.top() + ringD / 2 + 4;
+        const int ringD = 66;               // outer diameter
+        const qreal ringStroke = 4.5;
+        const int gap = qMax(6, (r.width() - n * ringD) / (n - 1));
+        const int cy = r.top() + ringD / 2 + 6;
         const QColor green(80, 210, 120);
         const QColor track(255, 255, 255, 35);
 
@@ -619,24 +665,24 @@ protected:
             }
 
             // Icon inside ring
-            drawRingIcon(p, i, c, 18, m_theme.textSecondary);
+            drawRingIcon(p, i, c, 20, m_theme.textSecondary);
 
             // Big value under the ring
             QFont f = font();
-            f.setPixelSize(13); f.setWeight(QFont::DemiBold);
+            f.setPixelSize(14); f.setWeight(QFont::DemiBold);
             p.setFont(f);
             p.setPen(m_theme.textPrimary);
-            QRect vRect(cx - ringD/2, cy + ringD/2 + 4,
-                        ringD, 18);
+            QRect vRect(cx - ringD/2, cy + ringD/2 + 6,
+                        ringD, 20);
             p.drawText(vRect, Qt::AlignCenter,
                        QString("%1%").arg(int(vals[i] + 0.5)));
 
             // Small label
-            f.setPixelSize(9); f.setWeight(QFont::Normal);
+            f.setPixelSize(10); f.setWeight(QFont::Normal);
             p.setFont(f);
             p.setPen(m_theme.textDim);
-            QRect lRect(cx - ringD/2, cy + ringD/2 + 22,
-                        ringD, 12);
+            QRect lRect(cx - ringD/2, cy + ringD/2 + 26,
+                        ringD, 14);
             p.drawText(lRect, Qt::AlignCenter, labels[i]);
         }
     }
@@ -803,8 +849,8 @@ private:
 class StatsCard : public WidgetCard {
 public:
     explicit StatsCard(QWidget *parent)
-        : WidgetCard("stats", QSize(340, 190),
-                     QPoint(1160, 60), parent)
+        : WidgetCard("stats", QSize(360, 215),
+                     QPoint(1260, 60), parent)
     {
         m_tick = new QTimer(this);
         m_tick->setInterval(2000);
@@ -816,7 +862,7 @@ public:
 
 protected:
     void paintContent(QPainter &p, const QRect &r) override {
-        const int leftW = 150;
+        const int leftW = 160;
         const QRect leftR(r.left(), r.top(),
                           leftW, r.height());
         const QRect rightR(r.left() + leftW + 18, r.top(),
@@ -824,11 +870,11 @@ protected:
 
         // ---- Left column — big disk ring ----
         {
-            const int ringD = 92;
+            const int ringD = 106;
             const QPointF c(leftR.center().x(),
-                            leftR.top() + ringD / 2 + 4);
-            const qreal R = ringD / 2.0 - 5;
-            const qreal stroke = 7.0;
+                            leftR.top() + ringD / 2 + 6);
+            const qreal R = ringD / 2.0 - 6;
+            const qreal stroke = 6.0;
 
             // Track
             p.setPen(QPen(QColor(255, 255, 255, 40), stroke,
@@ -849,7 +895,7 @@ protected:
 
             // Percent inside
             QFont f = font();
-            f.setPixelSize(20); f.setWeight(QFont::DemiBold);
+            f.setPixelSize(24); f.setWeight(QFont::DemiBold);
             p.setFont(f);
             p.setPen(QColor(240, 237, 232));
             QRect pr(int(c.x() - R), int(c.y() - 14),
@@ -1036,11 +1082,11 @@ private:
 class WeatherCard : public WidgetCard {
 public:
     explicit WeatherCard(QWidget *parent)
-        : WidgetCard("weather", QSize(260, 150),
-                     QPoint(820, 60), parent)
+        : WidgetCard("weather", QSize(280, 170),
+                     QPoint(880, 60), parent)
     {
-        if (variant() == "full") setFixedSize(300, 220);
-        else                     setFixedSize(260, 150);
+        if (variant() == "full") setFixedSize(320, 240);
+        else                     setFixedSize(280, 170);
 
         m_weather = new Weather::Fetcher(this);
         auto fetch = [this]() {
@@ -1067,8 +1113,8 @@ public:
     }
 
     void setVariant(const QString &v) override {
-        if (v == "full")  setFixedSize(300, 220);
-        else              setFixedSize(260, 150);
+        if (v == "full")  setFixedSize(320, 240);
+        else              setFixedSize(280, 170);
         WidgetCard::setVariant(v);
     }
 
@@ -1096,17 +1142,17 @@ private:
         QFont f = font();
 
         // City header
-        f.setPixelSize(12); f.setWeight(QFont::DemiBold);
+        f.setPixelSize(13); f.setWeight(QFont::DemiBold);
         p.setFont(f);
         p.setPen(QColor(240, 245, 255));
-        p.drawText(QRect(r.left(), r.top(), r.width(), 16),
+        p.drawText(QRect(r.left(), r.top(), r.width(), 18),
                    Qt::AlignLeft, m_wx.city);
 
         // Big temp
-        f.setPixelSize(44); f.setWeight(QFont::Light);
+        f.setPixelSize(52); f.setWeight(QFont::Light);
         p.setFont(f);
         p.setPen(QColor(255, 255, 255));
-        QRect tR(r.left(), r.top() + 20, 96, 56);
+        QRect tR(r.left(), r.top() + 22, 108, 64);
         p.drawText(tR, Qt::AlignLeft | Qt::AlignVCenter,
                    QString::number(int(m_wx.tempC + 0.5))
                    + QString::fromUtf8("\xC2\xB0"));
@@ -1115,10 +1161,10 @@ private:
         int ix = r.left() + 98;
         int iw = r.width() - 98;
 
-        f.setPixelSize(11); f.setWeight(QFont::Normal);
+        f.setPixelSize(12); f.setWeight(QFont::Normal);
         p.setFont(f);
         p.setPen(QColor(230, 235, 245));
-        p.drawText(QRect(ix, r.top() + 20, iw, 16), Qt::AlignLeft,
+        p.drawText(QRect(ix, r.top() + 22, iw, 18), Qt::AlignLeft,
                    m_wx.condition.isEmpty() ? "—" : m_wx.condition);
 
         f.setPixelSize(10);
@@ -1249,8 +1295,8 @@ private:
 class CalendarCard : public WidgetCard {
 public:
     explicit CalendarCard(QWidget *parent)
-        : WidgetCard("calendar", QSize(240, 190),
-                     QPoint(40, 360), parent)
+        : WidgetCard("calendar", QSize(260, 215),
+                     QPoint(40, 380), parent)
     {
         m_tick = new QTimer(this);
         m_tick->setInterval(60 * 60 * 1000);   // re-render hourly
@@ -1267,24 +1313,24 @@ protected:
 
         // Month header
         QFont f = font();
-        f.setPixelSize(10); f.setWeight(QFont::DemiBold);
+        f.setPixelSize(11); f.setWeight(QFont::DemiBold);
         p.setFont(f);
         p.setPen(m_theme.textDim);
-        QRect hdr(r.left(), r.top(), r.width(), 14);
+        QRect hdr(r.left(), r.top(), r.width(), 16);
         p.drawText(hdr, Qt::AlignLeft, monthName);
 
         // Days-of-week header row
-        int gridTop = r.top() + 22;
+        int gridTop = r.top() + 26;
         int cellW = r.width() / 7;
-        int cellH = 20;
+        int cellH = 22;
 
         const char *names[] = { "M","T","W","T","F","S","S" };
-        f.setPixelSize(9); f.setWeight(QFont::Normal);
+        f.setPixelSize(10); f.setWeight(QFont::Normal);
         p.setFont(f);
         p.setPen(m_theme.textDim);
         for (int i = 0; i < 7; ++i) {
             p.drawText(QRect(r.left() + i * cellW, gridTop,
-                             cellW, 12),
+                             cellW, 14),
                        Qt::AlignCenter, names[i]);
         }
 
@@ -1293,7 +1339,7 @@ protected:
         int startCol = (first.dayOfWeek() + 6) % 7;   // Mon = 0
         int daysInMonth = today.daysInMonth();
 
-        f.setPixelSize(11); f.setWeight(QFont::Normal);
+        f.setPixelSize(12); f.setWeight(QFont::Normal);
         p.setFont(f);
 
         for (int d = 1; d <= daysInMonth; ++d) {
