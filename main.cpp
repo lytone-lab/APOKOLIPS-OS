@@ -2685,7 +2685,7 @@ static int runShell(int argc, char *argv[])
     // card position doesn't depend on root size (only drag
     // clamping does, and that reads the size live).
     ClockCard *clockCard = new ClockCard(root);
-    clockCard->placeAtSavedOr(QPoint(400, 200));
+    clockCard->placeAtSavedOr();
     clockCard->show();
     clockCard->raise();
 
@@ -2702,7 +2702,7 @@ static int runShell(int argc, char *argv[])
 
     // RingsCard — CPU / RAM / NET / DISK gauges.
     RingsCard *ringsCard = new RingsCard(root);
-    ringsCard->placeAtSavedOr(QPoint(400, 470));
+    ringsCard->placeAtSavedOr();
     ringsCard->show();
     ringsCard->raise();
 
@@ -2723,7 +2723,7 @@ static int runShell(int argc, char *argv[])
 
     // StatsCard — disk ring + memory + battery hybrid card.
     StatsCard *statsCard = new StatsCard(root);
-    statsCard->placeAtSavedOr(QPoint(780, 470));
+    statsCard->placeAtSavedOr();
     statsCard->show();
     statsCard->raise();
 
@@ -2739,7 +2739,7 @@ static int runShell(int argc, char *argv[])
 
     // WeatherCard — current conditions + H/L + wind + humidity.
     WeatherCard *weatherCard = new WeatherCard(root);
-    weatherCard->placeAtSavedOr(QPoint(1080, 470));
+    weatherCard->placeAtSavedOr();
     weatherCard->show();
     weatherCard->raise();
 
@@ -3358,6 +3358,16 @@ static int runShell(int argc, char *argv[])
                 const QString sid = VisualConfigManager::instance()
                                         .cfg().sigilAccent;
                 if (!sid.isEmpty()) Sigil::setSealId(sid);
+            }
+            // Widget positions may have changed (drag or Settings
+            // "Reset positions"). Re-place every floating card
+            // from the freshly loaded config.
+            if (root) {
+                for (QWidget *w : root->findChildren<QWidget *>()) {
+                    if (auto *card = dynamic_cast<WidgetCard *>(w)) {
+                        card->placeAtSavedOr();
+                    }
+                }
             }
             {
                 auto &cfg = VisualConfigManager::instance().cfg();

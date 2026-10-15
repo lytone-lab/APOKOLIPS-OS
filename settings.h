@@ -5439,7 +5439,8 @@ private:
             QObject::connect(reset, &QPushButton::clicked, [this]() {
                 VisualConfigManager::instance().setAndSave(
                     [](VisualConfig &c) { c.widgetPositions.clear(); });
-                qInfo() << "[widgets] positions reset — reload to apply";
+                qInfo() << "[widgets] positions reset — shell will "
+                           "re-place cards on next poll";
             });
             cv->addWidget(reset);
 

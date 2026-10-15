@@ -309,7 +309,7 @@ class ClockCard : public WidgetCard {
 public:
     explicit ClockCard(QWidget *parent)
         : WidgetCard("clock", QSize(240, 260),
-                     QPoint(400, 200), parent)
+                     QPoint(40, 60), parent)
     {
         // Apply the stored variant's size before first paint.
         QString v0 = variant();
@@ -568,7 +568,7 @@ class RingsCard : public WidgetCard {
 public:
     explicit RingsCard(QWidget *parent)
         : WidgetCard("rings", QSize(340, 140),
-                     QPoint(400, 340), parent)
+                     QPoint(460, 60), parent)
     {
         m_tick = new QTimer(this);
         m_tick->setInterval(1500);
@@ -798,7 +798,7 @@ class StatsCard : public WidgetCard {
 public:
     explicit StatsCard(QWidget *parent)
         : WidgetCard("stats", QSize(340, 190),
-                     QPoint(780, 470), parent)
+                     QPoint(1160, 60), parent)
     {
         m_tick = new QTimer(this);
         m_tick->setInterval(2000);
@@ -1031,7 +1031,7 @@ class WeatherCard : public WidgetCard {
 public:
     explicit WeatherCard(QWidget *parent)
         : WidgetCard("weather", QSize(260, 150),
-                     QPoint(1080, 470), parent)
+                     QPoint(820, 60), parent)
     {
         if (variant() == "full") setFixedSize(300, 220);
         else                     setFixedSize(260, 150);
