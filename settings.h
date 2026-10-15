@@ -5828,7 +5828,10 @@ private:
                     // Find the DesktopWidgets in the shell and toggle it
                     if (QWidget *r = qobject_cast<QWidget *>(root->window())) {
                         for (QWidget *w : r->findChildren<QWidget *>()) {
-                            if (w->objectName() == "desktopWidgets") {
+                            // Old DesktopWidgets column was removed
+                            // in the Pool rewrite. Per-widget visibility
+                            // now lives in Settings → Widgets.
+                            if (false && w->objectName() == "desktopWidgets") {
                                 w->setVisible(on);
                                 if (on) w->raise();
                             }

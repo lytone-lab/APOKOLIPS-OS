@@ -14,6 +14,7 @@ struct VisualConfig {
     int    widgetCardAlpha    = 140;
     int    finderAlpha        = 190;
     bool   widgetsVisible     = true;
+    QString poolBehavior      = "water";  // water | foam
     bool   dndEnabled         = false;
     bool   wallpaperParallax  = true;
     bool   cursorGlow         = true;
@@ -112,7 +113,7 @@ struct VisualConfig {
     QStringList discoveredWallpapers; // dev wallpapers user has found
     QString customWallpaperPath;      // user-picked image (absolute path)
     QVariantMap upscaleDecisions;     // path -> "quick" | "sharp" | "skip"
-    QVariantMap desktopIconPos;   // id -> {x, y}
+    QVariantMap poolIconPos;   // id -> {x, y}
     bool    launcherEnabled    = true;
     bool    spotlightEnabled   = true;
     bool    launcherHasSearch  = false;   // merge search into launcher
@@ -121,7 +122,7 @@ struct VisualConfig {
     int     launcherIconSize   = 52;      // 40 small / 52 medium / 64 large
     QStringList dockApps;      // empty = registry default
     QStringList launcherApps;  // empty = registry default
-    QStringList desktopApps;   // empty = ["mymach"]
+    QStringList poolApps;   // empty = ["mymach"]
     QString lockWallpaper      = "";   // empty = solid color
     int    blurRefreshMs      = 240;
     double dockMagnifyMax     = 0.42;
@@ -171,6 +172,8 @@ public:
         m_cfg.widgetsVisible     = o.contains("widgetsVisible")
                                    ? o["widgetsVisible"].toBool(true)
                                    : m_cfg.widgetsVisible;
+        if (o.contains("poolBehavior"))
+            m_cfg.poolBehavior = o["poolBehavior"].toString();
         m_cfg.dockIconSize       = getI("dockIconSize", m_cfg.dockIconSize);
         m_cfg.genieEnabled       = o.contains("genieEnabled")
                                    ? o["genieEnabled"].toBool(true)
@@ -376,9 +379,9 @@ public:
         }
         m_cfg.genieSCount         = getI("genieSCount",
                                          m_cfg.genieSCount);
-        if (o.contains("desktopIconPos")
-            && o["desktopIconPos"].isObject()) {
-            m_cfg.desktopIconPos = o["desktopIconPos"].toObject()
+        if (o.contains("poolIconPos")
+            && o["poolIconPos"].isObject()) {
+            m_cfg.poolIconPos = o["poolIconPos"].toObject()
                                        .toVariantMap();
         }
         m_cfg.launcherEnabled   = o.contains("launcherEnabled")
@@ -406,10 +409,10 @@ public:
             for (const QJsonValue &v : o["launcherApps"].toArray())
                 m_cfg.launcherApps << v.toString();
         }
-        if (o.contains("desktopApps") && o["desktopApps"].isArray()) {
-            m_cfg.desktopApps.clear();
-            for (const QJsonValue &v : o["desktopApps"].toArray())
-                m_cfg.desktopApps << v.toString();
+        if (o.contains("poolApps") && o["poolApps"].isArray()) {
+            m_cfg.poolApps.clear();
+            for (const QJsonValue &v : o["poolApps"].toArray())
+                m_cfg.poolApps << v.toString();
         }
         m_cfg.shellFontFamily     = o.contains("shellFontFamily")
                                    ? o["shellFontFamily"].toString()
@@ -589,6 +592,7 @@ public:
         o["widgetCardAlpha"]    = m_cfg.widgetCardAlpha;
         o["finderAlpha"]        = m_cfg.finderAlpha;
         o["widgetsVisible"]     = m_cfg.widgetsVisible;
+        o["poolBehavior"]       = m_cfg.poolBehavior;
         o["dockIconSize"]       = m_cfg.dockIconSize;
         o["genieEnabled"]       = m_cfg.genieEnabled;
         o["minimizeStyle"]      = m_cfg.minimizeStyle;
@@ -666,8 +670,8 @@ public:
         o["upscaleDecisions"]     = QJsonObject::fromVariantMap(
                                         m_cfg.upscaleDecisions);
         o["genieSCount"]         = m_cfg.genieSCount;
-        o["desktopIconPos"]      = QJsonObject::fromVariantMap(
-                                       m_cfg.desktopIconPos);
+        o["poolIconPos"]      = QJsonObject::fromVariantMap(
+                                       m_cfg.poolIconPos);
         o["launcherEnabled"]     = m_cfg.launcherEnabled;
         o["spotlightEnabled"]    = m_cfg.spotlightEnabled;
         o["launcherHasSearch"]   = m_cfg.launcherHasSearch;
@@ -686,8 +690,8 @@ public:
         }
         {
             QJsonArray arr;
-            for (const QString &s : m_cfg.desktopApps)  arr << s;
-            o["desktopApps"] = arr;
+            for (const QString &s : m_cfg.poolApps)  arr << s;
+            o["poolApps"] = arr;
         }
         o["shellFontFamily"]     = m_cfg.shellFontFamily;
         o["shellMonoFontFamily"] = m_cfg.shellMonoFontFamily;

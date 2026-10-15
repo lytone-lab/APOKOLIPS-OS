@@ -686,8 +686,8 @@ static bool isInLauncher(const QString &id) {
 
 static bool isOnDesktop(const QString &id) {
     auto &cfg = VisualConfigManager::instance().cfg();
-    if (!cfg.desktopApps.isEmpty())
-        return cfg.desktopApps.contains(id);
+    if (!cfg.poolApps.isEmpty())
+        return cfg.poolApps.contains(id);
     return id == QLatin1String("mymach");
 }
 
@@ -710,11 +710,11 @@ static void setInDock(const QString &id, bool on) {
 static void setOnDesktop(const QString &id, bool on) {
     VisualConfigManager::instance().setAndSave(
         [id, on](VisualConfig &c) {
-            if (c.desktopApps.isEmpty()) c.desktopApps << "mymach";
+            if (c.poolApps.isEmpty()) c.poolApps << "mymach";
             if (on) {
-                if (!c.desktopApps.contains(id)) c.desktopApps << id;
+                if (!c.poolApps.contains(id)) c.poolApps << id;
             } else {
-                c.desktopApps.removeAll(id);
+                c.poolApps.removeAll(id);
             }
         });
 }

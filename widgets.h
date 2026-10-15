@@ -36,6 +36,15 @@ public:
 
     QString id() const { return m_id; }
 
+    // Screen-space rect of this card. Phase 3 (The Pool) uses
+    // this to hit-test icons against every widget obstacle.
+    QRect globalRect() const {
+        QWidget *par = parentWidget();
+        if (!par) return QRect(pos(), size());
+        QPoint tl = par->mapToGlobal(pos());
+        return QRect(tl, size());
+    }
+
     // Safe area = screen minus the dock's reserved strip.
     // Keeps widgets from overlapping the dock when it moves.
     static QRect safeAreaForDock(const QSize &screen) {
@@ -126,8 +135,14 @@ public:
 
     void applyVisibility() {
         const auto &cfg = VisualConfigManager::instance().cfg();
-        bool on = cfg.widgetVisibility.value(m_id, true).toBool();
-        setVisible(on);
+        bool master = cfg.widgetsVisible;
+        bool perW = cfg.widgetVisibility.value(m_id, true).toBool();
+        bool target = master && perW;
+        qInfo() << "[applyVis]" << m_id
+                << "master=" << master
+                << "perWidget=" << perW
+                << "-> visible=" << target;
+        setVisible(target);
     }
 
     void placeAtSavedOr(QPoint fallback = QPoint()) {

@@ -902,7 +902,7 @@ private:
             QAction *dockAct = menu.addAction(
                 inDock ? "Remove from Dock" : "Add to Dock");
             QAction *deskAct = menu.addAction(
-                onDesktop ? "Remove from Desktop" : "Add to Desktop");
+                onDesktop ? "Remove from thePool" : "Add to thePool");
 
             QWidget *from = tile;
             QAction *chosen = menu.exec(
@@ -2484,9 +2484,9 @@ private:
     QString      m_last;
 };
 
-class DesktopIcon : public QWidget {
+class PoolIcon : public QWidget {
 public:
-    DesktopIcon(const QString &id, const QString &label,
+    PoolIcon(const QString &id, const QString &label,
                 std::function<void(QPainter&, QRectF)> paint,
                 std::function<void()> onActivate,
                 QWidget *parent = nullptr)
@@ -2522,7 +2522,7 @@ public:
             const QString id = m_id;
             const bool inDock = isInDock(id);
 
-            QAction *rmDesk = m.addAction("Remove from Desktop");
+            QAction *rmDesk = m.addAction("Remove from thePool");
             QAction *dockAct = m.addAction(
                 inDock ? "Remove from Dock" : "Add to Dock");
             m.addSeparator();
@@ -2536,6 +2536,35 @@ public:
     }
 
     QString id() const { return m_id; }
+
+    // ---- The Pool — framework API ----
+    // targetPos: where the icon is trying to be. Normally equals
+    //   the icon's settled cell. When displaced, the canvas sets a
+    //   new value and the tick animates toward it.
+    // homeCell:  the icon's original grid slot. Used by Foam mode
+    //   to know where to return to.
+    QPoint targetPos() const   { return m_targetPos; }
+    void   setTargetPos(const QPoint &p) { m_targetPos = p; }
+
+    QPoint homeCell() const    { return m_homeCell; }
+    void   setHomeCell(const QPoint &p) { m_homeCell = p; }
+
+    bool isAnimating() const   { return pos() != m_targetPos; }
+
+    // Smooth lerp toward target, called by the canvas tick.
+    // 0.20 per tick × 33 Hz = ~450 ms to settle. Snaps when
+    // within 2 px so the icon lands cleanly.
+    bool stepTowardTarget() {
+        if (pos() == m_targetPos) return false;
+        QPoint d = m_targetPos - pos();
+        if (qAbs(d.x()) < 2 && qAbs(d.y()) < 2) {
+            move(m_targetPos);
+            return true;
+        }
+        move(pos() + QPoint(int(d.x() * 0.20),
+                            int(d.y() * 0.20)));
+        return true;
+    }
 
 protected:
     void paintEvent(QPaintEvent *) override {
@@ -2606,6 +2635,10 @@ protected:
         if (e->button() != Qt::LeftButton) return;
         if (!m_dragging && m_onActivate) m_onActivate();
         m_dragging = false;
+        // Phase 2: settle at current pixel position. Phase 3 will
+        // replace this with "nearest free grid cell away from any
+        // intersecting widget."
+        m_targetPos = pos();
     }
 
 public:
@@ -2621,12 +2654,14 @@ private:
     bool m_dragging = false;
     QPoint m_pressPos;
     QPoint m_dragStart;
+    QPoint m_targetPos;   // The Pool — settle target
+    QPoint m_homeCell;    // The Pool — original grid slot
 };
 
-class DesktopCanvas : public QWidget {
+class PoolCanvas : public QWidget {
 public:
-    DesktopCanvas(QWidget *parent = nullptr) : QWidget(parent) {
-        setObjectName("desktopCanvas");
+    PoolCanvas(QWidget *parent = nullptr) : QWidget(parent) {
+        setObjectName("thePool");
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAttribute(Qt::WA_TranslucentBackground, true);
         // Canvas does NOT block clicks in empty areas; only icons
@@ -2638,6 +2673,16 @@ public:
                          this, [this](const QPoint &pos) {
             showCanvasMenu(pos);
         });
+
+        // The Pool — settle tick. 33 Hz. Every step, each icon that
+        // is animating moves a fraction toward its target. Idle
+        // frames cost nothing because stepTowardTarget() returns
+        // false when the icon is already at its target.
+        m_tick = new QTimer(this);
+        m_tick->setInterval(30);
+        QObject::connect(m_tick, &QTimer::timeout,
+                         this, [this]() { stepPool(); });
+        m_tick->start();
     }
 
     // Swallow presses on empty canvas so they don't reach the
@@ -2655,9 +2700,11 @@ public:
                  std::function<void()> onActivate,
                  const QPoint &pos)
     {
-        DesktopIcon *icon = new DesktopIcon(id, label, paint,
+        PoolIcon *icon = new PoolIcon(id, label, paint,
                                              onActivate, this);
         icon->move(pos);
+        icon->setHomeCell(pos);
+        icon->setTargetPos(pos);
         icon->show();
         icon->raise();
         m_icons.append(icon);
@@ -2669,9 +2716,9 @@ public:
 
     std::function<void(const QString&, const QPoint&)> m_onMoved;
 
-    QList<DesktopIcon*> icons() const { return m_icons; }
+    QList<PoolIcon*> icons() const { return m_icons; }
 
-    // Wallpaper switching hook — set by DesktopBackground at construction.
+    // Wallpaper switching hook — set by PoolBackground at construction.
     // Lets the canvas menu call into the background's setWallpaper without
     // needing a class-order forward reference.
     static std::function<void(const QString &)> &wallpaperHook() {
@@ -2727,7 +2774,7 @@ public:
             QAction *wa = wallSub->addAction(w.name);
             QString id = QString::fromUtf8(w.id);
             QObject::connect(wa, &QAction::triggered, [id]() {
-                auto &hook = DesktopCanvas::wallpaperHook();
+                auto &hook = PoolCanvas::wallpaperHook();
                 if (hook) hook(id);
             });
         }
@@ -2794,34 +2841,41 @@ public:
 
     void tidyUp() {
         VisualConfigManager::instance().setAndSave(
-            [](VisualConfig &c) { c.desktopIconPos.clear(); });
+            [](VisualConfig &c) { c.poolIconPos.clear(); });
         rebuildIcons();
     }
 
     void rebuildIcons() {
-        for (DesktopIcon *ic : m_icons) ic->deleteLater();
+        for (PoolIcon *ic : m_icons) ic->deleteLater();
         m_icons.clear();
 
         // Which apps are on the desktop
         QStringList ids;
         auto &cfg = VisualConfigManager::instance().cfg();
-        if (cfg.desktopApps.isEmpty()) ids = { "mymach" };
-        else                          ids = cfg.desktopApps;
+        if (cfg.poolApps.isEmpty()) ids = { "mymach" };
+        else                          ids = cfg.poolApps;
 
         // Default grid — right column fills top-down, then wraps to
         // the next column leftward when the column runs out of space.
-        // Uses SCREEN geometry, not our widget (which may be 0 during
-        // the first layout pass).
-        int screenW = 1200, screenH = 800;
-        if (QScreen *s = QApplication::primaryScreen()) {
-            screenW = s->availableGeometry().width();
-            screenH = s->availableGeometry().height();
+        // Uses the CANVAS geometry (not screen) so the layout is
+        // correct even when the shell is on a smaller workspace,
+        // with the dock on a side, or after a resize. Falls back to
+        // screen size only when the canvas hasn't been laid out yet.
+        int cW = width();
+        int cH = height();
+        if (cW <= 0 || cH <= 0) {
+            if (QScreen *s = QApplication::primaryScreen()) {
+                cW = s->availableGeometry().width();
+                cH = s->availableGeometry().height();
+            } else {
+                cW = 1200; cH = 800;
+            }
         }
         const int iconH    = 116;   // slot step
         const int iconW    = 116;
-        const int startX   = screenW - 130;
+        const int startX   = cW - 130;
         const int startY   = 40;
-        const int usableH  = screenH - startY - 110;   // leave room for dock
+        const int usableH  = cH - startY - 110;   // leave room for dock
         const int rowsMax  = qMax(1, usableH / iconH);
 
         int slot = 0;
@@ -2834,8 +2888,8 @@ public:
             int defY = startY + row * iconH;
 
             QPoint pos;
-            if (cfg.desktopIconPos.contains(id)) {
-                QVariantMap mp = cfg.desktopIconPos[id].toMap();
+            if (cfg.poolIconPos.contains(id)) {
+                QVariantMap mp = cfg.poolIconPos[id].toMap();
                 pos = QPoint(mp.value("x", defX).toInt(),
                              mp.value("y", defY).toInt());
             } else {
@@ -2862,7 +2916,7 @@ public:
                         desktopLaunchArgs(capId));
                 }, pos);
             if (m_icons.size() > before) {
-                DesktopIcon *added = m_icons.last();
+                PoolIcon *added = m_icons.last();
                 added->m_onTidyUp = [this]() { tidyUp(); };
             }
             slot++;
@@ -2877,7 +2931,7 @@ public:
     // were loaded from a different dock-layout session.
     void clampIcons() {
         if (width() <= 0 || height() <= 0) return;
-        for (DesktopIcon *ic : m_icons) {
+        for (PoolIcon *ic : m_icons) {
             QPoint p = ic->pos();
             int maxX = width()  - ic->width();
             int maxY = height() - ic->height();
@@ -2894,7 +2948,137 @@ protected:
     }
 
 private:
-    QList<DesktopIcon*> m_icons;
+    // ---- The Pool — collision + settle ----
+
+    // Is this rect free of every widget and every other icon's
+    // target? Padding gives icons a little breathing room.
+    bool cellIsFree(const QRect &r, PoolIcon *ignore) {
+        // Canvas bounds
+        if (r.left() < 0 || r.top() < 0) return false;
+        if (r.right() > width() || r.bottom() > height())
+            return false;
+
+        // Widget obstacles — only cards that are visible.
+        QWidget *top = window();
+        if (top) {
+            for (QWidget *w : top->findChildren<QWidget *>()) {
+                if (auto *card = dynamic_cast<WidgetCard *>(w)) {
+                    if (!card->isVisible()) continue;
+                    QRect g = card->globalRect();
+                    QPoint tl = mapFromGlobal(g.topLeft());
+                    QRect obs(tl, g.size());
+                    if (obs.intersects(r.adjusted(-4, -4, 4, 4)))
+                        return false;
+                }
+            }
+        }
+
+        // Other icons' target cells
+        for (PoolIcon *other : m_icons) {
+            if (!other || other == ignore) continue;
+            QRect o(other->targetPos(), other->size());
+            if (o.intersects(r.adjusted(-4, -4, 4, 4)))
+                return false;
+        }
+
+        return true;
+    }
+
+    // Find the nearest free grid cell for this icon. Cell size is
+    // icon width + 20 px gap (matching the horizontal grid the
+    // canvas already uses for its default layout).
+    QPoint findFreeCellNear(PoolIcon *ic, const QRect &itsRect) {
+        const int stepX = ic->width() + 20;
+        const int stepY = ic->height() + 12;
+
+        // Start from the icon's current cell, then spiral outward
+        // in rings. Return the first free one.
+        int cx = (itsRect.left() + stepX / 2) / stepX;
+        int cy = (itsRect.top()  + stepY / 2) / stepY;
+
+        for (int ring = 0; ring < 30; ++ring) {
+            for (int dy = -ring; dy <= ring; ++dy) {
+                for (int dx = -ring; dx <= ring; ++dx) {
+                    if (qAbs(dx) != ring && qAbs(dy) != ring)
+                        continue;
+                    QPoint p((cx + dx) * stepX,
+                             (cy + dy) * stepY);
+                    QRect r(p, ic->size());
+                    if (cellIsFree(r, ic)) return p;
+                }
+            }
+        }
+        return itsRect.topLeft();   // fallback: don't move
+    }
+
+    // 33 Hz. Called from the tick.
+    void stepPool() {
+        // 1) Advance every animating icon toward its target.
+        for (PoolIcon *ic : m_icons) {
+            if (ic) ic->stepTowardTarget();
+        }
+
+        // 2) Displacement pass — for every icon whose target
+        //    overlaps a widget, compute the nearest free cell.
+        //    Foam mode also returns icons to their home cell when
+        //    the path is clear.
+        const QString behavior = VisualConfigManager::instance()
+                                     .cfg().poolBehavior;
+        bool anyDisplaced = false;
+        for (PoolIcon *ic : m_icons) {
+            if (!ic) continue;
+            QRect tr(ic->targetPos(), ic->size());
+
+            // Is this icon currently hitting a widget?
+            bool hit = false;
+            QWidget *top = window();
+            if (top) {
+                for (QWidget *w : top->findChildren<QWidget *>()) {
+                    if (auto *card =
+                            dynamic_cast<WidgetCard *>(w)) {
+                        if (!card->isVisible()) continue;
+                        QRect g = card->globalRect();
+                        QPoint tl = mapFromGlobal(g.topLeft());
+                        QRect obs(tl, g.size());
+                        if (obs.intersects(
+                                tr.adjusted(-4, -4, 4, 4))) {
+                            hit = true; break;
+                        }
+                    }
+                }
+            }
+
+            if (hit) {
+                QPoint free = findFreeCellNear(ic, tr);
+                if (free != ic->targetPos()) {
+                    ic->setTargetPos(free);
+                    anyDisplaced = true;
+                }
+                continue;
+            }
+
+            // Not displaced. Foam mode → drift home when clear.
+            if (behavior == "foam") {
+                QPoint home = ic->homeCell();
+                if (home != ic->targetPos()) {
+                    QRect hr(home, ic->size());
+                    if (cellIsFree(hr, ic)) {
+                        ic->setTargetPos(home);
+                        anyDisplaced = true;
+                    }
+                }
+            }
+            // Water mode → stay wherever the icon landed.
+        }
+
+        if (anyDisplaced) {
+            qInfo() << "[thePool] step — behavior =" << behavior
+                    << "icons =" << m_icons.size();
+        }
+    }
+
+    QList<PoolIcon*> m_icons;
+    QTimer          *m_tick = nullptr;
 };
 
 
@@ -3384,9 +3568,9 @@ private:
     bool           m_enabled = true;
 };
 
-class DesktopBackground : public QWidget {
+class PoolBackground : public QWidget {
 public:
-    explicit DesktopBackground(QWidget *parent = nullptr) : QWidget(parent) {
+    explicit PoolBackground(QWidget *parent = nullptr) : QWidget(parent) {
         setAttribute(Qt::WA_OpaquePaintEvent, true);
         setMouseTracking(true);
 
@@ -3408,10 +3592,10 @@ public:
             m_parallaxSmoothTimer->start();
         }
 
-        // Install wallpaper-switch hook so DesktopCanvas's menu can
+        // Install wallpaper-switch hook so PoolCanvas's menu can
         // trigger a wallpaper change without needing a class-order
         // forward reference.
-        DesktopCanvas::wallpaperHook() = [this](const QString &id) {
+        PoolCanvas::wallpaperHook() = [this](const QString &id) {
             Wallpaper *nw = WallpaperConfig::makeById(id);
             if (!nw) return;
             setWallpaper(nw);
@@ -3452,7 +3636,7 @@ public:
         m_blurTimer->setSingleShot(true);
         m_blurTimer->setInterval(120);
         QObject::connect(m_blurTimer, &QTimer::timeout,
-                         this, &DesktopBackground::regenerateBlur);
+                         this, &PoolBackground::regenerateBlur);
     }
 
     void regenerateBlur() {
