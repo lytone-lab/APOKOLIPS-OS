@@ -517,46 +517,75 @@ from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
       Priority: after Variation system (Session 3) and Clock
       variations. One session.
 
-  [ ] "The Pool" — fluid desktop icons
-      User's own invention. Desktop icons behave like water: when a
-      widget card moves into a group of icons, the icons part and
-      slide around it, staying nearby, settling back when the
-      widget leaves. Same behaviour for folders — any desktop
-      item, not just the app tiles.
+  [ ] "The Pool" — fluid desktop icons (V2 chosen)
+      User's own invention. Desktop icons behave like water: when
+      a widget card moves into a group of icons, they part and
+      slide around it, staying nearby. Same for folders and any
+      other desktop item.
 
-      Core mechanic:
-        - Each widget is an obstacle on the 2D desktop plane.
-        - Each icon is a particle that avoids obstacles.
-        - Move a widget → adjacent icons shift away.
-        - Widget leaves → icons drift back toward their "home" cell
-          over ~2 s if the path is clear.
+      CHOSEN: V2 — Push + relax, with random re-settle.
+        Widget moves → icons in its path are displaced to a nearby
+        free grid cell. When the widget leaves, displaced icons
+        do NOT spring back to their original position. Instead
+        they settle into the nearest free space — like water
+        molecules filling a container after a hand passes through.
+        Over time the desktop drifts toward a new equilibrium
+        each time a widget is dragged.
 
-      Three implementation approaches (V1/V2/V3 backlog):
-        V1 — Simple push-away (grid kicker). Icon whose cell
-             intersects a widget gets shoved to nearest free cell
-             away from the widget's centre. Snaps to grid.
-             Predictable. ~80 lines.
-        V2 — Push + relax (the water metaphor). Same as V1, plus a
-             home-spring that gently pulls displaced icons back
-             over 2 s when the widget settles. Reads like water.
-             Needs feel tuning. ~150 lines.
-        V3 — Full fluid (force field). Icons are velocity-based
-             particles with mutual repulsion and widget-attraction.
-             Integrate every 16 ms. Very smooth, very hard to
-             tune. ~300 lines. Risky.
+      WHY THIS OVER STRICT-RETURN:
+        Returning icons to their exact original cell reads as
+        "foam bouncing back" rather than water. Real water
+        settles wherever there is space. This is the sharper
+        reading of the metaphor.
 
-      Prerequisite work:
-        - DesktopCanvas needs per-icon "displaced" state.
-        - Collision check against every WidgetCard's rect
-          (queryable via root->findChildren<WidgetCard*>()).
-        - Relaxation tick — 5 Hz is enough for V2.
-        - Decide whether displacement persists or resets on reboot.
-          (Recommendation: transient, never persisted. Every boot
-          starts with the original grid.)
+      SLIDER — "Gravity":
+        Because pure random-settle drifts toward chaos over a
+        session, add a single slider on the new Widgets Settings
+        page:
+          0   = full water. Every displacement re-settles icons
+                in new, near positions. Desktop arrangement
+                evolves continuously.
+          50  = mixed. Some return to home cells, some drift.
+          100 = foam. Icons always snap back to their original
+                grid cell. Predictable.
+        Default: 60. Feels alive without being chaotic.
 
-      Status: designed, not built. Nice-to-have, ships after the
-      widget framework has had a week of real use so we know which
-      layout feels right first.
+      PERSISTENCE:
+        Arrangement is NOT saved to disk. Every shell restart
+        begins with the user's original grid. Displacement is a
+        transient, in-session behaviour — like water going still
+        overnight.
+
+      IMPLEMENTATION (V2, one session):
+        - Each DesktopIcon remembers its "home cell" (grid slot)
+          and current "settled cell".
+        - On widget move (16 Hz while dragging), check each icon
+          against every WidgetCard rect. If overlap, displace to
+          nearest free cell weighted by the "gravity" slider.
+        - On widget release, run a 5 Hz relax tick for ~2 s:
+          icons gently drift toward lerp(home, settled, gravity).
+        - Every displacement never overwrites the original home
+          cell — so gravity=100 always restores the pristine grid.
+        - Collision grid: 96x108 per icon at default, sized to
+          the desktop canvas.
+
+      VISUAL FEEL:
+        - Icons drift at ~180 px/s while displaced.
+        - Slight overshoot and settle on the relax tick (not
+          bouncy, just a soft landing).
+        - No rotation, no scaling — pure position.
+
+  [ ] "The Pool" — V3 full fluid (backlog)
+      Force-field version. Icons become velocity-based particles
+      with mutual repulsion, widget attraction, and (optionally)
+      spring-to-home. Integrated every 16 ms.
+
+      Pros: smoothest possible water feel. Genuinely alive.
+      Cons: hard to tune. Prone to oscillation, clumping,
+            jitter. Requires a physics pass and a UI to tune
+            stiffness/damping/mutual-force.
+
+      Ship only if V2 feels too stiff after real use. Not before.
 
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
