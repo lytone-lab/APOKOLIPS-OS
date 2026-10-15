@@ -1006,7 +1006,7 @@ private:
                 << "title=" << m_titleMatch
                 << "windows=" << windows.size();
 
-        if (windows.size() < 2) { close(); return; }
+        if (windows.isEmpty()) { close(); return; }
 
         for (const QJsonObject &w : windows) addCard(w);
         adjustSize();
@@ -1021,12 +1021,26 @@ private:
         if (type == "con" || type == "floating_con") {
             const QString app = node.value("app_id").toString();
             const QString title = node.value("name").toString();
-            const bool appMatch = !m_appId.isEmpty() && app == m_appId;
-            const bool titleOk = m_titleMatch.isEmpty()
-                || title.contains(m_titleMatch, Qt::CaseInsensitive);
-            // Skip windows whose title is empty (scratchpad shells).
-            if (appMatch && titleOk && !title.isEmpty())
-                out.append(node);
+            if (title.isEmpty()) {
+                for (const QJsonValue &v : node.value("nodes").toArray())
+                    collectWindows(v.toObject(), out);
+                for (const QJsonValue &v :
+                     node.value("floating_nodes").toArray())
+                    collectWindows(v.toObject(), out);
+                return;
+            }
+            // Settings launches as `apokolips-shell --settings` so
+            // its sway app_id is "apokolips-shell" not
+            // "apokolips-settings". When a title filter is set,
+            // that wins. Without one, fall back to appId.
+            bool match = false;
+            if (!m_titleMatch.isEmpty()) {
+                match = title.contains(m_titleMatch,
+                                       Qt::CaseInsensitive);
+            } else if (!m_appId.isEmpty()) {
+                match = (app == m_appId);
+            }
+            if (match) out.append(node);
         }
         for (const QJsonValue &v : node.value("nodes").toArray())
             collectWindows(v.toObject(), out);
@@ -1724,10 +1738,62 @@ protected:
                      << "y=" << e->position().y();
             m_debugOnce = true;
         }
+
+        // ---- Preview popup hover detection ----
+        DockIcon *hitIcon = nullptr;
+        const QPoint pos = e->position().toPoint();
+        for (DockIcon *di : m_icons) {
+            if (di->geometry().contains(pos)) { hitIcon = di; break; }
+        }
+        const QString hitName = hitIcon ? hitIcon->appName() : QString();
+        if (hitName != m_hoveredAppName) {
+            m_hoveredAppName = hitName;
+
+            if (!m_previewDelay) {
+                m_previewDelay = new QTimer(this);
+                m_previewDelay->setSingleShot(true);
+                QObject::connect(m_previewDelay, &QTimer::timeout,
+                                 this, [this]() {
+                    if (m_hoveredAppName.isEmpty()) return;
+                    DockIcon *di = nullptr;
+                    for (DockIcon *ic : m_icons) {
+                        if (ic->appName() == m_hoveredAppName) {
+                            di = ic; break;
+                        }
+                    }
+                    if (!di || !di->isRunning()) return;
+                    if (m_previewPopup) {
+                        m_previewPopup->close();
+                        m_previewPopup = nullptr;
+                    }
+                    const QString appId = appIdForDockName(
+                        m_hoveredAppName);
+                    const QString titleMatch = titleForDockName(
+                        m_hoveredAppName);
+                    m_previewPopup = new DockPreviewPopup(
+                        appId, titleMatch, di, window());
+                });
+            }
+            m_previewDelay->stop();
+            if (m_previewPopup) {
+                m_previewPopup->close();
+                m_previewPopup = nullptr;
+            }
+            if (!hitName.isEmpty()) m_previewDelay->start(500);
+        }
     }
-    void leaveEvent(QEvent *) override { m_hasCursor = false; }
+    void leaveEvent(QEvent *) override {
+        m_hasCursor = false;
+        m_hoveredAppName.clear();
+        if (m_previewDelay) m_previewDelay->stop();
+        if (m_previewPopup) m_previewPopup->scheduleClose(300);
+    }
 
 private:
+    QString                     m_hoveredAppName;
+    QTimer                     *m_previewDelay = nullptr;
+    QPointer<DockPreviewPopup>  m_previewPopup;
+
     void tick() {
         const auto &vc = VisualConfigManager::instance().cfg();
         const qreal sigma    = vc.dockSigma;
