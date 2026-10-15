@@ -5407,30 +5407,32 @@ private:
             v->addWidget(c);
         }
 
-        // ---- Desktop Icon Behaviour card ----
+        // ---- Desktop Icons (The Pool) card ----
         {
             Sigil::Card *c = new Sigil::Card;
             QVBoxLayout *cv = new QVBoxLayout(c);
             cv->setContentsMargins(20, 16, 20, 18);
             cv->setSpacing(14);
-            cv->addWidget(Sigil::groupLabel("DESKTOP ICONS"));
+            cv->addWidget(Sigil::groupLabel("DESKTOP ICONS (THE POOL)"));
 
-            QLabel *desc = new QLabel(
-                "How desktop icons react when a widget card is "
-                "dragged over them.");
-            desc->setWordWrap(true);
-            desc->setStyleSheet(QString(
-                "color: %1; font-size: 11px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            cv->addWidget(desc);
+            // Master toggle
+            cv->addWidget(Sigil::makeToggleRow(
+                "Fluid desktop icons",
+                "Icons flow around widgets like water",
+                vc.poolEnabled,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) {
+                            c.poolEnabled = on; });
+                    qInfo() << "[thePool] enabled ->" << on;
+                }));
 
-            // Two side-by-side buttons, current one highlighted.
+            // Behaviour — two side-by-side buttons
             auto makeModeButton = [&](const QString &id,
-                                      const QString &title,
-                                      const QString &sub) {
-                QPushButton *b = new QPushButton;
+                                      const QString &title) {
+                QPushButton *b = new QPushButton(title);
                 b->setCursor(Qt::PointingHandCursor);
-                b->setMinimumHeight(72);
+                b->setMinimumHeight(40);
                 b->setCheckable(true);
 
                 QString current = vc.poolBehavior;
@@ -5439,78 +5441,159 @@ private:
                 b->setChecked(active);
 
                 QString activeStyle = QString(
-                    "QPushButton { text-align: left; padding: 12px 16px;"
+                    "QPushButton { padding: 8px 14px;"
                     "  background: rgba(168, 50, 50, 55);"
                     "  color: %1;"
                     "  border: 2px solid %2;"
-                    "  border-radius: 10px;"
-                    "  font-size: 13px; font-weight: 600; }")
+                    "  border-radius: 8px;"
+                    "  font-size: 12px; font-weight: 600; }")
                     .arg(Sigil::textPrimary().name(),
                          Sigil::accent().name());
 
                 QString idleStyle = QString(
-                    "QPushButton { text-align: left; padding: 12px 16px;"
+                    "QPushButton { padding: 8px 14px;"
                     "  background: rgba(255,255,255,15);"
                     "  color: %1;"
                     "  border: 1px solid rgba(255,255,255,40);"
-                    "  border-radius: 10px;"
-                    "  font-size: 13px; }"
+                    "  border-radius: 8px;"
+                    "  font-size: 12px; }"
                     "QPushButton:hover { background: rgba(255,255,255,30); }")
                     .arg(Sigil::textPrimary().name());
 
                 b->setStyleSheet(active ? activeStyle : idleStyle);
-                b->setText(title);
 
                 QObject::connect(b, &QPushButton::clicked,
-                                 [this, id, sub]() {
+                                 [this, id]() {
                     VisualConfigManager::instance().setAndSave(
                         [id](VisualConfig &c) {
                             c.poolBehavior = id; });
                     qInfo() << "[thePool] behavior ->" << id;
                     rebuildCurrentPage();
                 });
-
-                // Description tooltip
-                b->setToolTip(sub);
                 return b;
             };
 
-            QHBoxLayout *row = new QHBoxLayout;
-            row->setSpacing(12);
+            QWidget *bRow = new QWidget;
+            QHBoxLayout *bH = new QHBoxLayout(bRow);
+            bH->setContentsMargins(0, 0, 0, 0);
+            bH->setSpacing(10);
+            bH->addWidget(makeModeButton("water", "Water"));
+            bH->addWidget(makeModeButton("foam",  "Foam"));
+            cv->addWidget(bRow);
 
-            QVBoxLayout *col1 = new QVBoxLayout;
-            col1->setSpacing(6);
-            col1->addWidget(makeModeButton("water", "Water",
-                "Icons flow around widgets and settle wherever there is "
-                "space. The arrangement evolves as you use the desktop."));
-            QLabel *lbl1 = new QLabel(
-                "Icons flow around widgets and settle wherever "
-                "there is space. Like dropping a hand into a pool — "
-                "the water parts and reforms around it.");
-            lbl1->setWordWrap(true);
-            lbl1->setStyleSheet(QString(
-                "color: %1; font-size: 10px; background: transparent;")
+            QLabel *bDesc = new QLabel(
+                vc.poolBehavior == "foam"
+                    ? "Foam: icons bounce out of the way and return "
+                      "once the widget moves on. Predictable."
+                    : "Water: icons flow around widgets and settle "
+                      "wherever there is space. The arrangement "
+                      "evolves as you use the desktop.");
+            bDesc->setWordWrap(true);
+            bDesc->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
                 .arg(Sigil::textDim().name()));
-            col1->addWidget(lbl1);
-            row->addLayout(col1, 1);
+            cv->addWidget(bDesc);
 
-            QVBoxLayout *col2 = new QVBoxLayout;
-            col2->setSpacing(6);
-            col2->addWidget(makeModeButton("foam", "Foam",
-                "Icons bounce out of the way and return once the "
-                "widget moves on. Predictable and tidy."));
-            QLabel *lbl2 = new QLabel(
-                "Icons bounce out of the way and return to their "
-                "original places once the widget moves on. "
-                "Predictable and tidy.");
-            lbl2->setWordWrap(true);
-            lbl2->setStyleSheet(QString(
-                "color: %1; font-size: 10px; background: transparent;")
-                .arg(Sigil::textDim().name()));
-            col2->addWidget(lbl2);
-            row->addLayout(col2, 1);
+            // Shared slider builder — every tuning row uses it.
+            auto addSlider = [&](const QString &title,
+                                 const QString &sub,
+                                 int lo, int hi, int val,
+                                 std::function<void(int)> onCh) {
+                QWidget *row = new QWidget;
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(4);
 
-            cv->addLayout(row);
+                QHBoxLayout *top = new QHBoxLayout;
+                QLabel *t = new QLabel(title);
+                t->setStyleSheet(QString(
+                    "color: %1; font-size: 13px;"
+                    " background: transparent;")
+                    .arg(Sigil::textPrimary().name()));
+                QLabel *v = new QLabel(QString::number(val));
+                v->setStyleSheet(QString(
+                    "color: %1; font-size: 12px;"
+                    " background: transparent;")
+                    .arg(Sigil::textSecondary().name()));
+                v->setMinimumWidth(50);
+                v->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                top->addWidget(t);
+                top->addStretch();
+                top->addWidget(v);
+                rv->addLayout(top);
+
+                if (!sub.isEmpty()) {
+                    QLabel *s = new QLabel(sub);
+                    s->setStyleSheet(QString(
+                        "color: %1; font-size: 10px;"
+                        " background: transparent;")
+                        .arg(Sigil::textDim().name()));
+                    rv->addWidget(s);
+                }
+
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(lo, hi);
+                sl->setValue(val);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px;"
+                    "  background: rgba(255,255,255,25);"
+                    "  border-radius: 2px; }"
+                    "QSlider::handle:horizontal {"
+                    "  background: #ffffff; width: 14px; height: 14px;"
+                    "  margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal {"
+                    "  background: rgb(168,50,50);"
+                    "  border-radius: 2px; }");
+                QObject::connect(sl, &QSlider::valueChanged,
+                                 [v, onCh](int x) {
+                    v->setText(QString::number(x));
+                    onCh(x);
+                });
+                rv->addWidget(sl);
+                cv->addWidget(row);
+            };
+
+            // Speed — displayed ×10 so we can use int slider for
+            // a fractional value.
+            addSlider("Flow speed",
+                      "How fast icons glide to their new position",
+                      5, 20, int(vc.poolSpeed * 10),
+                      [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) {
+                        c.poolSpeed = x / 10.0; });
+            });
+
+            // Bounciness — overshoot percent
+            addSlider("Bounciness",
+                      "How much the icon drifts past its target before settling",
+                      0, 30, vc.poolOvershootPct,
+                      [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) {
+                        c.poolOvershootPct = x; });
+            });
+
+            // Stagger — wave delay between neighbours
+            addSlider("Wave delay",
+                      "Delay between neighbouring icons starting to move",
+                      0, 200, vc.poolStaggerMs,
+                      [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) {
+                        c.poolStaggerMs = x; });
+            });
+
+            // Sounds
+            cv->addWidget(Sigil::makeToggleRow(
+                "Pool sounds",
+                "Soft bubbling when icons flow, gentle pop when they settle",
+                vc.poolSounds,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) {
+                            c.poolSounds = on; });
+                }));
 
             v->addWidget(c);
         }

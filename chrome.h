@@ -3084,6 +3084,11 @@ private:
 
     // 33 Hz. Called from the tick.
     void stepPool() {
+        // Master off → nothing animates. Icons sit still, widgets
+        // don't displace anything. Just keep the tick alive so
+        // toggling it back on resumes without a restart.
+        if (!VisualConfigManager::instance().cfg().poolEnabled) return;
+
         // 1) Advance every animating icon toward its target.
         for (PoolIcon *ic : m_icons) {
             if (ic) ic->stepTowardTarget();

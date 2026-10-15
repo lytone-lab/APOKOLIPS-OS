@@ -14,7 +14,9 @@ struct VisualConfig {
     int    widgetCardAlpha    = 140;
     int    finderAlpha        = 190;
     bool   widgetsVisible     = true;
+    bool    poolEnabled       = true;   // master on/off
     QString poolBehavior      = "water";  // water | foam
+    bool    poolSounds        = true;   // bubble / pop sfx
     double  poolSpeed         = 1.0;    // 0.5..2.0, motion multiplier
     int     poolStaggerMs     = 20;     // 0..200, per-icon delay
     int     poolOvershootPct  = 12;     // 0..30, tiny overshoot on arrival
@@ -175,8 +177,12 @@ public:
         m_cfg.widgetsVisible     = o.contains("widgetsVisible")
                                    ? o["widgetsVisible"].toBool(true)
                                    : m_cfg.widgetsVisible;
+        if (o.contains("poolEnabled"))
+            m_cfg.poolEnabled = o["poolEnabled"].toBool(true);
         if (o.contains("poolBehavior"))
             m_cfg.poolBehavior = o["poolBehavior"].toString();
+        if (o.contains("poolSounds"))
+            m_cfg.poolSounds = o["poolSounds"].toBool(true);
         if (o.contains("poolSpeed"))
             m_cfg.poolSpeed = o["poolSpeed"].toDouble(1.0);
         if (o.contains("poolStaggerMs"))
@@ -601,7 +607,9 @@ public:
         o["widgetCardAlpha"]    = m_cfg.widgetCardAlpha;
         o["finderAlpha"]        = m_cfg.finderAlpha;
         o["widgetsVisible"]     = m_cfg.widgetsVisible;
+        o["poolEnabled"]        = m_cfg.poolEnabled;
         o["poolBehavior"]       = m_cfg.poolBehavior;
+        o["poolSounds"]         = m_cfg.poolSounds;
         o["poolSpeed"]          = m_cfg.poolSpeed;
         o["poolStaggerMs"]      = m_cfg.poolStaggerMs;
         o["poolOvershootPct"]   = m_cfg.poolOvershootPct;
