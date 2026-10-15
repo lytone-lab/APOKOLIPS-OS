@@ -17,6 +17,8 @@ struct VisualConfig {
     bool   dndEnabled         = false;
     bool   wallpaperParallax  = true;
     bool   cursorGlow         = true;
+    QVariantMap widgetPositions;        // id -> {x, y}
+    QVariantMap widgetSizes;            // id -> int tier
     int    cursorGlowBrightness = 95;   // 20..200
     int    cursorGlowRadius     = 42;   // 20..100
     int    cursorGlowTrail      = 8;    // 0..16
@@ -418,6 +420,14 @@ public:
                                    : m_cfg.dndEnabled;
         if (o.contains("cursorGlow"))
             m_cfg.cursorGlow = o["cursorGlow"].toBool(true);
+        if (o.contains("widgetPositions")
+            && o["widgetPositions"].isObject())
+            m_cfg.widgetPositions =
+                o["widgetPositions"].toObject().toVariantMap();
+        if (o.contains("widgetSizes")
+            && o["widgetSizes"].isObject())
+            m_cfg.widgetSizes =
+                o["widgetSizes"].toObject().toVariantMap();
         if (o.contains("cursorGlowBrightness"))
             m_cfg.cursorGlowBrightness =
                 o["cursorGlowBrightness"].toInt(95);
@@ -662,6 +672,10 @@ public:
         o["sigilAccent"]        = m_cfg.sigilAccent;
         o["wallpaperParallax"]  = m_cfg.wallpaperParallax;
         o["cursorGlow"]           = m_cfg.cursorGlow;
+        o["widgetPositions"]      = QJsonObject::fromVariantMap(
+                                        m_cfg.widgetPositions);
+        o["widgetSizes"]          = QJsonObject::fromVariantMap(
+                                        m_cfg.widgetSizes);
         o["cursorGlowBrightness"] = m_cfg.cursorGlowBrightness;
         o["cursorGlowRadius"]     = m_cfg.cursorGlowRadius;
         o["cursorGlowTrail"]      = m_cfg.cursorGlowTrail;

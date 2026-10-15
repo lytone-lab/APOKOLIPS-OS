@@ -127,4 +127,5 @@ inline void installMenuFade() {
     if (qApp) qApp->installEventFilter(new MenuFadeFilter(qApp));
 }
 
+#include "widgets.h"
 #endif // APOKOLIPS_SHELL_H

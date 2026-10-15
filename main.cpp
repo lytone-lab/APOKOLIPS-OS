@@ -2675,6 +2675,30 @@ static int runShell(int argc, char *argv[])
     root->setDesktopWidgets(widgets);
     widgets->setVisible(
         VisualConfigManager::instance().cfg().widgetsVisible);
+
+    // Widget framework — Session 1: ClockCard as root child.
+    // Desktop layers (background, canvas) can raise themselves
+    // during dock reflow and other housekeeping, putting them above
+    // our card. Keep re-raising the card on a slow interval so it
+    // stays above the desktop stack. Root window is 640x480 at
+    // construction time; the shell resizes later — that's fine,
+    // card position doesn't depend on root size (only drag
+    // clamping does, and that reads the size live).
+    ClockCard *clockCard = new ClockCard(root);
+    clockCard->placeAtSavedOr(QPoint(400, 200));
+    clockCard->show();
+    clockCard->raise();
+
+    QTimer *cardRaise = new QTimer(root);
+    cardRaise->setInterval(1000);
+    QObject::connect(cardRaise, &QTimer::timeout, clockCard,
+        [clockCard]() { clockCard->raise(); });
+    cardRaise->start();
+
+    qInfo() << "[widgets] ClockCard installed"
+            << "pos=" << clockCard->pos()
+            << "size=" << clockCard->size()
+            << "root=" << root->geometry();
     // Spotlight must sit above ALL other chrome so it dims everything
     if (spotlight) spotlight->raise();
 
