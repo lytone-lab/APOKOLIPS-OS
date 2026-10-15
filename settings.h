@@ -5407,6 +5407,139 @@ private:
             v->addWidget(c);
         }
 
+        // ---- Style card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 18);
+            cv->setSpacing(14);
+            cv->addWidget(Sigil::groupLabel("STYLE"));
+
+            auto addSlider = [&](const QString &title,
+                                 int lo, int hi, int val,
+                                 std::function<void(int)> onCh) {
+                QWidget *row = new QWidget;
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(6);
+
+                QHBoxLayout *top = new QHBoxLayout;
+                QLabel *t = new QLabel(title);
+                t->setStyleSheet(QString(
+                    "color: %1; font-size: 13px;"
+                    " background: transparent;")
+                    .arg(Sigil::textPrimary().name()));
+                QLabel *v = new QLabel(QString::number(val));
+                v->setStyleSheet(QString(
+                    "color: %1; font-size: 12px;"
+                    " background: transparent;")
+                    .arg(Sigil::textSecondary().name()));
+                v->setMinimumWidth(50);
+                v->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                top->addWidget(t);
+                top->addStretch();
+                top->addWidget(v);
+                rv->addLayout(top);
+
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(lo, hi);
+                sl->setValue(val);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px;"
+                    "  background: rgba(255,255,255,25);"
+                    "  border-radius: 2px; }"
+                    "QSlider::handle:horizontal {"
+                    "  background: #ffffff; width: 14px; height: 14px;"
+                    "  margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal {"
+                    "  background: rgb(168,50,50);"
+                    "  border-radius: 2px; }");
+                QObject::connect(sl, &QSlider::valueChanged,
+                                 [v, onCh](int x) {
+                    v->setText(QString::number(x));
+                    onCh(x);
+                });
+                rv->addWidget(sl);
+                cv->addWidget(row);
+            };
+
+            addSlider("Corner radius", 8, 40, vc.widgetRadius,
+                      [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) { c.widgetRadius = x; });
+            });
+
+            addSlider("Rim intensity", 0, 200, vc.widgetRimIntensity,
+                      [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) { c.widgetRimIntensity = x; });
+            });
+
+            // Snap to grid toggle
+            cv->addWidget(Sigil::makeToggleRow(
+                "Snap to grid",
+                "Drag cards to a grid instead of free placement",
+                vc.widgetSnapToGrid,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) {
+                            c.widgetSnapToGrid = on; });
+                }));
+
+            addSlider("Grid size (px)", 20, 100, vc.widgetGridSize,
+                      [](int x) {
+                VisualConfigManager::instance().setAndSave(
+                    [x](VisualConfig &c) { c.widgetGridSize = x; });
+            });
+
+            v->addWidget(c);
+        }
+
+        // ---- Visibility card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 18);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("VISIBLE WIDGETS"));
+
+            QLabel *desc = new QLabel(
+                "Show or hide each floating widget. Changes apply "
+                "immediately.");
+            desc->setWordWrap(true);
+            desc->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            cv->addWidget(desc);
+
+            struct WItem { const char *id; const char *label; };
+            const WItem items[] = {
+                { "clock",    "Clock" },
+                { "rings",    "System rings" },
+                { "weather",  "Weather" },
+                { "stats",    "Disk / Memory / Battery" },
+                { "calendar", "Calendar" },
+            };
+
+            for (const auto &it : items) {
+                QString id = QString::fromUtf8(it.id);
+                bool on = vc.widgetVisibility
+                             .value(id, true).toBool();
+                auto *row = Sigil::makeToggleRow(
+                    QString::fromUtf8(it.label),
+                    QString("apokolips-widget:") + id,
+                    on,
+                    [id](bool v) {
+                    VisualConfigManager::instance().setAndSave(
+                        [id, v](VisualConfig &c) {
+                            c.widgetVisibility[id] = v; });
+                });
+                cv->addWidget(row);
+            }
+
+            v->addWidget(c);
+        }
+
         // ---- Reset card ----
         {
             Sigil::Card *c = new Sigil::Card;

@@ -2686,7 +2686,7 @@ static int runShell(int argc, char *argv[])
     // clamping does, and that reads the size live).
     ClockCard *clockCard = new ClockCard(root);
     clockCard->placeAtSavedOr();
-    clockCard->show();
+    clockCard->applyVisibility();
     clockCard->raise();
 
     QTimer *cardRaise = new QTimer(root);
@@ -2703,7 +2703,7 @@ static int runShell(int argc, char *argv[])
     // RingsCard — CPU / RAM / NET / DISK gauges.
     RingsCard *ringsCard = new RingsCard(root);
     ringsCard->placeAtSavedOr();
-    ringsCard->show();
+    ringsCard->applyVisibility();
     ringsCard->raise();
 
     QTimer *cardRaise2 = new QTimer(root);
@@ -2724,7 +2724,7 @@ static int runShell(int argc, char *argv[])
     // StatsCard — disk ring + memory + battery hybrid card.
     StatsCard *statsCard = new StatsCard(root);
     statsCard->placeAtSavedOr();
-    statsCard->show();
+    statsCard->applyVisibility();
     statsCard->raise();
 
     QTimer *cardRaise3 = new QTimer(root);
@@ -2740,7 +2740,7 @@ static int runShell(int argc, char *argv[])
     // WeatherCard — current conditions + H/L + wind + humidity.
     WeatherCard *weatherCard = new WeatherCard(root);
     weatherCard->placeAtSavedOr();
-    weatherCard->show();
+    weatherCard->applyVisibility();
     weatherCard->raise();
 
     QTimer *cardRaise4 = new QTimer(root);
@@ -2789,6 +2789,22 @@ static int runShell(int argc, char *argv[])
     qInfo() << "[widgets] WeatherCard installed"
             << "pos=" << weatherCard->pos()
             << "size=" << weatherCard->size();
+
+    // CalendarCard — month grid with today highlighted.
+    CalendarCard *calendarCard = new CalendarCard(root);
+    calendarCard->placeAtSavedOr();
+    calendarCard->applyVisibility();
+    calendarCard->raise();
+
+    QTimer *cardRaise5 = new QTimer(root);
+    cardRaise5->setInterval(1000);
+    QObject::connect(cardRaise5, &QTimer::timeout, calendarCard,
+        [calendarCard]() { calendarCard->raise(); });
+    cardRaise5->start();
+
+    qInfo() << "[widgets] CalendarCard installed"
+            << "pos=" << calendarCard->pos()
+            << "size=" << calendarCard->size();
     // Spotlight must sit above ALL other chrome so it dims everything
     if (spotlight) spotlight->raise();
 
@@ -3359,13 +3375,15 @@ static int runShell(int argc, char *argv[])
                                         .cfg().sigilAccent;
                 if (!sid.isEmpty()) Sigil::setSealId(sid);
             }
-            // Widget positions may have changed (drag or Settings
-            // "Reset positions"). Re-place every floating card
-            // from the freshly loaded config.
+            // Widget positions + visibility may have changed (drag,
+            // Settings reset, or a checkbox toggle). Re-place and
+            // re-apply visibility on every floating card.
             if (root) {
                 for (QWidget *w : root->findChildren<QWidget *>()) {
                     if (auto *card = dynamic_cast<WidgetCard *>(w)) {
                         card->placeAtSavedOr();
+                        card->applyVisibility();
+                        card->update();
                     }
                 }
             }

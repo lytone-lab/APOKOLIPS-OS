@@ -78,6 +78,12 @@ public:
         qInfo() << "[widgets] clamped" << m_id << "->" << np;
     }
 
+    void applyVisibility() {
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        bool on = cfg.widgetVisibility.value(m_id, true).toBool();
+        setVisible(on);
+    }
+
     void placeAtSavedOr(QPoint fallback = QPoint()) {
         if (fallback.isNull()) fallback = m_defaultPos;
         const auto &cfg = VisualConfigManager::instance().cfg();
@@ -130,6 +136,10 @@ protected:
     }
 
     void paintEvent(QPaintEvent *) override {
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        const int R = qBound(8,  cfg.widgetRadius,       40);
+        const int rimPeak = qBound(0, cfg.widgetRimIntensity, 200);
+
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
@@ -142,42 +152,33 @@ protected:
             sh.setAlphaF(0.04 * (i / 6.0));
             p.setBrush(sh);
             p.drawRoundedRect(r.adjusted(-i, -i + 3, i, i + 3),
-                              20 + i, 20 + i);
+                              R + i, R + i);
         }
 
-        // Panel background — subclasses can override the colour.
-        // Default: solid black at config opacity. WeatherCard is
-        // the one that shifts to a sky-blue gradient.
-        int alpha = VisualConfigManager::instance().cfg().widgetOpacity;
-        alpha = qBound(0, alpha, 255);
+        int alpha = qBound(0, cfg.widgetOpacity, 255);
 
         QPainterPath panelPath;
-        panelPath.addRoundedRect(r, 20, 20);
+        panelPath.addRoundedRect(r, R, R);
         paintPanelBackground(p, r, panelPath, alpha);
 
-        // Diagonal gradient rim — brighter at the top-left corner,
-        // fading to nothing by the bottom-right. Reads like a soft
-        // squircle chip edge rather than a hard 1 px outline.
-        if (alpha > 30) {
-            int peak = int(90 * alpha / 255);
+        // Diagonal gradient rim — brightness from config.
+        if (alpha > 30 && rimPeak > 0) {
+            int peak = int(rimPeak * alpha / 255);
             QLinearGradient rimGrad(r.topLeft(), r.bottomRight());
-            rimGrad.setColorAt(0.00,
-                QColor(255, 255, 255, peak));
+            rimGrad.setColorAt(0.00, QColor(255, 255, 255, peak));
             rimGrad.setColorAt(0.35,
                 QColor(255, 255, 255, int(peak * 0.40)));
             rimGrad.setColorAt(0.75,
                 QColor(255, 255, 255, int(peak * 0.10)));
-            rimGrad.setColorAt(1.00,
-                QColor(255, 255, 255, 0));
+            rimGrad.setColorAt(1.00, QColor(255, 255, 255, 0));
             p.setPen(QPen(QBrush(rimGrad), 1.2));
             p.setBrush(Qt::NoBrush);
             p.drawPath(panelPath);
 
-            // Second inner line, offset ~3 px in, even softer —
-            // adds the layered depth the squircle chips have.
             QRectF innerR = r.adjusted(3, 3, -3, -3);
+            int innerR2 = qMax(4, R - 3);
             QPainterPath innerPath;
-            innerPath.addRoundedRect(innerR, 17, 17);
+            innerPath.addRoundedRect(innerR, innerR2, innerR2);
             QLinearGradient innerGrad(innerR.topLeft(),
                                       innerR.bottomRight());
             innerGrad.setColorAt(0.0,
@@ -215,14 +216,19 @@ protected:
     }
 
     void mouseMoveEvent(QMouseEvent *e) override {
-        if (m_dragging)
-            qInfo() << "[widget] drag" << m_id << "->" << e->position();
         if (m_dragging && parentWidget()) {
             QPoint p = mapToParent(e->position().toPoint() - m_dragOffset);
             int maxX = qMax(0, parentWidget()->width()  - width());
             int maxY = qMax(0, parentWidget()->height() - height());
             p.setX(qBound(0, p.x(), maxX));
             p.setY(qBound(0, p.y(), maxY));
+
+            const auto &cfg = VisualConfigManager::instance().cfg();
+            if (cfg.widgetSnapToGrid) {
+                int g = qMax(10, cfg.widgetGridSize);
+                p.setX((p.x() + g / 2) / g * g);
+                p.setY((p.y() + g / 2) / g * g);
+            }
             move(p);
             e->accept();
         }
@@ -1233,6 +1239,88 @@ private:
     Weather::Fetcher  *m_weather = nullptr;
     Weather::Snapshot  m_wx;
     QTimer            *m_tick = nullptr;
+};
+
+
+// ----------------------------------------------------------------
+// CalendarCard — month grid, today highlighted with the accent
+// colour. Migrated from the old DesktopWidgets stacked column.
+// ----------------------------------------------------------------
+class CalendarCard : public WidgetCard {
+public:
+    explicit CalendarCard(QWidget *parent)
+        : WidgetCard("calendar", QSize(240, 190),
+                     QPoint(40, 360), parent)
+    {
+        m_tick = new QTimer(this);
+        m_tick->setInterval(60 * 60 * 1000);   // re-render hourly
+        QObject::connect(m_tick, &QTimer::timeout,
+                         this, [this]() { update(); });
+        m_tick->start();
+    }
+
+protected:
+    void paintContent(QPainter &p, const QRect &r) override {
+        QDate today = QDate::currentDate();
+        const QString monthName =
+            today.toString("MMMM yyyy").toUpper();
+
+        // Month header
+        QFont f = font();
+        f.setPixelSize(10); f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        p.setPen(m_theme.textDim);
+        QRect hdr(r.left(), r.top(), r.width(), 14);
+        p.drawText(hdr, Qt::AlignLeft, monthName);
+
+        // Days-of-week header row
+        int gridTop = r.top() + 22;
+        int cellW = r.width() / 7;
+        int cellH = 20;
+
+        const char *names[] = { "M","T","W","T","F","S","S" };
+        f.setPixelSize(9); f.setWeight(QFont::Normal);
+        p.setFont(f);
+        p.setPen(m_theme.textDim);
+        for (int i = 0; i < 7; ++i) {
+            p.drawText(QRect(r.left() + i * cellW, gridTop,
+                             cellW, 12),
+                       Qt::AlignCenter, names[i]);
+        }
+
+        // Day cells
+        QDate first(today.year(), today.month(), 1);
+        int startCol = (first.dayOfWeek() + 6) % 7;   // Mon = 0
+        int daysInMonth = today.daysInMonth();
+
+        f.setPixelSize(11); f.setWeight(QFont::Normal);
+        p.setFont(f);
+
+        for (int d = 1; d <= daysInMonth; ++d) {
+            int idx = startCol + d - 1;
+            int row = idx / 7;
+            int col = idx % 7;
+            QRect cell(r.left() + col * cellW,
+                       gridTop + 16 + row * cellH,
+                       cellW, cellH);
+
+            bool isToday = (d == today.day());
+            if (isToday) {
+                p.setBrush(m_theme.accent);
+                p.setPen(Qt::NoPen);
+                p.drawRoundedRect(cell.adjusted(2, 2, -2, -2),
+                                  6, 6);
+                p.setPen(QColor(255, 255, 255));
+            } else {
+                p.setPen(m_theme.textSecondary);
+            }
+            p.drawText(cell, Qt::AlignCenter,
+                       QString::number(d));
+        }
+    }
+
+private:
+    QTimer *m_tick = nullptr;
 };
 
 #endif

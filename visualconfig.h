@@ -21,6 +21,11 @@ struct VisualConfig {
     QVariantMap widgetSizes;            // id -> int tier
     QVariantMap widgetVariants;         // id -> variant string
     int    widgetOpacity      = 255;    // 0..255, applied to widget bg
+    int    widgetRadius       = 20;     // 8..40, corner radius
+    int    widgetRimIntensity = 90;     // 0..200, diagonal rim brightness
+    bool   widgetSnapToGrid   = false;  // snap drag to grid
+    int    widgetGridSize     = 40;     // px grid unit
+    QVariantMap widgetVisibility;       // id -> bool (visible?)
     int    cursorGlowBrightness = 95;   // 20..200
     int    cursorGlowRadius     = 42;   // 20..100
     int    cursorGlowTrail      = 8;    // 0..16
@@ -436,6 +441,18 @@ public:
                 o["widgetVariants"].toObject().toVariantMap();
         if (o.contains("widgetOpacity"))
             m_cfg.widgetOpacity = o["widgetOpacity"].toInt(255);
+        if (o.contains("widgetRadius"))
+            m_cfg.widgetRadius = o["widgetRadius"].toInt(20);
+        if (o.contains("widgetRimIntensity"))
+            m_cfg.widgetRimIntensity = o["widgetRimIntensity"].toInt(90);
+        if (o.contains("widgetSnapToGrid"))
+            m_cfg.widgetSnapToGrid = o["widgetSnapToGrid"].toBool(false);
+        if (o.contains("widgetGridSize"))
+            m_cfg.widgetGridSize = o["widgetGridSize"].toInt(40);
+        if (o.contains("widgetVisibility")
+            && o["widgetVisibility"].isObject())
+            m_cfg.widgetVisibility =
+                o["widgetVisibility"].toObject().toVariantMap();
         if (o.contains("cursorGlowBrightness"))
             m_cfg.cursorGlowBrightness =
                 o["cursorGlowBrightness"].toInt(95);
@@ -687,6 +704,12 @@ public:
         o["widgetVariants"]       = QJsonObject::fromVariantMap(
                                         m_cfg.widgetVariants);
         o["widgetOpacity"]        = m_cfg.widgetOpacity;
+        o["widgetRadius"]         = m_cfg.widgetRadius;
+        o["widgetRimIntensity"]   = m_cfg.widgetRimIntensity;
+        o["widgetSnapToGrid"]     = m_cfg.widgetSnapToGrid;
+        o["widgetGridSize"]       = m_cfg.widgetGridSize;
+        o["widgetVisibility"]     = QJsonObject::fromVariantMap(
+                                        m_cfg.widgetVisibility);
         o["cursorGlowBrightness"] = m_cfg.cursorGlowBrightness;
         o["cursorGlowRadius"]     = m_cfg.cursorGlowRadius;
         o["cursorGlowTrail"]      = m_cfg.cursorGlowTrail;
