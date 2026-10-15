@@ -654,6 +654,40 @@ from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
       Recommendation: B. Small, safe, no risk to the rest of the
       config system. One small session.
 
+  [~] SUGGESTION — The Pool V2: windows as obstacles
+      Exploratory. Not scheduled. Logged in case it's wanted.
+
+      Idea: open windows (Finder, Notes, etc.) also push desktop
+      icons aside, the same way widget cards do. Icons would flow
+      around any window on screen, not just floating widgets.
+
+      How it would work:
+        - Reuse the existing 30 Hz swaymsg poll that drives the
+          wallpaper parallax. Feed every window rect from
+          `swaymsg -t get_tree` into the Pool's obstacle list,
+          alongside the widget cards.
+        - No new infrastructure — the poll already runs, the
+          collision code already exists. Just a second source of
+          obstacle rects.
+        - Icons would reflow when you open, close, move, or
+          resize any window.
+
+      Why it might be wanted:
+        - Natural extension of the invention.
+        - Makes the desktop feel alive to window activity.
+
+      Why it might not:
+        - Busy. Icons rearrange every time you open Finder, drag
+          a window, focus a different app.
+        - Nobody does this. macOS, Windows, KDE — none. So no
+          reference for whether it feels right.
+        - Could interact badly with the parallax feature — both
+          features would want the same window data.
+
+      Decision: build only if the base Pool feels right after
+      a week of real use AND the busy-ness tradeoff is acceptable.
+      Otherwise close this line.
+
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
 ------------------------------------------------------------------------
