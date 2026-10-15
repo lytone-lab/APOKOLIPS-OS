@@ -538,17 +538,23 @@ from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
         settles wherever there is space. This is the sharper
         reading of the metaphor.
 
-      SLIDER — "Gravity":
-        Because pure random-settle drifts toward chaos over a
-        session, add a single slider on the new Widgets Settings
-        page:
-          0   = full water. Every displacement re-settles icons
-                in new, near positions. Desktop arrangement
-                evolves continuously.
-          50  = mixed. Some return to home cells, some drift.
-          100 = foam. Icons always snap back to their original
-                grid cell. Predictable.
-        Default: 60. Feels alive without being chaotic.
+      SETTING — "Foam" or "Water" (user picks one, no slider):
+        Two discrete modes with descriptions in Settings:
+
+        WATER:
+          "Icons flow around widgets and settle wherever there
+           is space. Like dropping a hand into a pool — the
+           water parts and reforms around it. The arrangement
+           evolves as you use the desktop."
+
+        FOAM:
+          "Icons bounce out of the way and return to their
+           original places once the widget moves on. Predictable
+           and tidy. Like foam held under a glass — let go and
+           it springs back."
+
+        Default: WATER. The invention is the water behaviour;
+        foam is the escape hatch for users who want stability.
 
       PERSISTENCE:
         Arrangement is NOT saved to disk. Every shell restart
@@ -586,6 +592,42 @@ from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
             stiffness/damping/mutual-force.
 
       Ship only if V2 feels too stiff after real use. Not before.
+
+  [ ] "The Pool" — V4 physical shake (V3+/V2 backlog, "500/50")
+      The wild variant. Desktop icons react to physical motion
+      of the machine itself. Tilt the laptop → icons slide to
+      the low edge, bouncing off walls. Shake the machine →
+      they scatter and collide. When it settles flat again,
+      icons land wherever they naturally stopped — a new
+      arrangement each time, not the original.
+
+      "500/50" — user's words. Meaning: five-hundred-percent
+      effort, fifty-percent confidence. Worth logging even if
+      it never ships.
+
+      What it needs:
+        - Real accelerometer / gyroscope input. VM has neither.
+          Only works on actual laptop hardware with sensors.
+        - Linux: /sys/bus/iio/devices/iio:device*/ with
+          in_accel_*_raw files (Intel Sensor Hub, HP/Lenovo
+          sensors, Apple SMC). Not on most desktops.
+        - Physics engine: gravity vector from accel, friction on
+          floor, elastic collisions with walls + other icons +
+          widget obstacles. Same integrator as V3 but driven by
+          an external force instead of user drag.
+        - Continuous 60 Hz integration while any accel is
+          non-zero.
+        - Icons must be able to rotate for full effect (a tilted
+          laptop means tilted gravity, icons at angles look
+          wrong if they stay upright) — this doubles the
+          complexity.
+
+      Fallback: a "Shake" button in Settings that injects a
+      synthetic accel impulse on demand, for VMs and desktops
+      without sensors. Testable, still fun.
+
+      Estimated: 2-3 sessions minimum. Ship only after V2 has
+      had weeks of real use.
 
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
