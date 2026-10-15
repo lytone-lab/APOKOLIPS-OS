@@ -517,6 +517,47 @@ from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
       Priority: after Variation system (Session 3) and Clock
       variations. One session.
 
+  [ ] "The Pool" — fluid desktop icons
+      User's own invention. Desktop icons behave like water: when a
+      widget card moves into a group of icons, the icons part and
+      slide around it, staying nearby, settling back when the
+      widget leaves. Same behaviour for folders — any desktop
+      item, not just the app tiles.
+
+      Core mechanic:
+        - Each widget is an obstacle on the 2D desktop plane.
+        - Each icon is a particle that avoids obstacles.
+        - Move a widget → adjacent icons shift away.
+        - Widget leaves → icons drift back toward their "home" cell
+          over ~2 s if the path is clear.
+
+      Three implementation approaches (V1/V2/V3 backlog):
+        V1 — Simple push-away (grid kicker). Icon whose cell
+             intersects a widget gets shoved to nearest free cell
+             away from the widget's centre. Snaps to grid.
+             Predictable. ~80 lines.
+        V2 — Push + relax (the water metaphor). Same as V1, plus a
+             home-spring that gently pulls displaced icons back
+             over 2 s when the widget settles. Reads like water.
+             Needs feel tuning. ~150 lines.
+        V3 — Full fluid (force field). Icons are velocity-based
+             particles with mutual repulsion and widget-attraction.
+             Integrate every 16 ms. Very smooth, very hard to
+             tune. ~300 lines. Risky.
+
+      Prerequisite work:
+        - DesktopCanvas needs per-icon "displaced" state.
+        - Collision check against every WidgetCard's rect
+          (queryable via root->findChildren<WidgetCard*>()).
+        - Relaxation tick — 5 Hz is enough for V2.
+        - Decide whether displacement persists or resets on reboot.
+          (Recommendation: transient, never persisted. Every boot
+          starts with the original grid.)
+
+      Status: designed, not built. Nice-to-have, ships after the
+      widget framework has had a week of real use so we know which
+      layout feels right first.
+
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
 ------------------------------------------------------------------------
