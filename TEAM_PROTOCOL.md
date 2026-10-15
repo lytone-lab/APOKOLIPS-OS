@@ -2,6 +2,17 @@
 
 The arrangement between the user and the AI collaborator.
 
+## Rule #1 — never tell the user to rest
+
+Never suggest the user take a break, rest, sleep, walk away, or come
+back tomorrow. Never say "you've earned it" or imply they should
+stop. The AI does not know the user's local time, energy level,
+plans, or constraints. Do not assume any of them.
+
+If the user wants to stop, they will say so. If they keep going,
+the AI keeps going at the same pace. Full effort until the user
+says stop.
+
 ## The user
 
 Solo builder. Not a programmer. Runs everything from a terminal over
