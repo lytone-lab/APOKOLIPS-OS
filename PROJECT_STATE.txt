@@ -497,6 +497,26 @@ from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
       Target release: V2 or V3 — only after Variant 2 has shipped
       and proven stable for weeks. Not before.
 
+  [ ] StatsCard widget — macOS Tahoe hybrid layout
+      Reference (user's image): a single card, left half is a big
+      circular ring + "Macintosh HD" / "276.67 GB available" /
+      "⟳ now" timestamp. Right half is two stacked blocks — one
+      for MEMORY (icon + GB available + label), one for BATTERY
+      (icon + % + power state).
+
+      Different widget from RingsCard. RingsCard is four equal
+      small rings in a row. This is one big ring + two info
+      blocks, sized as one wide card ~360x180.
+
+      Metrics:
+        - Disk: statvfs on "/", ring shows percent used
+        - Memory: /proc/meminfo MemAvailable, shown in GB
+        - Battery: upower -i BAT0 (returns "no battery" on VM
+          desktop; when no battery, hide the block or show AC)
+
+      Priority: after Variation system (Session 3) and Clock
+      variations. One session.
+
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
 ------------------------------------------------------------------------
