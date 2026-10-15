@@ -15,6 +15,9 @@ struct VisualConfig {
     int    finderAlpha        = 190;
     bool   widgetsVisible     = true;
     QString poolBehavior      = "water";  // water | foam
+    double  poolSpeed         = 1.0;    // 0.5..2.0, motion multiplier
+    int     poolStaggerMs     = 20;     // 0..200, per-icon delay
+    int     poolOvershootPct  = 12;     // 0..30, tiny overshoot on arrival
     bool   dndEnabled         = false;
     bool   wallpaperParallax  = true;
     bool   cursorGlow         = true;
@@ -174,6 +177,12 @@ public:
                                    : m_cfg.widgetsVisible;
         if (o.contains("poolBehavior"))
             m_cfg.poolBehavior = o["poolBehavior"].toString();
+        if (o.contains("poolSpeed"))
+            m_cfg.poolSpeed = o["poolSpeed"].toDouble(1.0);
+        if (o.contains("poolStaggerMs"))
+            m_cfg.poolStaggerMs = o["poolStaggerMs"].toInt(60);
+        if (o.contains("poolOvershootPct"))
+            m_cfg.poolOvershootPct = o["poolOvershootPct"].toInt(12);
         m_cfg.dockIconSize       = getI("dockIconSize", m_cfg.dockIconSize);
         m_cfg.genieEnabled       = o.contains("genieEnabled")
                                    ? o["genieEnabled"].toBool(true)
@@ -593,6 +602,9 @@ public:
         o["finderAlpha"]        = m_cfg.finderAlpha;
         o["widgetsVisible"]     = m_cfg.widgetsVisible;
         o["poolBehavior"]       = m_cfg.poolBehavior;
+        o["poolSpeed"]          = m_cfg.poolSpeed;
+        o["poolStaggerMs"]      = m_cfg.poolStaggerMs;
+        o["poolOvershootPct"]   = m_cfg.poolOvershootPct;
         o["dockIconSize"]       = m_cfg.dockIconSize;
         o["genieEnabled"]       = m_cfg.genieEnabled;
         o["minimizeStyle"]      = m_cfg.minimizeStyle;

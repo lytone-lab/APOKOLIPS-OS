@@ -2551,19 +2551,85 @@ public:
 
     bool isAnimating() const   { return pos() != m_targetPos; }
 
-    // Smooth lerp toward target, called by the canvas tick.
-    // 0.20 per tick × 33 Hz = ~450 ms to settle. Snaps when
-    // within 2 px so the icon lands cleanly.
+    // Velocity-based motion toward target. Called from the
+    // canvas tick (33 Hz). Each icon has a start delay
+    // (m_staggerLeft) so displacement reads as a wave, not a
+    // synchronised hop. As it approaches, a small overshoot
+    // happens once, then settles — the water "give".
+    //
+    // Tunables from config: poolSpeed (multiplier),
+    // poolStaggerMs (initial delay), poolOvershootPct.
     bool stepTowardTarget() {
-        if (pos() == m_targetPos) return false;
-        QPoint d = m_targetPos - pos();
-        if (qAbs(d.x()) < 2 && qAbs(d.y()) < 2) {
+        if (m_staggerLeft > 0) { --m_staggerLeft; return false; }
+
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        const double speed = qBound(0.5, cfg.poolSpeed, 2.0);
+
+        // Spring/damper tuned for liquid glide, not spring bounce.
+        //   accel  — low, so it eases into motion
+        //   damp   — high retention, so it coasts
+        //   cap    — no teleporting on big displacements
+        const double accel = 0.055 * speed;
+        const double damp  = 0.90;          // was 0.72 — long glide
+        const double cap   = 14.0;          // px/tick soft speed limit
+
+        QPointF toTgt(m_targetPos.x() - pos().x(),
+                      m_targetPos.y() - pos().y());
+        const double dist = std::hypot(toTgt.x(), toTgt.y());
+
+        // Velocity increment — a spring pulling toward the target.
+        QPointF force = toTgt * accel;
+        m_vel += force;
+        m_vel *= damp;
+
+        // Cap magnitude.
+        double vmag = std::hypot(m_vel.x(), m_vel.y());
+        if (vmag > cap) {
+            m_vel *= cap / vmag;
+            vmag = cap;
+        }
+
+        // Overshoot: once per arrival. Fires earlier now (25 px)
+        // so the give happens with room left to coast back.
+        const int overPct = qBound(0, cfg.poolOvershootPct, 30);
+        if (!m_overshot && overPct > 0
+            && dist > 3 && dist < 25 && vmag < 2.5) {
+            double k = 1.0 + overPct / 100.0;
+            m_vel.setX(toTgt.x() * k * 0.18);
+            m_vel.setY(toTgt.y() * k * 0.18);
+            m_overshot = true;
+        }
+
+        // Snap only when nearly motionless AND almost at target.
+        // Tighter than before, so the last 2 px glide instead of
+        // jumping.
+        if (vmag < 0.12 && dist < 0.6) {
             move(m_targetPos);
+            m_vel = QPointF(0, 0);
+            m_overshot = false;
             return true;
         }
-        move(pos() + QPoint(int(d.x() * 0.20),
-                            int(d.y() * 0.20)));
+
+        // Apply — round only at the last step so sub-pixel motion
+        // accumulates smoothly.
+        m_accumX += m_vel.x();
+        m_accumY += m_vel.y();
+        int dx = int(m_accumX);
+        int dy = int(m_accumY);
+        m_accumX -= dx;
+        m_accumY -= dy;
+        if (dx != 0 || dy != 0)
+            move(pos().x() + dx, pos().y() + dy);
         return true;
+    }
+
+    // Called by the canvas when a new displacement is computed.
+    // Resets the wave-stagger so this icon starts moving a
+    // fraction of a beat later than its neighbour.
+    void armStagger(int extraMs) {
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        int base = qBound(0, cfg.poolStaggerMs, 200);
+        m_staggerLeft = (base + extraMs) / 30;   // 33 Hz ticks
     }
 
 protected:
@@ -2654,8 +2720,13 @@ private:
     bool m_dragging = false;
     QPoint m_pressPos;
     QPoint m_dragStart;
-    QPoint m_targetPos;   // The Pool — settle target
-    QPoint m_homeCell;    // The Pool — original grid slot
+    QPoint  m_targetPos;       // The Pool — settle target
+    QPoint  m_homeCell;        // The Pool — original grid slot
+    QPointF m_vel{0, 0};       // velocity (px per tick)
+    double  m_accumX = 0.0;    // sub-pixel accumulator
+    double  m_accumY = 0.0;
+    bool    m_overshot = false;
+    int     m_staggerLeft = 0; // ticks to wait before moving
 };
 
 class PoolCanvas : public QWidget {
@@ -3052,6 +3123,11 @@ private:
                 QPoint free = findFreeCellNear(ic, tr);
                 if (free != ic->targetPos()) {
                     ic->setTargetPos(free);
+                    // Stagger by icon index — later icons start
+                    // their glide a beat after earlier ones, so
+                    // the whole group reads as a wave.
+                    int idx = m_icons.indexOf(ic);
+                    ic->armStagger(idx * 12);
                     anyDisplaced = true;
                 }
                 continue;
@@ -3064,6 +3140,7 @@ private:
                     QRect hr(home, ic->size());
                     if (cellIsFree(hr, ic)) {
                         ic->setTargetPos(home);
+                        ic->armStagger(0);
                         anyDisplaced = true;
                     }
                 }
