@@ -78,6 +78,32 @@ layout, sounds, transitions. For pure bug fixes, one correct path is
 usually right; propose variants only when there is a genuine
 trade-off.
 
+## Notes must be written down
+
+When the AI says "noted for V2" or "logged for later" or "we'll come
+back to this" or "I'll remember" — that note **must** be written
+into a repo file **in the same session**. Never in chat alone.
+Sessions close. Chats end. Future AI collaborators never saw this
+conversation.
+
+If the note is in the AI's head and not in the repo, it does not
+exist.
+
+Applies to:
+  - "Noted for V2" style remarks
+  - Ideas that surface mid-session but aren't being built now
+  - Architecture decisions that shape future work
+  - Trade-offs considered and set aside
+  - Migrations or refactors deferred until later
+
+Where to write it:
+  - Project features / bugs → PROJECT_STATE.txt
+  - Customisation-layer items → CUSTOMISATION_VISION.md
+  - Rules of engagement → TEAM_PROTOCOL.md
+
+If the AI says the word "noted" and does not write to a repo file,
+the note is lost. Treat that as a bug in the AI's behaviour.
+
 ## Commit discipline
 
 - Every successful patch is committed with a one-line message.
