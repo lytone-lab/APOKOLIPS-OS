@@ -2736,6 +2736,59 @@ static int runShell(int argc, char *argv[])
     qInfo() << "[widgets] StatsCard installed"
             << "pos=" << statsCard->pos()
             << "size=" << statsCard->size();
+
+    // WeatherCard — current conditions + H/L + wind + humidity.
+    WeatherCard *weatherCard = new WeatherCard(root);
+    weatherCard->placeAtSavedOr(QPoint(1080, 470));
+    weatherCard->show();
+    weatherCard->raise();
+
+    QTimer *cardRaise4 = new QTimer(root);
+    cardRaise4->setInterval(1000);
+    QObject::connect(cardRaise4, &QTimer::timeout, weatherCard,
+        [weatherCard]() { weatherCard->raise(); });
+    cardRaise4->start();
+
+    // ---- Dock-aware clamp: when the dock moves, nudge any
+    // widget that would overlap the new dock strip back into
+    // the safe area. Same idea as shellSafeArea() for window
+    // geometry.
+    auto clampAllWidgets = [root]() {
+        const QSize scr = root->size();
+        for (QWidget *w : root->findChildren<QWidget *>()) {
+            const QString cls = QString(w->metaObject()->className());
+            if (cls.contains("WidgetCard")
+                || cls.contains("ClockCard")
+                || cls.contains("RingsCard")
+                || cls.contains("StatsCard")
+                || cls.contains("WeatherCard")) {
+                // dynamic dispatch via QMetaObject
+                QMetaObject::invokeMethod(w, "clampToSafeArea",
+                    Qt::DirectConnection,
+                    Q_ARG(QSize, scr));
+            }
+        }
+    };
+    // Track last dock position; run clamp when it changes.
+    int *lastDockPosC = new int(
+        VisualConfigManager::instance().cfg().dockPosition);
+    QTimer *dockWatch = new QTimer(root);
+    dockWatch->setInterval(400);
+    QObject::connect(dockWatch, &QTimer::timeout, root,
+        [clampAllWidgets, lastDockPosC]() {
+        int p = VisualConfigManager::instance().cfg().dockPosition;
+        if (p != *lastDockPosC) {
+            *lastDockPosC = p;
+            qInfo() << "[widgets] dock moved to" << p
+                    << "-> clamping";
+            clampAllWidgets();
+        }
+    });
+    dockWatch->start();
+
+    qInfo() << "[widgets] WeatherCard installed"
+            << "pos=" << weatherCard->pos()
+            << "size=" << weatherCard->size();
     // Spotlight must sit above ALL other chrome so it dims everything
     if (spotlight) spotlight->raise();
 

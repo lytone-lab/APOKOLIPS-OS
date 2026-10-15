@@ -16,6 +16,10 @@ struct Snapshot {
     int     humidityPct = 68;
     QString condition   = "Partly cloudy";
     QString city        = "Kampala";
+    QString sunrise     = "06:29";    // "HH:mm"
+    QString sunset      = "19:54";    // "HH:mm"
+    QList<double> hourlyTemps;        // next 12 hours
+    QList<int>    hourlyCodes;        // parallel weather codes
     bool    valid       = false;
 };
 
@@ -50,7 +54,10 @@ public:
             "?latitude=%1&longitude=%2"
             "&current=temperature_2m,weather_code,"
             "wind_speed_10m,relative_humidity_2m"
-            "&daily=temperature_2m_max,temperature_2m_min"
+            "&daily=temperature_2m_max,temperature_2m_min,"
+            "sunrise,sunset"
+            "&hourly=temperature_2m,weather_code"
+            "&forecast_days=1"
             "&timezone=auto").arg(lat).arg(lon);
 
         QNetworkRequest req{QUrl(url)};
@@ -75,6 +82,40 @@ public:
                     QJsonArray mn = day.value("temperature_2m_min").toArray();
                     if (!mx.isEmpty()) s.tempMax = mx.first().toDouble(27.0);
                     if (!mn.isEmpty()) s.tempMin = mn.first().toDouble(17.0);
+                    // sunrise / sunset come as ISO strings "2026-10-15T06:29"
+                    auto tailTime = [](const QString &iso) -> QString {
+                        int t = iso.indexOf('T');
+                        if (t >= 0 && t + 6 <= iso.size())
+                            return iso.mid(t + 1, 5);
+                        return iso;
+                    };
+                    QJsonArray sr = day.value("sunrise").toArray();
+                    QJsonArray ss = day.value("sunset").toArray();
+                    if (!sr.isEmpty())
+                        s.sunrise = tailTime(sr.first().toString());
+                    if (!ss.isEmpty())
+                        s.sunset  = tailTime(ss.first().toString());
+                    // hourly — keep the first 12 slots from now
+                    QJsonObject hr = root.value("hourly").toObject();
+                    QJsonArray hTemps = hr.value("temperature_2m").toArray();
+                    QJsonArray hCodes = hr.value("weather_code").toArray();
+                    QJsonArray hTimes = hr.value("time").toArray();
+                    // find the index closest to now
+                    QString nowIso = QDateTime::currentDateTime()
+                        .toString("yyyy-MM-ddTHH:00");
+                    int start = 0;
+                    for (int i = 0; i < hTimes.size(); ++i) {
+                        if (hTimes[i].toString() >= nowIso) {
+                            start = i; break;
+                        }
+                    }
+                    for (int i = start; i < hTimes.size()
+                                      && s.hourlyTemps.size() < 12; ++i) {
+                        s.hourlyTemps.append(
+                            hTemps[i].toDouble(21.0));
+                        s.hourlyCodes.append(
+                            hCodes[i].toInt(-1));
+                    }
                     s.valid = true;
                 }
             }

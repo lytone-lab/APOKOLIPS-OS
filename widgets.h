@@ -8,6 +8,7 @@
 #include "theme.h"
 #include "style.h"
 #include "visualconfig.h"
+#include "weather.h"
 #include <QContextMenuEvent>
 #include <QMenu>
 #include <QRegularExpression>
@@ -34,6 +35,48 @@ public:
     }
 
     QString id() const { return m_id; }
+
+    // Safe area = screen minus the dock's reserved strip.
+    // Keeps widgets from overlapping the dock when it moves.
+    static QRect safeAreaForDock(const QSize &screen) {
+        constexpr int dockExtent   = 96;
+        constexpr int bottomReserve = dockExtent + 14;
+        constexpr int sideReserve   = dockExtent + 14 + 8;
+        QRect area(0, 0, screen.width(), screen.height());
+        int pos = VisualConfigManager::instance().cfg().dockPosition;
+        if (pos == 0)      area.setHeight(area.height() - bottomReserve);
+        else if (pos == 1) area.setLeft(area.left() + sideReserve);
+        else if (pos == 2) area.setWidth(area.width() - sideReserve);
+        return area;
+    }
+
+    // Nudge this card back inside the safe area if the dock has
+    // moved into its current position. Persists the adjusted
+    // position so the fix survives a restart.
+    void clampToSafeArea(const QSize &screen) {
+        if (!isVisible() && parentWidget() == nullptr) return;
+        const QRect safe = safeAreaForDock(screen);
+        if (safe.isEmpty()) return;
+        QPoint p = pos();
+        int nx = qBound(safe.left(),
+                        p.x(),
+                        qMax(safe.left(), safe.right() - width() + 1));
+        int ny = qBound(safe.top(),
+                        p.y(),
+                        qMax(safe.top(), safe.bottom() - height() + 1));
+        if (nx == p.x() && ny == p.y()) return;
+        move(nx, ny);
+        // persist
+        QString id = m_id;
+        QPoint np(nx, ny);
+        VisualConfigManager::instance().setAndSave(
+            [id, np](VisualConfig &c) {
+                QVariantMap m = c.widgetPositions.value(id).toMap();
+                m["x"] = np.x(); m["y"] = np.y();
+                c.widgetPositions[id] = m;
+            });
+        qInfo() << "[widgets] clamped" << m_id << "->" << np;
+    }
 
     void placeAtSavedOr(QPoint fallback = QPoint()) {
         if (fallback.isNull()) fallback = m_defaultPos;
@@ -78,6 +121,14 @@ public:
 protected:
     virtual void paintContent(QPainter &p, const QRect &content) = 0;
 
+    // Default: solid black. Override in a subclass to give the
+    // card its own fill (Weather uses a sky-blue gradient).
+    virtual void paintPanelBackground(QPainter &p, const QRectF &r,
+                                      const QPainterPath &path,
+                                      int alpha) {
+        p.fillPath(path, QColor(0, 0, 0, alpha));
+    }
+
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
@@ -94,13 +145,15 @@ protected:
                               20 + i, 20 + i);
         }
 
-        // Panel background — pure black, alpha from config.
+        // Panel background — subclasses can override the colour.
+        // Default: solid black at config opacity. WeatherCard is
+        // the one that shifts to a sky-blue gradient.
         int alpha = VisualConfigManager::instance().cfg().widgetOpacity;
         alpha = qBound(0, alpha, 255);
 
         QPainterPath panelPath;
         panelPath.addRoundedRect(r, 20, 20);
-        p.fillPath(panelPath, QColor(0, 0, 0, alpha));
+        paintPanelBackground(p, r, panelPath, alpha);
 
         // Diagonal gradient rim — brighter at the top-left corner,
         // fading to nothing by the bottom-right. Reads like a soft
@@ -966,6 +1019,220 @@ private:
     int     m_batPct     = 100;
     bool    m_batPresent = false;
     bool    m_batCharging = false;
+};
+
+
+// ----------------------------------------------------------------
+// WeatherCard — current conditions + high/low + wind + humidity.
+// Data comes from Weather::Fetcher (already used by the old
+// DesktopWidgets column).
+// ----------------------------------------------------------------
+class WeatherCard : public WidgetCard {
+public:
+    explicit WeatherCard(QWidget *parent)
+        : WidgetCard("weather", QSize(260, 150),
+                     QPoint(1080, 470), parent)
+    {
+        if (variant() == "full") setFixedSize(300, 220);
+        else                     setFixedSize(260, 150);
+
+        m_weather = new Weather::Fetcher(this);
+        auto fetch = [this]() {
+            m_weather->fetch([this](const Weather::Snapshot &s) {
+                m_wx = s;
+                update();
+            });
+        };
+        fetch();
+        m_tick = new QTimer(this);
+        m_tick->setInterval(10 * 60 * 1000);
+        QObject::connect(m_tick, &QTimer::timeout, this, fetch);
+        m_tick->start();
+    }
+
+    QStringList variants() const override {
+        return { "full", "sunset", "conditions" };
+    }
+    QString variantLabel(const QString &v) const override {
+        if (v == "full")       return "Full";
+        if (v == "sunset")     return "Sunset";
+        if (v == "conditions") return "Conditions";
+        return v;
+    }
+
+    void setVariant(const QString &v) override {
+        if (v == "full")  setFixedSize(300, 220);
+        else              setFixedSize(260, 150);
+        WidgetCard::setVariant(v);
+    }
+
+protected:
+    // Blue sky gradient — sky blue at top, deeper blue at bottom.
+    void paintPanelBackground(QPainter &p, const QRectF &r,
+                              const QPainterPath &path,
+                              int alpha) override {
+        QLinearGradient grad(r.topLeft(), r.bottomLeft());
+        QColor top( 92, 160, 226, alpha);
+        QColor bot( 30,  84, 156, alpha);
+        grad.setColorAt(0.0, top);
+        grad.setColorAt(1.0, bot);
+        p.fillPath(path, grad);
+    }
+
+    void paintContent(QPainter &p, const QRect &r) override {
+        if (variant() == "sunset")     paintSunset(p, r);
+        else if (variant() == "full")  paintFull(p, r);
+        else                           paintConditions(p, r);
+    }
+
+private:
+    void paintConditions(QPainter &p, const QRect &r) {
+        QFont f = font();
+
+        // City header
+        f.setPixelSize(12); f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        p.setPen(QColor(240, 245, 255));
+        p.drawText(QRect(r.left(), r.top(), r.width(), 16),
+                   Qt::AlignLeft, m_wx.city);
+
+        // Big temp
+        f.setPixelSize(44); f.setWeight(QFont::Light);
+        p.setFont(f);
+        p.setPen(QColor(255, 255, 255));
+        QRect tR(r.left(), r.top() + 20, 96, 56);
+        p.drawText(tR, Qt::AlignLeft | Qt::AlignVCenter,
+                   QString::number(int(m_wx.tempC + 0.5))
+                   + QString::fromUtf8("\xC2\xB0"));
+
+        // Right block
+        int ix = r.left() + 98;
+        int iw = r.width() - 98;
+
+        f.setPixelSize(11); f.setWeight(QFont::Normal);
+        p.setFont(f);
+        p.setPen(QColor(230, 235, 245));
+        p.drawText(QRect(ix, r.top() + 20, iw, 16), Qt::AlignLeft,
+                   m_wx.condition.isEmpty() ? "—" : m_wx.condition);
+
+        f.setPixelSize(10);
+        p.setFont(f);
+        p.setPen(QColor(200, 215, 235));
+
+        p.drawText(QRect(ix, r.top() + 38, iw, 14), Qt::AlignLeft,
+                   QString("H: %1\xC2\xB0   L: %2\xC2\xB0")
+                       .arg(int(m_wx.tempMax + 0.5))
+                       .arg(int(m_wx.tempMin + 0.5)));
+
+        p.drawText(QRect(ix, r.top() + 54, iw, 14), Qt::AlignLeft,
+                   QString("Wind %1 km/h")
+                       .arg(int(m_wx.windKmh + 0.5)));
+
+        p.drawText(QRect(ix, r.top() + 70, iw, 14), Qt::AlignLeft,
+                   QString("Humidity %1%").arg(m_wx.humidityPct));
+    }
+
+    void paintFull(QPainter &p, const QRect &r) {
+        QFont f = font();
+        f.setPixelSize(13); f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        p.setPen(QColor(240, 245, 255));
+        p.drawText(QRect(r.left(), r.top(), r.width(), 18),
+                   Qt::AlignLeft, m_wx.city);
+
+        f.setPixelSize(50); f.setWeight(QFont::Light);
+        p.setFont(f);
+        p.setPen(QColor(255, 255, 255));
+        QRect tR(r.left(), r.top() + 20, 130, 66);
+        p.drawText(tR, Qt::AlignLeft | Qt::AlignVCenter,
+                   QString::number(int(m_wx.tempC + 0.5))
+                   + QString::fromUtf8("\xC2\xB0"));
+
+        // Right side H/L + condition
+        int ix = r.left() + 128;
+        int iw = r.width() - 128;
+        f.setPixelSize(11); f.setWeight(QFont::Normal);
+        p.setFont(f);
+        p.setPen(QColor(230, 235, 245));
+        p.drawText(QRect(ix, r.top() + 26, iw, 16), Qt::AlignLeft,
+                   m_wx.condition.isEmpty() ? "—" : m_wx.condition);
+        f.setPixelSize(10);
+        p.setFont(f);
+        p.setPen(QColor(210, 220, 235));
+        p.drawText(QRect(ix, r.top() + 44, iw, 14), Qt::AlignLeft,
+                   QString("H:%1\xC2\xB0  L:%2\xC2\xB0")
+                       .arg(int(m_wx.tempMax + 0.5))
+                       .arg(int(m_wx.tempMin + 0.5)));
+
+        // Hourly row — first 6 entries
+        int rowTop = r.top() + 92;
+        int cellW = r.width() / 6;
+        f.setPixelSize(9);
+        p.setFont(f);
+        for (int i = 0; i < 6 && i < m_wx.hourlyTemps.size(); ++i) {
+            int cx = r.left() + cellW * i + cellW / 2;
+            QString t = QString("%1\xC2\xB0")
+                .arg(int(m_wx.hourlyTemps[i] + 0.5));
+            p.setPen(QColor(230, 235, 245));
+            p.drawText(QRect(cx - cellW / 2, rowTop, cellW, 14),
+                       Qt::AlignCenter, t);
+        }
+
+        // Bottom summary
+        int bt = r.top() + 118;
+        f.setPixelSize(10);
+        p.setFont(f);
+        p.setPen(QColor(215, 225, 240));
+        p.drawText(QRect(r.left(), bt, r.width(), 14), Qt::AlignLeft,
+                   QString("Wind %1 km/h   ·   Humidity %2%")
+                       .arg(int(m_wx.windKmh + 0.5))
+                       .arg(m_wx.humidityPct));
+    }
+
+    void paintSunset(QPainter &p, const QRect &r) {
+        QFont f = font();
+        f.setPixelSize(11); f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        p.setPen(QColor(240, 245, 255));
+        p.drawText(QRect(r.left(), r.top(), r.width(), 14),
+                   Qt::AlignLeft, QString::fromUtf8("\xE2\x98\x80 SUNSET"));
+
+        // Sun arc — big time in the middle
+        f.setPixelSize(26); f.setWeight(QFont::Light);
+        p.setFont(f);
+        p.setPen(QColor(255, 255, 255));
+        QRect mainR(r.left(), r.top() + 20, r.width(), 34);
+        p.drawText(mainR, Qt::AlignCenter, m_wx.sunset);
+
+        // Arc graphic
+        int arcTop = r.top() + 62;
+        int arcW = r.width() - 40;
+        int arcH = 20;
+        QRectF arcRect(r.left() + 20, arcTop, arcW, arcH * 2);
+        p.setPen(QPen(QColor(255, 255, 255, 90), 1.2));
+        p.setBrush(Qt::NoBrush);
+        p.drawArc(arcRect, 0, 180 * 16);
+
+        // Sun dot on the arc (roughly where sunset time is)
+        // Position: middle of the arc.
+        QPointF dot(arcRect.center().x(), arcTop + 4);
+        p.setBrush(QColor(255, 255, 255));
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(dot, 3, 3);
+
+        // Sunrise underneath
+        f.setPixelSize(10); f.setWeight(QFont::Normal);
+        p.setFont(f);
+        p.setPen(QColor(220, 230, 245));
+        p.drawText(QRect(r.left(), arcTop + 30, r.width(), 14),
+                   Qt::AlignCenter,
+                   QString::fromUtf8("Sunrise: ")
+                   + m_wx.sunrise);
+    }
+
+    Weather::Fetcher  *m_weather = nullptr;
+    Weather::Snapshot  m_wx;
+    QTimer            *m_tick = nullptr;
 };
 
 #endif
