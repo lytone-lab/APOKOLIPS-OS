@@ -399,6 +399,120 @@ private:
     QTimer         *m_timer = nullptr;
 };
 
+// ----------------------------------------------------------------
+// SnapOverlay — animates a window from its current rect to a
+// destination rect (snap to half/quarter). Plays a frozen
+// screenshot of the window sliding + growing into place, while
+// the real window snaps behind it. macOS-flavoured ease-out.
+// ----------------------------------------------------------------
+class SnapOverlay : public QWidget {
+public:
+    SnapOverlay(const QString &pngPath,
+                QRect startRect,
+                QRect endRect,
+                int durationMs = 220,
+                const QString &readySock = QString(),
+                QWidget *parent = nullptr)
+        : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
+    {
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        setAttribute(Qt::WA_DeleteOnClose, true);
+
+        if (!m_pix.load(pngPath) || startRect.isEmpty()
+            || endRect.isEmpty()) {
+            qWarning() << "[snap] load failed:" << pngPath;
+            QTimer::singleShot(0, qApp, &QApplication::quit);
+            return;
+        }
+        QFile::remove(pngPath);
+
+        QScreen *screen = QApplication::screenAt(startRect.center());
+        if (!screen) screen = QApplication::primaryScreen();
+        const QRect screenRect =
+            screen ? screen->geometry() : QRect(0, 0, 1, 1);
+
+        setGeometry(screenRect);
+        m_origin = screenRect.topLeft();
+        m_start = startRect.translated(-m_origin);
+        m_end   = endRect.translated(-m_origin);
+
+        const int ms = qBound(120, durationMs, 800);
+        m_frames = qBound(8, (ms + 15) / 16, 60);
+
+        qInfo() << "[snap] durationMs=" << ms
+                << "frames=" << m_frames
+                << "start=" << m_start
+                << "end=" << m_end;
+
+        m_timer = new QTimer(this);
+        m_timer->setInterval(16);
+        QObject::connect(m_timer, &QTimer::timeout,
+                         this, &SnapOverlay::tick);
+        m_readySock = readySock;
+        QTimer::singleShot(30, this, [this]() {
+            if (m_timer) m_timer->start();
+        });
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        if (m_pix.isNull() || m_start.isEmpty()
+            || width() <= 0 || height() <= 0)
+            return;
+
+        if (!m_readyPinged && !m_readySock.isEmpty()) {
+            m_readyPinged = true;
+            QTimer::singleShot(25, this, [this]() {
+                genieHandshakeReady(m_readySock);
+            });
+        }
+
+        QPainter p(this);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        qreal t = qBound<qreal>(0.0,
+            qreal(m_frame) / qreal(qMax(1, m_frames - 1)), 1.0);
+        // ease-out cubic — fast start, gentle landing.
+        const qreal e = 1.0 - std::pow(1.0 - t, 3.0);
+
+        const qreal x = m_start.left()
+            + (m_end.left() - m_start.left()) * e;
+        const qreal y = m_start.top()
+            + (m_end.top()  - m_start.top())  * e;
+        const qreal w = m_start.width()
+            + (m_end.width()  - m_start.width())  * e;
+        const qreal h = m_start.height()
+            + (m_end.height() - m_start.height()) * e;
+
+        p.drawPixmap(QRectF(x, y, w, h), m_pix,
+                     QRectF(0, 0, m_pix.width(), m_pix.height()));
+    }
+
+private:
+    void tick()
+    {
+        if (++m_frame >= m_frames) {
+            m_timer->stop();
+            close();
+        }
+        update();
+    }
+
+    QPixmap m_pix;
+    QRect   m_start;
+    QRect   m_end;
+    QPoint  m_origin;
+    int     m_frame = 0;
+    int     m_frames = 14;
+    QString m_readySock;
+    bool    m_readyPinged = false;
+    QTimer *m_timer = nullptr;
+};
+
 class ScaleOverlay : public QWidget {
 public:
     ScaleOverlay(const QString &pngPath, QRect startRect,
