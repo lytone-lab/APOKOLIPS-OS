@@ -2699,6 +2699,27 @@ static int runShell(int argc, char *argv[])
             << "pos=" << clockCard->pos()
             << "size=" << clockCard->size()
             << "root=" << root->geometry();
+
+    // RingsCard — CPU / RAM / NET / DISK gauges.
+    RingsCard *ringsCard = new RingsCard(root);
+    ringsCard->placeAtSavedOr(QPoint(400, 470));
+    ringsCard->show();
+    ringsCard->raise();
+
+    QTimer *cardRaise2 = new QTimer(root);
+    cardRaise2->setInterval(1000);
+    QObject::connect(cardRaise2, &QTimer::timeout, ringsCard,
+        [ringsCard]() { ringsCard->raise(); });
+    cardRaise2->start();
+
+    // Hide the old stacked widget column while the new floating
+    // cards are on screen. Old class isn't deleted — flip
+    // widgetsVisible back on to bring it back for comparison.
+    if (widgets) widgets->setVisible(false);
+
+    qInfo() << "[widgets] RingsCard installed"
+            << "pos=" << ringsCard->pos()
+            << "size=" << ringsCard->size();
     // Spotlight must sit above ALL other chrome so it dims everything
     if (spotlight) spotlight->raise();
 

@@ -10,6 +10,8 @@
 #include "visualconfig.h"
 #include <QContextMenuEvent>
 #include <QMenu>
+#include <QRegularExpression>
+#include <sys/statvfs.h>
 
 class WidgetCard : public QWidget {
 public:
@@ -206,6 +208,236 @@ protected:
 
 private:
     QTimer *m_tick = nullptr;
+};
+
+
+// ----------------------------------------------------------------
+// RingsCard — four circular gauges: CPU / RAM / NET / DISK.
+// Matches macOS Tahoe widget style: dark card, rings with green
+// arcs, icon inside each ring, value + label underneath.
+// ----------------------------------------------------------------
+class RingsCard : public WidgetCard {
+public:
+    explicit RingsCard(QWidget *parent)
+        : WidgetCard("rings", QSize(340, 140),
+                     QPoint(400, 340), parent)
+    {
+        m_tick = new QTimer(this);
+        m_tick->setInterval(1500);
+        QObject::connect(m_tick, &QTimer::timeout,
+                         this, [this]() { refresh(); update(); });
+        m_tick->start();
+        refresh();
+    }
+
+protected:
+    void paintContent(QPainter &p, const QRect &r) override {
+        const int n = 4;
+        const int ringD = 58;               // outer diameter
+        const qreal ringStroke = 5.0;
+        const int gap = qMax(4, (r.width() - n * ringD) / (n - 1));
+        const int cy = r.top() + ringD / 2 + 4;
+        const QColor green(80, 210, 120);
+        const QColor track(255, 255, 255, 35);
+
+        double vals[4] = { m_cpu, m_ram, m_net, m_disk };
+        QString labels[4] = { "CPU", "RAM", "NET", "DISK" };
+
+        for (int i = 0; i < n; ++i) {
+            const int cx = r.left() + ringD/2 + i * (ringD + gap);
+            const QPointF c(cx, cy);
+            const qreal R = ringD / 2.0 - ringStroke / 2.0;
+
+            // Track
+            p.setPen(QPen(track, ringStroke, Qt::SolidLine,
+                          Qt::RoundCap));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(c, R, R);
+
+            // Fill arc (clockwise from 12 o'clock)
+            if (vals[i] > 0.5) {
+                p.setPen(QPen(green, ringStroke, Qt::SolidLine,
+                              Qt::RoundCap));
+                int span = int(-qBound(0.0, vals[i], 100.0)
+                               / 100.0 * 360.0 * 16.0);
+                QRectF arcRect(c.x() - R, c.y() - R, R * 2, R * 2);
+                p.drawArc(arcRect, 90 * 16, span);
+            }
+
+            // Icon inside ring
+            drawRingIcon(p, i, c, 18, m_theme.textSecondary);
+
+            // Big value under the ring
+            QFont f = font();
+            f.setPixelSize(13); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(m_theme.textPrimary);
+            QRect vRect(cx - ringD/2, cy + ringD/2 + 4,
+                        ringD, 18);
+            p.drawText(vRect, Qt::AlignCenter,
+                       QString("%1%").arg(int(vals[i] + 0.5)));
+
+            // Small label
+            f.setPixelSize(9); f.setWeight(QFont::Normal);
+            p.setFont(f);
+            p.setPen(m_theme.textDim);
+            QRect lRect(cx - ringD/2, cy + ringD/2 + 22,
+                        ringD, 12);
+            p.drawText(lRect, Qt::AlignCenter, labels[i]);
+        }
+    }
+
+private:
+    // Icon style: 0=CPU chip, 1=RAM stick, 2=network arrows,
+    // 3=disk circle. Small, monochrome, matches the ring's tone.
+    void drawRingIcon(QPainter &p, int type, QPointF c,
+                      qreal sz, QColor col) {
+        p.setPen(QPen(col, 1.4));
+        p.setBrush(Qt::NoBrush);
+        const qreal h = sz / 2.0;
+        switch (type) {
+        case 0: {   // CPU chip — square with pins
+            QRectF r(c.x() - h + 2, c.y() - h + 2,
+                     sz - 4, sz - 4);
+            p.drawRect(r);
+            for (int i = 0; i < 3; ++i) {
+                qreal off = r.left() + (i + 1) * r.width() / 4;
+                p.drawLine(QPointF(off, r.top() - 2),
+                           QPointF(off, r.top()));
+                p.drawLine(QPointF(off, r.bottom()),
+                           QPointF(off, r.bottom() + 2));
+            }
+            break;
+        }
+        case 1: {   // RAM stick — rectangle with vertical lines
+            QRectF r(c.x() - h, c.y() - h * 0.6,
+                     sz, sz * 0.6);
+            p.drawRect(r);
+            for (int i = 1; i < 4; ++i) {
+                qreal off = r.left() + i * r.width() / 4;
+                p.drawLine(QPointF(off, r.top() + 2),
+                           QPointF(off, r.bottom() - 2));
+            }
+            break;
+        }
+        case 2: {   // network — up arrow + down arrow
+            qreal dx = h * 0.5;
+            p.drawLine(QPointF(c.x() - dx, c.y() + h),
+                       QPointF(c.x() - dx, c.y() - h));
+            p.drawLine(QPointF(c.x() - dx, c.y() - h),
+                       QPointF(c.x() - dx - 3, c.y() - h + 4));
+            p.drawLine(QPointF(c.x() - dx, c.y() - h),
+                       QPointF(c.x() - dx + 3, c.y() - h + 4));
+            p.drawLine(QPointF(c.x() + dx, c.y() - h),
+                       QPointF(c.x() + dx, c.y() + h));
+            p.drawLine(QPointF(c.x() + dx, c.y() + h),
+                       QPointF(c.x() + dx - 3, c.y() + h - 4));
+            p.drawLine(QPointF(c.x() + dx, c.y() + h),
+                       QPointF(c.x() + dx + 3, c.y() + h - 4));
+            break;
+        }
+        case 3: {   // disk — circle with a dot
+            p.drawEllipse(c, h - 1, h - 1);
+            p.setBrush(col);
+            p.drawEllipse(c, 1.8, 1.8);
+            break;
+        }
+        }
+    }
+
+    void refresh() {
+        m_cpu  = readCpu();
+        m_ram  = readRam();
+        m_net  = readNet();
+        m_disk = readDisk();
+    }
+
+    static double readCpu() {
+        QFile f("/proc/stat");
+        if (!f.open(QIODevice::ReadOnly)) return 0;
+        QByteArray line = f.readLine();
+        f.close();
+        auto parts = line.trimmed().split(' ');
+        quint64 total = 0, idle = 0;
+        int field = 0;
+        for (int i = 1; i < parts.size(); ++i) {
+            bool ok; quint64 v = parts[i].toULongLong(&ok);
+            if (!ok) break;
+            total += v;
+            if (field == 3) idle = v;   // idle is 4th after "cpu"
+            ++field;
+        }
+        static quint64 prevTotal = 0, prevIdle = 0;
+        quint64 dT = total - prevTotal;
+        quint64 dI = idle - prevIdle;
+        prevTotal = total; prevIdle = idle;
+        if (dT == 0) return 0;
+        return 100.0 * (dT - dI) / double(dT);
+    }
+
+    static double readRam() {
+        QFile f("/proc/meminfo");
+        if (!f.open(QIODevice::ReadOnly)) return 0;
+        quint64 total = 0, avail = 0;
+        while (!f.atEnd()) {
+            QByteArray line = f.readLine();
+            if (line.startsWith("MemTotal:"))
+                total = line.split(':')[1].trimmed()
+                            .split(' ')[0].toULongLong();
+            else if (line.startsWith("MemAvailable:"))
+                avail = line.split(':')[1].trimmed()
+                            .split(' ')[0].toULongLong();
+        }
+        if (total == 0) return 0;
+        return 100.0 * (total - avail) / double(total);
+    }
+
+    static double readNet() {
+        QFile f("/proc/net/dev");
+        if (!f.open(QIODevice::ReadOnly)) return 0;
+        quint64 rxTotal = 0, txTotal = 0;
+        while (!f.atEnd()) {
+            QByteArray line = f.readLine();
+            int colon = line.indexOf(':');
+            if (colon < 0) continue;
+            QString iface = QString::fromUtf8(
+                line.left(colon)).trimmed();
+            if (iface == "lo") continue;
+            QString rest = QString::fromUtf8(
+                line.mid(colon + 1)).trimmed();
+            auto parts = rest.split(
+                QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+            if (parts.size() >= 9) {
+                rxTotal += parts[0].toULongLong();
+                txTotal += parts[8].toULongLong();
+            }
+        }
+        static quint64 prevRx = 0, prevTx = 0;
+        static qint64  prevT  = 0;
+        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        quint64 dRx = prevRx ? (rxTotal - prevRx) : 0;
+        quint64 dTx = prevTx ? (txTotal - prevTx) : 0;
+        prevRx = rxTotal; prevTx = txTotal;
+        if (prevT == 0) { prevT = now; return 0; }
+        double dt = qMax(0.001, (now - prevT) / 1000.0);
+        prevT = now;
+        double bps = (dRx + dTx) / dt;
+        // 10 MB/s == 100%
+        return qBound(0.0, 100.0 * bps / (10.0 * 1024.0 * 1024.0),
+                      100.0);
+    }
+
+    static double readDisk() {
+        struct statvfs st;
+        if (statvfs("/", &st) != 0) return 0;
+        quint64 total = quint64(st.f_blocks) * st.f_frsize;
+        quint64 avail = quint64(st.f_bavail) * st.f_frsize;
+        if (total == 0) return 0;
+        return 100.0 * (total - avail) / double(total);
+    }
+
+    QTimer *m_tick = nullptr;
+    double m_cpu = 0, m_ram = 0, m_net = 0, m_disk = 0;
 };
 
 #endif
