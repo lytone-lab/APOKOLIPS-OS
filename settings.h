@@ -480,7 +480,7 @@ private:
                    QColor(90, 122, 158), [this]() { return makeWallpaperPage(); });
         addSection(sb, "Dock",       QString::fromUtf8("\xE2\x96\xAA"),
                    QColor(166, 122, 90), [this]() { return makeDockPage(); });
-        addSection(sb, "Widgets",    QString::fromUtf8("\xE2\x96\xA3"),
+        addSection(sb, "The Pool",   QString::fromUtf8("\xE2\x96\xA3"),
                    QColor(122, 106, 159), [this]() { return makeWidgetsPage(); });
         addSection(sb, "Sound",      QString::fromUtf8("\xE2\x99\xAA"),
                    QColor(160, 90, 106), [this]() { return makeSoundPage(); });
@@ -5336,7 +5336,7 @@ private:
         v->setContentsMargins(28, 24, 28, 28);
         v->setSpacing(18);
 
-        v->addWidget(Sigil::sectionTitle("Desktop Widgets"));
+        v->addWidget(Sigil::sectionTitle("The Pool"));
 
         auto &vc = VisualConfigManager::instance().cfg();
 
