@@ -529,7 +529,7 @@ private:
             QString path = m_fs->filePath(srcIdx);
             QFileInfo fi(path);
             if (fi.isDir()) navigateTo(path);
-            else QProcess::startDetached("xdg-open", { path });
+            else            Recents::open(path, "apokolips-files");
         });
         QObject::connect(m_treeView, &QTreeView::customContextMenuRequested,
                          [this](const QPoint &p) {
