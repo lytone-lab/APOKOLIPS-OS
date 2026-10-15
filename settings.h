@@ -6352,7 +6352,8 @@ private:
                 "QPushButton:hover { background: rgba(255,255,255,45); }")
                 .arg(Sigil::textPrimary().name()));
             QObject::connect(scan, &QPushButton::clicked, []() {
-                QProcess::startDetached("bluetoothctl", { "scan", "on" });
+                QProcess::startDetached("bluetoothctl",
+                    { "--timeout", "5", "scan", "on" });
             });
             header->addWidget(scan);
 
