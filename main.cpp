@@ -2720,6 +2720,22 @@ static int runShell(int argc, char *argv[])
     qInfo() << "[widgets] RingsCard installed"
             << "pos=" << ringsCard->pos()
             << "size=" << ringsCard->size();
+
+    // StatsCard — disk ring + memory + battery hybrid card.
+    StatsCard *statsCard = new StatsCard(root);
+    statsCard->placeAtSavedOr(QPoint(780, 470));
+    statsCard->show();
+    statsCard->raise();
+
+    QTimer *cardRaise3 = new QTimer(root);
+    cardRaise3->setInterval(1000);
+    QObject::connect(cardRaise3, &QTimer::timeout, statsCard,
+        [statsCard]() { statsCard->raise(); });
+    cardRaise3->start();
+
+    qInfo() << "[widgets] StatsCard installed"
+            << "pos=" << statsCard->pos()
+            << "size=" << statsCard->size();
     // Spotlight must sit above ALL other chrome so it dims everything
     if (spotlight) spotlight->raise();
 

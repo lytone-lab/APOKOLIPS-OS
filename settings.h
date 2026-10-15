@@ -480,6 +480,8 @@ private:
                    QColor(90, 122, 158), [this]() { return makeWallpaperPage(); });
         addSection(sb, "Dock",       QString::fromUtf8("\xE2\x96\xAA"),
                    QColor(166, 122, 90), [this]() { return makeDockPage(); });
+        addSection(sb, "Widgets",    QString::fromUtf8("\xE2\x96\xA3"),
+                   QColor(122, 106, 159), [this]() { return makeWidgetsPage(); });
         addSection(sb, "Sound",      QString::fromUtf8("\xE2\x99\xAA"),
                    QColor(160, 90, 106), [this]() { return makeSoundPage(); });
         addSection(sb, "Display",    QString::fromUtf8("\xE2\x96\xA3"),
@@ -5323,6 +5325,127 @@ private:
         }
         cv->addLayout(g);
         v->addWidget(c);
+        v->addStretch();
+        return page;
+    }
+
+    QWidget *makeWidgetsPage() {
+        QWidget *page = new QWidget;
+        page->setAutoFillBackground(false);
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(28, 24, 28, 28);
+        v->setSpacing(18);
+
+        v->addWidget(Sigil::sectionTitle("Desktop Widgets"));
+
+        auto &vc = VisualConfigManager::instance().cfg();
+
+        // ---- Appearance card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 18);
+            cv->setSpacing(14);
+            cv->addWidget(Sigil::groupLabel("APPEARANCE"));
+
+            QLabel *desc = new QLabel(
+                "Widget background opacity. 100% = solid black. "
+                "Lower values let the wallpaper show through.");
+            desc->setWordWrap(true);
+            desc->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            cv->addWidget(desc);
+
+            QWidget *row = new QWidget;
+            QVBoxLayout *rv = new QVBoxLayout(row);
+            rv->setContentsMargins(0, 0, 0, 0);
+            rv->setSpacing(6);
+
+            QHBoxLayout *top = new QHBoxLayout;
+            QLabel *t = new QLabel("Opacity");
+            t->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            int pct = vc.widgetOpacity * 100 / 255;
+            QLabel *val = new QLabel(QString("%1%").arg(pct));
+            val->setStyleSheet(QString(
+                "color: %1; font-size: 12px; background: transparent;")
+                .arg(Sigil::textSecondary().name()));
+            val->setMinimumWidth(50);
+            val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            top->addWidget(t);
+            top->addStretch();
+            top->addWidget(val);
+            rv->addLayout(top);
+
+            QSlider *sl = new QSlider(Qt::Horizontal);
+            sl->setRange(0, 100);
+            sl->setValue(pct);
+            sl->setStyleSheet(
+                "QSlider::groove:horizontal { height: 4px;"
+                "  background: rgba(255,255,255,25);"
+                "  border-radius: 2px; }"
+                "QSlider::handle:horizontal {"
+                "  background: #ffffff; width: 14px; height: 14px;"
+                "  margin: -5px 0; border-radius: 7px; }"
+                "QSlider::sub-page:horizontal {"
+                "  background: rgb(168,50,50);"
+                "  border-radius: 2px; }");
+            QObject::connect(sl, &QSlider::valueChanged,
+                             [val](int x) {
+                val->setText(QString("%1%").arg(x));
+                int alpha = x * 255 / 100;
+                VisualConfigManager::instance().setAndSave(
+                    [alpha](VisualConfig &c) {
+                        c.widgetOpacity = alpha;
+                    });
+            });
+            rv->addWidget(sl);
+            cv->addWidget(row);
+
+            v->addWidget(c);
+        }
+
+        // ---- Reset card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 18);
+            cv->setSpacing(14);
+            cv->addWidget(Sigil::groupLabel("POSITIONS"));
+
+            QLabel *desc = new QLabel(
+                "Widgets remember where you drag them. Reset puts "
+                "every card back to its default position.");
+            desc->setWordWrap(true);
+            desc->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            cv->addWidget(desc);
+
+            QPushButton *reset = new QPushButton("Reset all positions");
+            reset->setCursor(Qt::PointingHandCursor);
+            reset->setFixedHeight(30);
+            reset->setMinimumWidth(200);
+            reset->setStyleSheet(QString(
+                "QPushButton { background: transparent;"
+                "  color: rgb(200, 74, 74);"
+                "  border: 1px solid rgb(200, 74, 74);"
+                "  border-radius: 7px; padding: 4px 14px;"
+                "  font-size: 12px; }"
+                "QPushButton:hover { background: rgba(200,74,74,60);"
+                "  color: #ffffff; }"));
+            QObject::connect(reset, &QPushButton::clicked, [this]() {
+                VisualConfigManager::instance().setAndSave(
+                    [](VisualConfig &c) { c.widgetPositions.clear(); });
+                qInfo() << "[widgets] positions reset — reload to apply";
+            });
+            cv->addWidget(reset);
+
+            v->addWidget(c);
+        }
+
         v->addStretch();
         return page;
     }

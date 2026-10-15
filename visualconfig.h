@@ -19,6 +19,8 @@ struct VisualConfig {
     bool   cursorGlow         = true;
     QVariantMap widgetPositions;        // id -> {x, y}
     QVariantMap widgetSizes;            // id -> int tier
+    QVariantMap widgetVariants;         // id -> variant string
+    int    widgetOpacity      = 255;    // 0..255, applied to widget bg
     int    cursorGlowBrightness = 95;   // 20..200
     int    cursorGlowRadius     = 42;   // 20..100
     int    cursorGlowTrail      = 8;    // 0..16
@@ -428,6 +430,12 @@ public:
             && o["widgetSizes"].isObject())
             m_cfg.widgetSizes =
                 o["widgetSizes"].toObject().toVariantMap();
+        if (o.contains("widgetVariants")
+            && o["widgetVariants"].isObject())
+            m_cfg.widgetVariants =
+                o["widgetVariants"].toObject().toVariantMap();
+        if (o.contains("widgetOpacity"))
+            m_cfg.widgetOpacity = o["widgetOpacity"].toInt(255);
         if (o.contains("cursorGlowBrightness"))
             m_cfg.cursorGlowBrightness =
                 o["cursorGlowBrightness"].toInt(95);
@@ -676,6 +684,9 @@ public:
                                         m_cfg.widgetPositions);
         o["widgetSizes"]          = QJsonObject::fromVariantMap(
                                         m_cfg.widgetSizes);
+        o["widgetVariants"]       = QJsonObject::fromVariantMap(
+                                        m_cfg.widgetVariants);
+        o["widgetOpacity"]        = m_cfg.widgetOpacity;
         o["cursorGlowBrightness"] = m_cfg.cursorGlowBrightness;
         o["cursorGlowRadius"]     = m_cfg.cursorGlowRadius;
         o["cursorGlowTrail"]      = m_cfg.cursorGlowTrail;

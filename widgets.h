@@ -48,6 +48,33 @@ public:
         }
     }
 
+    // ---- Variation system ----
+    // Each widget instance has a variant string stored in config.
+    // Subclasses declare their options via variants(). Default
+    // variant is the first item in that list.
+    QString variant() const {
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        QString v = cfg.widgetVariants.value(m_id).toString();
+        if (v.isEmpty()) {
+            QStringList list = variants();
+            v = list.isEmpty() ? QString() : list.first();
+        }
+        return v;
+    }
+
+    virtual QStringList variants() const { return {}; }
+    virtual QString variantLabel(const QString &v) const { return v; }
+
+    virtual void setVariant(const QString &v) {
+        QString id = m_id;
+        VisualConfigManager::instance().setAndSave(
+            [id, v](VisualConfig &c) {
+                c.widgetVariants[id] = v;
+            });
+        qInfo() << "[widgets]" << m_id << "variant ->" << v;
+        update();
+    }
+
 protected:
     virtual void paintContent(QPainter &p, const QRect &content) = 0;
 
@@ -57,16 +84,56 @@ protected:
 
         QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
 
+        // Soft outer shadow
         p.setPen(Qt::NoPen);
         for (int i = 6; i >= 1; --i) {
             QColor sh(0, 0, 0);
-            sh.setAlphaF(0.03 * (i / 6.0));
+            sh.setAlphaF(0.04 * (i / 6.0));
             p.setBrush(sh);
             p.drawRoundedRect(r.adjusted(-i, -i + 3, i, i + 3),
                               20 + i, 20 + i);
         }
 
-        StyleRenderer::drawPanel(p, r, 20, m_theme, 200);
+        // Panel background — pure black, alpha from config.
+        int alpha = VisualConfigManager::instance().cfg().widgetOpacity;
+        alpha = qBound(0, alpha, 255);
+
+        QPainterPath panelPath;
+        panelPath.addRoundedRect(r, 20, 20);
+        p.fillPath(panelPath, QColor(0, 0, 0, alpha));
+
+        // Diagonal gradient rim — brighter at the top-left corner,
+        // fading to nothing by the bottom-right. Reads like a soft
+        // squircle chip edge rather than a hard 1 px outline.
+        if (alpha > 30) {
+            int peak = int(90 * alpha / 255);
+            QLinearGradient rimGrad(r.topLeft(), r.bottomRight());
+            rimGrad.setColorAt(0.00,
+                QColor(255, 255, 255, peak));
+            rimGrad.setColorAt(0.35,
+                QColor(255, 255, 255, int(peak * 0.40)));
+            rimGrad.setColorAt(0.75,
+                QColor(255, 255, 255, int(peak * 0.10)));
+            rimGrad.setColorAt(1.00,
+                QColor(255, 255, 255, 0));
+            p.setPen(QPen(QBrush(rimGrad), 1.2));
+            p.setBrush(Qt::NoBrush);
+            p.drawPath(panelPath);
+
+            // Second inner line, offset ~3 px in, even softer —
+            // adds the layered depth the squircle chips have.
+            QRectF innerR = r.adjusted(3, 3, -3, -3);
+            QPainterPath innerPath;
+            innerPath.addRoundedRect(innerR, 17, 17);
+            QLinearGradient innerGrad(innerR.topLeft(),
+                                      innerR.bottomRight());
+            innerGrad.setColorAt(0.0,
+                QColor(255, 255, 255, int(peak * 0.25)));
+            innerGrad.setColorAt(0.6,
+                QColor(255, 255, 255, 0));
+            p.setPen(QPen(QBrush(innerGrad), 1.0));
+            p.drawPath(innerPath);
+        }
 
         const int pad = 16;
         QRect content = rect().adjusted(pad, pad, -pad, -pad);
@@ -142,7 +209,26 @@ protected:
         QAction *resetAct = m.addAction("Reset position");
         QAction *hideAct  = m.addAction("Hide widget");
 
+        // Style submenu — populated from the subclass's variants().
+        QHash<QAction *, QString> variantMap;
+        QStringList opts = variants();
+        if (!opts.isEmpty()) {
+            m.addSeparator();
+            QMenu *styleMenu = m.addMenu("Style");
+            QString cur = variant();
+            for (const QString &v : opts) {
+                QAction *a = styleMenu->addAction(variantLabel(v));
+                a->setCheckable(true);
+                a->setChecked(v == cur);
+                variantMap.insert(a, v);
+            }
+        }
+
         QAction *chosen = m.exec(e->globalPos());
+        if (variantMap.contains(chosen)) {
+            setVariant(variantMap.value(chosen));
+            return;
+        }
         if (chosen == resetAct) {
             move(m_defaultPos);
             QPoint p = pos();
@@ -169,9 +255,14 @@ protected:
 class ClockCard : public WidgetCard {
 public:
     explicit ClockCard(QWidget *parent)
-        : WidgetCard("clock", QSize(240, 110),
-                     QPoint(1400, 100), parent)
+        : WidgetCard("clock", QSize(240, 260),
+                     QPoint(400, 200), parent)
     {
+        // Apply the stored variant's size before first paint.
+        QString v0 = variant();
+        if (v0 == "world")        setFixedSize(380, 150);
+        else if (v0 == "digital") setFixedSize(240, 200);
+        else                      setFixedSize(240, 260);
         m_tick = new QTimer(this);
         m_tick->setInterval(1000);
         QObject::connect(m_tick, &QTimer::timeout,
@@ -179,35 +270,239 @@ public:
         m_tick->start();
     }
 
+    QStringList variants() const override {
+        return { "analog", "minimal", "digital", "world" };
+    }
+    QString variantLabel(const QString &v) const override {
+        if (v == "analog")  return "Analog";
+        if (v == "minimal") return "Minimal";
+        if (v == "digital") return "Digital";
+        if (v == "world")   return "World clock";
+        return v;
+    }
+
+    void setVariant(const QString &v) override {
+        // Set size FIRST so any paint triggered downstream sees
+        // the new geometry.
+        if (v == "world") setFixedSize(380, 150);
+        else if (v == "digital") setFixedSize(240, 200);
+        else              setFixedSize(240, 260);
+        WidgetCard::setVariant(v);
+        qInfo() << "[clockcard] variant" << v
+                << "size ->" << size();
+    }
+
 protected:
     void paintContent(QPainter &p, const QRect &r) override {
-        QDateTime now = QDateTime::currentDateTime();
+        const QString v = variant();
+        const bool analogish = (v == "analog" || v == "minimal");
 
-        QFont f = font();
-        f.setPixelSize(34); f.setWeight(QFont::Light);
-        p.setFont(f);
-        p.setPen(m_theme.textPrimary);
-        p.drawText(QRect(r.left(), r.top(), r.width(), 44),
-                   Qt::AlignLeft | Qt::AlignVCenter,
-                   now.toString("HH:mm"));
+        const QString city  = m_city.isEmpty() ? "Local" : m_city;
+        const QString when  = m_offsetH == 0 && m_offsetM == 0
+                                ? QString()
+                                : (m_offsetH >= 0 && m_offsetH < 12
+                                    ? "Today" : "Tomorrow");
 
-        f.setPixelSize(12); f.setWeight(QFont::Normal);
-        p.setFont(f);
-        p.setPen(m_theme.textSecondary);
-        p.drawText(QRect(r.left(), r.top() + 46, r.width(), 18),
-                   Qt::AlignLeft | Qt::AlignVCenter,
-                   now.toString("dddd, d MMMM"));
+        if (v == "world") {
+            // Four mini analog clocks in a row, each with a city
+            // label and, if not local, an hour offset underneath.
+            struct City { const char *name; int offsetH; };
+            static const City cities[] = {
+                { "Kampala",   0 },
+                { "London",   -1 },
+                { "New York", -7 },
+                { "Tokyo",     6 },
+            };
+            const int n = 4;
+            const int cellW = r.width() / n;
+            const int faceD = qMin(cellW - 12, r.height() - 50);
+            const int faceTop = r.top() + 4;
 
-        f.setPixelSize(11);
-        p.setFont(f);
-        p.setPen(m_theme.textDim);
-        p.drawText(QRect(r.left(), r.top() + 64, r.width(), 16),
-                   Qt::AlignLeft | Qt::AlignVCenter,
-                   now.toString("yyyy"));
+            for (int i = 0; i < n; ++i) {
+                const int cx = r.left() + cellW * i + cellW / 2;
+                const QPointF c(cx, faceTop + faceD / 2.0);
+                const qreal R = faceD / 2.0 - 2;
+
+                paintAnalogAt(p, c, R, true,
+                              cities[i].offsetH);
+
+                QFont f = font();
+                f.setPixelSize(11); f.setWeight(QFont::DemiBold);
+                p.setFont(f);
+                p.setPen(m_theme.textPrimary);
+                QRect nRect(cx - cellW / 2,
+                            faceTop + faceD + 4,
+                            cellW, 14);
+                p.drawText(nRect, Qt::AlignCenter,
+                           cities[i].name);
+
+                if (cities[i].offsetH != 0) {
+                    f.setPixelSize(9); f.setWeight(QFont::Normal);
+                    p.setFont(f);
+                    p.setPen(m_theme.textDim);
+                    QRect oRect(cx - cellW / 2,
+                                faceTop + faceD + 18,
+                                cellW, 12);
+                    QString off = cities[i].offsetH > 0
+                        ? QString("+%1 HRS").arg(cities[i].offsetH)
+                        : QString("%1 HRS").arg(cities[i].offsetH);
+                    p.drawText(oRect, Qt::AlignCenter, off);
+                }
+            }
+            return;
+        }
+
+        if (analogish) {
+            const int faceD = qMin(r.width() - 20, r.height() - 90);
+            const QPointF c(r.center().x(),
+                            r.top() + faceD / 2 + 6);
+            const qreal R = faceD / 2.0 - 4;
+            paintAnalog(p, c, R, v == "analog");
+
+            // City below the face
+            QFont f = font(); f.setPixelSize(13); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(m_theme.textPrimary);
+            QRect cityRect(r.left(),
+                           int(c.y() + R) + 8,
+                           r.width(), 18);
+            p.drawText(cityRect, Qt::AlignCenter, city);
+
+            if (!when.isEmpty()) {
+                f.setPixelSize(10); f.setWeight(QFont::Normal);
+                p.setFont(f);
+                p.setPen(m_theme.textDim);
+                QRect whenRect(r.left(),
+                               int(c.y() + R) + 26,
+                               r.width(), 14);
+                p.drawText(whenRect, Qt::AlignCenter, when);
+            }
+        } else {  // digital
+            QDateTime now = QDateTime::currentDateTime();
+            QString hhmm = now.toString("H:mm");
+
+            QFont f = font();
+            f.setPixelSize(qMin(r.width() / 3, r.height() / 3));
+            f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(m_theme.textPrimary);
+            QRect tRect = r;
+            tRect.setHeight(r.height() * 65 / 100);
+            p.drawText(tRect, Qt::AlignCenter, hhmm);
+
+            f.setPixelSize(12); f.setWeight(QFont::Normal);
+            p.setFont(f);
+            p.setPen(m_theme.textDim);
+            QRect cRect(r.left(), tRect.bottom(),
+                        r.width(), 16);
+            p.drawText(cRect, Qt::AlignCenter, city);
+
+            f.setPixelSize(10);
+            p.setFont(f);
+            QRect aRect(r.left(), cRect.bottom(),
+                        r.width(), 14);
+            p.drawText(aRect, Qt::AlignCenter,
+                       now.toString("dddd, d MMMM"));
+        }
     }
 
 private:
+    void paintAnalog(QPainter &p, QPointF c, qreal R,
+                     bool withNumbers) {
+        paintAnalogAt(p, c, R, withNumbers, 0);
+    }
+
+    void paintAnalogAt(QPainter &p, QPointF c, qreal R,
+                       bool withNumbers, int offsetH) {
+        // Face plate — soft off-white
+        QColor face(240, 240, 242, 235);
+        p.setPen(Qt::NoPen);
+        p.setBrush(face);
+        p.drawEllipse(c, R, R);
+
+        // Outline ring — dark
+        p.setPen(QPen(QColor(30, 30, 34), 1.6));
+        p.setBrush(Qt::NoBrush);
+        p.drawEllipse(c, R, R);
+
+        // Tick marks (always) + numbers (analog only)
+        QColor tick(60, 60, 66);
+        QColor num(20, 20, 24);
+        for (int i = 0; i < 12; ++i) {
+            const qreal ang = (i * 30.0) * 3.14159265 / 180.0;
+            const qreal sinA = std::sin(ang);
+            const qreal cosA = std::cos(ang);
+            QPointF outer(c.x() + R * 0.86 * sinA,
+                          c.y() - R * 0.86 * cosA);
+            QPointF inner(c.x() + R * 0.76 * sinA,
+                          c.y() - R * 0.76 * cosA);
+            p.setPen(QPen(tick, 1.4));
+            p.drawLine(inner, outer);
+
+            if (withNumbers) {
+                const QString numStr = QString::number(
+                    i == 0 ? 12 : i);
+                QFont nf = font();
+                nf.setPixelSize(int(R * 0.22));
+                nf.setWeight(QFont::DemiBold);
+                p.setFont(nf);
+                p.setPen(num);
+                QPointF tp(c.x() + R * 0.62 * sinA,
+                           c.y() - R * 0.62 * cosA);
+                QRectF tr(tp.x() - R * 0.18,
+                          tp.y() - R * 0.14,
+                          R * 0.36, R * 0.28);
+                p.drawText(tr, Qt::AlignCenter, numStr);
+            }
+        }
+
+        // Time hands — offsetH shifts the displayed hour.
+        QTime now = QTime::currentTime();
+        const qreal minuteAng = (now.minute()
+            + now.second() / 60.0) * 6.0;
+        int dispHour = (now.hour() + offsetH) % 24;
+        if (dispHour < 0) dispHour += 24;
+        const qreal hourAng = (dispHour % 12
+            + now.minute() / 60.0) * 30.0;
+
+        auto handAngle = [&](qreal deg) {
+            const qreal a = deg * 3.14159265 / 180.0;
+            return QPointF(std::sin(a), -std::cos(a));
+        };
+
+        // Hour hand — dark, thick
+        p.setPen(QPen(QColor(20, 20, 24), qMax(2.4, R * 0.06),
+                      Qt::SolidLine, Qt::RoundCap));
+        QPointF hv = handAngle(hourAng);
+        p.drawLine(c, c + QPointF(hv.x() * R * 0.45,
+                                  hv.y() * R * 0.45));
+
+        // Minute hand — dark, thinner, longer
+        p.setPen(QPen(QColor(20, 20, 24), qMax(1.8, R * 0.045),
+                      Qt::SolidLine, Qt::RoundCap));
+        QPointF mv = handAngle(minuteAng);
+        p.drawLine(c, c + QPointF(mv.x() * R * 0.72,
+                                  mv.y() * R * 0.72));
+
+        // Second hand — orange
+        const qreal secondAng = now.second() * 6.0;
+        p.setPen(QPen(QColor(220, 130, 30), 1.4,
+                      Qt::SolidLine, Qt::RoundCap));
+        QPointF sv = handAngle(secondAng);
+        p.drawLine(c, c + QPointF(sv.x() * R * 0.82,
+                                  sv.y() * R * 0.82));
+
+        // Center dot
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(20, 20, 24));
+        p.drawEllipse(c, qMax(1.8, R * 0.05),
+                      qMax(1.8, R * 0.05));
+    }
+
     QTimer *m_tick = nullptr;
+    QString m_city;
+    int     m_offsetH = 0;
+    int     m_offsetM = 0;
 };
 
 
@@ -438,6 +733,239 @@ private:
 
     QTimer *m_tick = nullptr;
     double m_cpu = 0, m_ram = 0, m_net = 0, m_disk = 0;
+};
+
+
+// ----------------------------------------------------------------
+// StatsCard — macOS Tahoe hybrid card.
+// Left: big disk ring + "Apokolips" + available + timestamp.
+// Right: two stacked blocks — Memory, Battery. Divider between.
+// ----------------------------------------------------------------
+class StatsCard : public WidgetCard {
+public:
+    explicit StatsCard(QWidget *parent)
+        : WidgetCard("stats", QSize(340, 190),
+                     QPoint(780, 470), parent)
+    {
+        m_tick = new QTimer(this);
+        m_tick->setInterval(2000);
+        QObject::connect(m_tick, &QTimer::timeout,
+                         this, [this]() { refresh(); update(); });
+        m_tick->start();
+        refresh();
+    }
+
+protected:
+    void paintContent(QPainter &p, const QRect &r) override {
+        const int leftW = 150;
+        const QRect leftR(r.left(), r.top(),
+                          leftW, r.height());
+        const QRect rightR(r.left() + leftW + 18, r.top(),
+                           r.width() - leftW - 18, r.height());
+
+        // ---- Left column — big disk ring ----
+        {
+            const int ringD = 92;
+            const QPointF c(leftR.center().x(),
+                            leftR.top() + ringD / 2 + 4);
+            const qreal R = ringD / 2.0 - 5;
+            const qreal stroke = 7.0;
+
+            // Track
+            p.setPen(QPen(QColor(255, 255, 255, 40), stroke,
+                          Qt::SolidLine, Qt::RoundCap));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(c, R, R);
+
+            // Fill arc — neutral white for disk
+            if (m_diskPct > 0.5) {
+                p.setPen(QPen(QColor(230, 232, 236), stroke,
+                              Qt::SolidLine, Qt::RoundCap));
+                int span = int(-qBound(0.0, m_diskPct, 100.0)
+                               / 100.0 * 360.0 * 16.0);
+                QRectF arcRect(c.x() - R, c.y() - R,
+                               R * 2, R * 2);
+                p.drawArc(arcRect, 90 * 16, span);
+            }
+
+            // Percent inside
+            QFont f = font();
+            f.setPixelSize(20); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(QColor(240, 237, 232));
+            QRect pr(int(c.x() - R), int(c.y() - 14),
+                     int(R * 2), 28);
+            p.drawText(pr, Qt::AlignCenter,
+                       QString("%1%").arg(int(m_diskPct + 0.5)));
+
+            // Disk name
+            f.setPixelSize(13); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(QColor(240, 237, 232));
+            QRect nR(leftR.left(), int(c.y() + R) + 8,
+                     leftR.width(), 18);
+            p.drawText(nR, Qt::AlignCenter, "Apokolips");
+
+            // Available GB
+            f.setPixelSize(10); f.setWeight(QFont::Normal);
+            p.setFont(f);
+            p.setPen(QColor(176, 173, 168));
+            QRect aR(leftR.left(), nR.bottom(), leftR.width(), 14);
+            p.drawText(aR, Qt::AlignCenter,
+                       QString("%1 GB available").arg(m_diskFreeGb, 0, 'f', 2));
+
+            // Timestamp
+            f.setPixelSize(9);
+            p.setFont(f);
+            p.setPen(QColor(122, 120, 115));
+            QRect tR(leftR.left(), aR.bottom() + 2,
+                     leftR.width(), 12);
+            p.drawText(tR, Qt::AlignCenter, QString::fromUtf8(
+                "\xE2\x86\xBB now"));
+        }
+
+        // ---- Divider ----
+        {
+            int dx = leftR.right() + 9;
+            p.setPen(QPen(QColor(255, 255, 255, 22), 1));
+            p.drawLine(dx, r.top() + 12, dx, r.bottom() - 12);
+        }
+
+        // ---- Right column — two blocks ----
+        const int blockH = rightR.height() / 2;
+        QRect memBlock(rightR.left(), rightR.top(),
+                       rightR.width(), blockH - 4);
+        QRect batBlock(rightR.left(), rightR.top() + blockH + 4,
+                       rightR.width(), blockH - 4);
+
+        paintBlock(p, memBlock, 0,
+                   QString("%1 GB").arg(m_memFreeGb, 0, 'f', 2),
+                   "MEMORY",
+                   m_memFreeGb > 0.05 ? "available" : "low");
+        paintBlock(p, batBlock, 1,
+                   QString("%1 %").arg(int(m_batPct + 0.5)),
+                   "BATTERY",
+                   m_batPresent ? (m_batCharging ? "AC Power"
+                                                 : "On battery")
+                                : "AC Power");
+    }
+
+private:
+    // type: 0 = memory, 1 = battery.
+    void paintBlock(QPainter &p, const QRect &b, int type,
+                    const QString &value, const QString &tag,
+                    const QString &sub) {
+        const int iconSize = 26;
+        QRect iconR(b.left(), b.top() + 4, iconSize, iconSize);
+        paintBlockIcon(p, type, iconR);
+
+        // Tag badge (small uppercase label under the icon)
+        QFont f = font();
+        f.setPixelSize(8); f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        p.setPen(QColor(220, 220, 220));
+        QRect tagR(iconR.left() - 4, iconR.bottom() + 3,
+                   iconSize + 8, 12);
+        p.drawText(tagR, Qt::AlignCenter, tag);
+
+        // Value + sub to the right of the icon
+        int textX = iconR.right() + 12;
+        int textW = b.right() - textX;
+
+        f.setPixelSize(18); f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        p.setPen(QColor(240, 237, 232));
+        QRect vR(textX, b.top() + 4, textW, 22);
+        p.drawText(vR, Qt::AlignLeft | Qt::AlignVCenter, value);
+
+        f.setPixelSize(10); f.setWeight(QFont::Normal);
+        p.setFont(f);
+        p.setPen(QColor(150, 150, 155));
+        QRect sR(textX, vR.bottom() + 2, textW, 14);
+        p.drawText(sR, Qt::AlignLeft | Qt::AlignVCenter, sub);
+    }
+
+    void paintBlockIcon(QPainter &p, int type, const QRect &r) {
+        QColor col(230, 230, 235);
+        if (type == 0) {
+            // Memory chip — rectangle with pins
+            QRectF body(r.left() + 4, r.top() + 6,
+                        r.width() - 8, r.height() - 12);
+            p.setPen(QPen(col, 1.4));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(body);
+            for (int i = 1; i < 4; ++i) {
+                qreal off = body.left() + i * body.width() / 4;
+                p.drawLine(QPointF(off, body.top() - 3),
+                           QPointF(off, body.top()));
+                p.drawLine(QPointF(off, body.bottom()),
+                           QPointF(off, body.bottom() + 3));
+            }
+        } else {
+            // Battery — rounded rect + tip + fill
+            QRectF body(r.left() + 4, r.top() + 5,
+                        r.width() - 10, r.height() - 10);
+            QRectF tip(body.right() + 1,
+                       body.center().y() - 3, 3, 6);
+            p.setPen(QPen(col, 1.4));
+            p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(body, 3, 3);
+            p.setPen(Qt::NoPen);
+            p.setBrush(col);
+            p.drawRoundedRect(tip, 1, 1);
+            QRectF fill = body.adjusted(2, 2, -2, -2);
+            p.drawRoundedRect(fill, 2, 2);
+        }
+    }
+
+    void refresh() {
+        // Disk
+        struct statvfs st;
+        if (statvfs("/", &st) == 0) {
+            quint64 total = quint64(st.f_blocks) * st.f_frsize;
+            quint64 avail = quint64(st.f_bavail) * st.f_frsize;
+            if (total > 0) {
+                m_diskPct   = 100.0 * (total - avail) / double(total);
+                m_diskFreeGb = avail / (1024.0 * 1024.0 * 1024.0);
+            }
+        }
+        // Memory
+        QFile mf("/proc/meminfo");
+        if (mf.open(QIODevice::ReadOnly)) {
+            quint64 avail = 0;
+            while (!mf.atEnd()) {
+                QByteArray line = mf.readLine();
+                if (line.startsWith("MemAvailable:")) {
+                    avail = line.split(':')[1].trimmed()
+                                .split(' ')[0].toULongLong();
+                    break;
+                }
+            }
+            m_memFreeGb = avail / (1024.0 * 1024.0);
+        }
+        // Battery via /sys (present on VMs as BAT0 sometimes)
+        QFile bf("/sys/class/power_supply/BAT0/capacity");
+        QFile bs("/sys/class/power_supply/BAT0/status");
+        if (bf.exists() && bf.open(QIODevice::ReadOnly)) {
+            m_batPct = bf.readAll().trimmed().toInt();
+            m_batPresent = true;
+        } else {
+            m_batPct = 100;
+            m_batPresent = false;
+        }
+        if (bs.open(QIODevice::ReadOnly)) {
+            QString st = QString::fromUtf8(bs.readAll()).trimmed();
+            m_batCharging = (st == "Charging" || st == "Full");
+        }
+    }
+
+    QTimer *m_tick = nullptr;
+    double  m_diskPct    = 0;
+    double  m_diskFreeGb = 0;
+    double  m_memFreeGb  = 0;
+    int     m_batPct     = 100;
+    bool    m_batPresent = false;
+    bool    m_batCharging = false;
 };
 
 #endif
