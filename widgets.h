@@ -1085,8 +1085,9 @@ public:
         : WidgetCard("weather", QSize(280, 170),
                      QPoint(880, 60), parent)
     {
-        if (variant() == "full") setFixedSize(320, 240);
-        else                     setFixedSize(280, 170);
+        if (variant() == "full")         setFixedSize(320, 240);
+        else if (variant() == "compact") setFixedSize(340, 150);
+        else                             setFixedSize(280, 170);
 
         m_weather = new Weather::Fetcher(this);
         auto fetch = [this]() {
@@ -1103,18 +1104,20 @@ public:
     }
 
     QStringList variants() const override {
-        return { "full", "sunset", "conditions" };
+        return { "full", "compact", "sunset", "conditions" };
     }
     QString variantLabel(const QString &v) const override {
         if (v == "full")       return "Full";
+        if (v == "compact")    return "Compact";
         if (v == "sunset")     return "Sunset";
         if (v == "conditions") return "Conditions";
         return v;
     }
 
     void setVariant(const QString &v) override {
-        if (v == "full")  setFixedSize(320, 240);
-        else              setFixedSize(280, 170);
+        if (v == "full")         setFixedSize(320, 240);
+        else if (v == "compact") setFixedSize(340, 150);
+        else                     setFixedSize(280, 170);
         WidgetCard::setVariant(v);
     }
 
@@ -1132,9 +1135,11 @@ protected:
     }
 
     void paintContent(QPainter &p, const QRect &r) override {
-        if (variant() == "sunset")     paintSunset(p, r);
-        else if (variant() == "full")  paintFull(p, r);
-        else                           paintConditions(p, r);
+        const QString v = variant();
+        if      (v == "sunset")   paintSunset(p, r);
+        else if (v == "full")     paintFull(p, r);
+        else if (v == "compact")  paintCompact(p, r);
+        else                      paintConditions(p, r);
     }
 
 private:
@@ -1182,6 +1187,59 @@ private:
 
         p.drawText(QRect(ix, r.top() + 70, iw, 14), Qt::AlignLeft,
                    QString("Humidity %1%").arg(m_wx.humidityPct));
+    }
+
+    void paintCompact(QPainter &p, const QRect &r) {
+        QFont f = font();
+
+        // Header — city + condition on one line
+        f.setPixelSize(13); f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        p.setPen(QColor(240, 245, 255));
+        p.drawText(QRect(r.left(), r.top(), r.width() / 2, 18),
+                   Qt::AlignLeft | Qt::AlignVCenter, m_wx.city);
+
+        f.setPixelSize(11); f.setWeight(QFont::Normal);
+        p.setFont(f);
+        p.setPen(QColor(220, 228, 240));
+        p.drawText(QRect(r.left() + r.width() / 2, r.top(),
+                         r.width() / 2, 18),
+                   Qt::AlignRight | Qt::AlignVCenter,
+                   m_wx.condition.isEmpty() ? "—" : m_wx.condition);
+
+        // Big temp on the left
+        f.setPixelSize(44); f.setWeight(QFont::Light);
+        p.setFont(f);
+        p.setPen(QColor(255, 255, 255));
+        QRect tR(r.left(), r.top() + 20, 110, 62);
+        p.drawText(tR, Qt::AlignLeft | Qt::AlignVCenter,
+                   QString::number(int(m_wx.tempC + 0.5))
+                   + QString::fromUtf8("\xC2\xB0"));
+
+        // H/L on the right of temp
+        f.setPixelSize(10); f.setWeight(QFont::Normal);
+        p.setFont(f);
+        p.setPen(QColor(200, 215, 235));
+        QRect hlR(r.left() + 110, r.top() + 32,
+                  r.width() - 110, 14);
+        p.drawText(hlR, Qt::AlignLeft,
+                   QString("H:%1\xC2\xB0  L:%2\xC2\xB0")
+                       .arg(int(m_wx.tempMax + 0.5))
+                       .arg(int(m_wx.tempMin + 0.5)));
+
+        // Hourly row across the bottom — 6 slots
+        int rowTop = r.top() + 88;
+        int cellW = r.width() / 6;
+        for (int i = 0; i < 6 && i < m_wx.hourlyTemps.size(); ++i) {
+            int cx = r.left() + cellW * i + cellW / 2;
+            QString t = QString("%1\xC2\xB0")
+                .arg(int(m_wx.hourlyTemps[i] + 0.5));
+            f.setPixelSize(11); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(QColor(240, 245, 255));
+            p.drawText(QRect(cx - cellW / 2, rowTop, cellW, 16),
+                       Qt::AlignCenter, t);
+        }
     }
 
     void paintFull(QPainter &p, const QRect &r) {
