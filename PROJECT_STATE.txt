@@ -788,12 +788,13 @@ from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
 ------------------------------------------------------------------------
 DEFERRED / FUTURE
 ------------------------------------------------------------------------
-  [ ] Reverse Genie (un-minimize animation)
-  [ ] Scale minimize animation
-  [ ] Suck minimize animation
-  [ ] Minimize style selector in Dock settings (Genie/Scale/Suck)
-  [ ] Yellow traffic light minimize trigger for our own windows
-      (needs IPC channel from child app to shell)
+  [x] Reverse Genie (un-minimize animation) — done
+  [x] Scale minimize animation — done
+  [x] Suck minimize animation — done
+  [x] Minimize style selector — done (Settings → Appearance, plus
+      Dock page in progress as G4 extension)
+  [x] Yellow / green traffic light minimize trigger for our own
+      windows — done
   [ ] Animated Arc Reactor on Arc Reactor page:
       - bars surround the core, fade/reduce as battery drops
       - core glow dims/brightens with battery
@@ -897,18 +898,26 @@ Golden rule for AI features (future):
       (apokolips-files→Finder, apokolips-notes→Notes), reverse
       overlay plays, real window shown at end.
 
-  GENIE FAMILY STATUS (2026-10-10)
-  ---------------------------------
+  GENIE FAMILY STATUS (updated 2026-10-16)
+  ---------------------------------------
   [x] G1a — Reverse genie CLI
   [x] G1b — Dock click restores minimized windows
   [x] G2 — Scale minimize animation
   [x] G3 — Suck minimize animation (Manus silhouette version)
         Single-quad morph. Smooth. Has stretch smear — user accepts.
-  [ ] G4 — Settings dropdown: Minimize windows using
-        (Genie / Scale / Suck). Wire to cfg.minimizeStyle.
-  [ ] G5 — Yellow/green traffic lights trigger animation
-  [ ] G6 — Every app launches grow-from-dock / closes shrink-to-dock
-  [ ] G7 — Dock-position-aware animations (Left/Right/Bottom)
+  [x] G4 — Minimize style dropdown (Genie / Scale / Suck / Thanos).
+        In Settings → Appearance. Also selectable per reduce motion.
+  [x] G5 — Yellow / green traffic lights trigger animation.
+  [x] G6 — Every app launches grow-from-dock / closes shrink-to-dock.
+  [x] G7 — Dock-position-aware animations (Left / Right / Bottom).
+        Marked done by user 2026-10-16. May want a visual re-check
+        when the dock is on the side — open an app and watch the
+        minimize endpoint target the correct icon on the side dock.
+
+  SIDELINED (user decision 2026-10-16):
+  [~] Snap window animation — drag to edge slides / grows.
+      Not being built. Listed here so future AIs do not re-propose
+      without asking.
 
   QUEUED REWRITE — Genie option A (after G7)
   -------------------------------------------
