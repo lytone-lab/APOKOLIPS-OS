@@ -3982,6 +3982,15 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    if (argc >= 2 && QString(argv[1]) == "--mail") {
+        QApplication app(argc, argv);
+        app.setApplicationName("Mail");
+        app.setDesktopFileName("apokolips-mail");
+        MailApp w;
+        w.show();
+        return app.exec();
+    }
+
     if (argc >= 2 && QString(argv[1]) == "--screensaver") {
         QApplication app(argc, argv);
         app.setApplicationName("Apokolips Screensaver");

@@ -362,6 +362,68 @@ static void drawMusic(QPainter &p, const QRectF &r, const QColor &)
     p.setOpacity(1.0);
 }
 
+// ---- Abacus on warm wood — Calculator ----
+static void drawCalculator(QPainter &p, const QRectF &r,
+                           const QColor &) {
+    // Warm wood gradient — the abacus material.
+    appTile(p, r, QColor(176, 124, 78), QColor(66, 42, 22));
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Inner recessed panel — the abacus frame interior.
+    const qreal pad = r.width() * 0.17;
+    QRectF inner = r.adjusted(pad, pad, -pad, -pad);
+
+    QPainterPath innerPath;
+    innerPath.addRoundedRect(inner, r.width() * 0.06,
+                             r.width() * 0.06);
+    p.fillPath(innerPath, QColor(46, 28, 14, 235));
+
+    // Frame bevel — bright top-left, dark bottom-right.
+    QLinearGradient bev(inner.topLeft(), inner.bottomRight());
+    bev.setColorAt(0.0, QColor(230, 180, 130, 190));
+    bev.setColorAt(0.5, QColor(140, 96, 60, 130));
+    bev.setColorAt(1.0, QColor(60, 36, 18, 220));
+    p.setPen(QPen(QBrush(bev), 1.3));
+    p.setBrush(Qt::NoBrush);
+    p.drawPath(innerPath);
+
+    // 4 vertical rods with 3 beads each.
+    const int rods = 4;
+    const int beadsPerRod = 3;
+    const qreal beadR = inner.width() * 0.055;
+
+    for (int i = 0; i < rods; ++i) {
+        const qreal x = inner.left()
+            + (i + 0.5) * inner.width() / rods;
+
+        // Rod — thin dark line.
+        p.setPen(QPen(QColor(24, 16, 8, 230), 1.0));
+        p.drawLine(QPointF(x, inner.top() + 1.5),
+                   QPointF(x, inner.bottom() - 1.5));
+
+        // Beads — pale bone, one dark highlight for depth.
+        for (int b = 0; b < beadsPerRod; ++b) {
+            const qreal y = inner.top()
+                + (b + 0.5) * inner.height() / beadsPerRod;
+
+            // Bead body.
+            QRadialGradient bg(QPointF(x - beadR * 0.3,
+                                       y - beadR * 0.3),
+                               beadR * 1.4);
+            bg.setColorAt(0.0, QColor(248, 240, 222));
+            bg.setColorAt(0.7, QColor(220, 205, 180));
+            bg.setColorAt(1.0, QColor(160, 140, 110));
+            p.setPen(Qt::NoPen);
+            p.setBrush(bg);
+            p.drawEllipse(QPointF(x, y), beadR, beadR);
+        }
+    }
+
+    p.restore();
+}
+
 static void drawNotes(QPainter &p, const QRectF &r, const QColor &) {
     appTile(p, r, QColor(232, 220, 198), QColor(190, 175, 145));
     // Page rectangle
@@ -530,6 +592,7 @@ static void drawFor(const QString &name, QPainter &p,
     else if (name == "BoomTube")  drawMusic(p, r, c);
     else if (name == "Music")     drawMusic(p, r, c);
     else if (name == "Notes")     drawNotes(p, r, c);
+    else if (name == "Calculator") drawCalculator(p, r, c);
     else if (name == "Mail")      drawMail(p, r, c);
     else if (name == "Settings")  drawSettings(p, r, c);
     else if (name == "Power")     drawPower(p, r, c);
@@ -647,7 +710,7 @@ static const QVector<AppEntry> &appRegistry() {
         { "settings",    "Settings",  "\xE2\x9A\x99",       true,  true  },
         { "node",        "Node",      "\xF0\x9F\x92\xBB",  true,  true  },
         { "glyph",       "Glyph",     "\xE2\x97\x89",       false, true  },
-        { "calculator",  "Calculator","\xF0\x9F\xA7\xAE",  false, false },
+        { "calculator",  "Calculator","\xF0\x9F\xA7\xAE",  false, true  },
         { "screensaver", "Screensaver","\xF0\x9F\x8C\x8C", false, false },
         { "snap",        "Snap Layouts","\xE2\x96\xA6",      false, false },
     };

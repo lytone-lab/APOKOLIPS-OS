@@ -137,4 +137,5 @@ inline void installMenuFade() {
 #include "recents.h"
 #include "openwith.h"
 #include "dragdrop.h"
+#include "mail.h"
 #endif // APOKOLIPS_SHELL_H

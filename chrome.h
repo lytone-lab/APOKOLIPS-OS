@@ -1436,7 +1436,7 @@ protected:
         else if (m_name == "Node")      matchId = "apokolips-node";
         else if (m_name == "myMach")    matchId = "apokolips-mymach";
         else if (m_name == "Notes")     matchId = "apokolips-notes";
-        else if (m_name == "Mail")      matchId = "thunderbird";
+        else if (m_name == "Mail")      matchId = "apokolips-mail";
         else if (m_name == "Files")     matchId = "org.gnome.Nautilus";
 
         if (!matchId.isEmpty()) {
@@ -1496,7 +1496,8 @@ protected:
             program = QCoreApplication::applicationFilePath();
             args = { "--notes" };
         } else if (m_name == "Mail") {
-            program = "thunderbird";
+            program = QCoreApplication::applicationFilePath();
+            args = { "--mail" };
         } else {
             program = QCoreApplication::applicationFilePath();
             args = { "--demo", m_name, QString::number(m_index) };

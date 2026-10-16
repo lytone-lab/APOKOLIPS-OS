@@ -42,16 +42,42 @@ public:
 protected:
 private:
     void buildUi() {
-        QVBoxLayout *v = new QVBoxLayout(this);
+        // Root layout — bottom margin = rounded-corner radius,
+        // matching Aperture / BoomTube / Notes.
+        QVBoxLayout *root = new QVBoxLayout(this);
+        root->setContentsMargins(0, 0, 0, 16);
+        root->setSpacing(0);
+
+        // Header — dedicated 42px widget flush against the top.
+        // ShellApp::paintEvent draws the glass strip at y=0..40
+        // *behind* this widget; the traffic lights sit inside it.
+        if (!m_embedded) {
+            QWidget *header = new QWidget;
+            header->setFixedHeight(42);
+            header->setAttribute(Qt::WA_NoSystemBackground, true);
+            header->setAutoFillBackground(false);
+            QHBoxLayout *hh = new QHBoxLayout(header);
+            hh->setContentsMargins(16, 0, 16, 0);
+            hh->setSpacing(10);
+            QLabel *titleLabel = nullptr;
+            QHBoxLayout *stdHdr = buildStandardHeader(
+                "Calculator", QSize(320, 480), &titleLabel, nullptr);
+            while (QLayoutItem *item = stdHdr->takeAt(0)) {
+                if (QWidget *w = item->widget()) hh->addWidget(w);
+                else if (QLayout *l = item->layout()) hh->addLayout(l);
+                else if (item->spacerItem())
+                    hh->addSpacerItem(item->spacerItem());
+                else delete item;
+            }
+            delete stdHdr;
+            root->addWidget(header);
+        }
+
+        // Body — everything below the header gets its own padding.
+        QWidget *body = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(body);
         v->setContentsMargins(16, 16, 16, 16);
         v->setSpacing(8);
-
-        // Standard header — only in standalone mode (not embedded).
-        if (!m_embedded) {
-            QHBoxLayout *hdr = buildStandardHeader(
-                "Calculator", QSize(320, 480), nullptr, nullptr);
-            v->addLayout(hdr);
-        }
 
         m_display = new QLabel("0");
         m_display->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -120,6 +146,8 @@ private:
                 "QPushButton:pressed { background: rgba(255,255,255,90); }")
                 .arg(bg, t.textPrimary.name()));
         }
+
+        root->addWidget(body, 1);
     }
 
     QLabel *m_display = nullptr;
