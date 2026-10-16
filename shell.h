@@ -34,6 +34,7 @@
 #include <QDateTime>
 #include <QPainter>
 #include <QPainterPath>
+#include <QSvgRenderer>
 #include <QLinearGradient>
 #include <QRadialGradient>
 #include <QScreen>

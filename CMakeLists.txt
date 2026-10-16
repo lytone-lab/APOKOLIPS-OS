@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network Multimedia MultimediaWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network Multimedia MultimediaWidgets Svg)
 find_package(qtermwidget6 REQUIRED)
 
 add_executable(apokolips-shell main.cpp)
@@ -17,4 +17,5 @@ target_link_libraries(apokolips-shell PRIVATE
     Qt6::Network
     Qt6::Multimedia
     Qt6::MultimediaWidgets
+    Qt6::Svg
     qtermwidget6)

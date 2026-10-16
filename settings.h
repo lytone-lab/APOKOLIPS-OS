@@ -7139,6 +7139,219 @@ private:
         QProcess::startDetached("swayidle", args);
     }
 
+    // ---- Animated Iron Man–style arc reactor ----
+    // Reads /sys/class/power_supply/BAT0 directly — same source
+    // StatsCard uses. 30 fps. Battery percentage drives bar
+    // lighting and core brightness. Charging adds a slow pulse.
+    class ArcReactorWidget : public QWidget {
+    public:
+        explicit ArcReactorWidget(QWidget *parent = nullptr)
+            : QWidget(parent)
+        {
+            setFixedSize(300, 300);
+            setAttribute(Qt::WA_TranslucentBackground, true);
+            setAttribute(Qt::WA_NoSystemBackground, true);
+
+            m_tick = new QTimer(this);
+            m_tick->setInterval(33);   // ~30 fps
+            QObject::connect(m_tick, &QTimer::timeout,
+                             this, [this]() {
+                m_pct      = readPct();
+                m_charging = readCharging();
+                m_phase += 0.055;
+                if (m_phase > 2.0 * 3.14159265358979)
+                    m_phase -= 2.0 * 3.14159265358979;
+                update();
+            });
+            m_tick->start();
+
+            m_pct      = readPct();
+            m_charging = readCharging();
+        }
+
+    protected:
+        void paintEvent(QPaintEvent *) override {
+            QPainter p(this);
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setRenderHint(QPainter::SmoothPixmapTransform);
+
+            const QPointF c(width() / 2.0, height() / 2.0);
+            const qreal R = qMin(width(), height()) / 2.0 - 8;
+
+            const qreal batt  = qBound(0.0, m_pct / 100.0, 1.0);
+            const qreal pulse = m_charging
+                ? 0.82 + 0.18 * std::sin(m_phase * 3.0)
+                : 1.0;
+            const qreal k = (0.25 + 0.75 * batt) * pulse;
+
+            // The squircle IS the emblem's outer boundary — the
+            // reactor bleeds to its edge. Nearly full widget size.
+            const qreal sqSide   = R * 1.86;
+            const qreal sqRadius = sqSide * 0.27;
+            QRectF sq(c.x() - sqSide / 2.0,
+                      c.y() - sqSide / 2.0,
+                      sqSide, sqSide);
+            QPainterPath sqPath;
+            sqPath.addRoundedRect(sq, sqRadius, sqRadius);
+
+            // 1. Soft drop shadow beneath the whole icon.
+            {
+                for (int i = 10; i >= 1; --i) {
+                    QPainterPath sp;
+                    QRectF sr = sq.translated(0, 3);
+                    sr = sr.adjusted(-i * 0.4, -i * 0.2,
+                                      i * 0.4, i * 0.9);
+                    sp.addRoundedRect(sr,
+                        sqRadius + i * 0.4,
+                        sqRadius + i * 0.4);
+                    p.fillPath(sp, QColor(0, 0, 0,
+                                          int(5 * k)));
+                }
+            }
+
+            // 2. Dark navy interior — fills the squircle. Any
+            //    transparent part of the SVG shows through as this.
+            p.fillPath(sqPath, QColor(10, 14, 22, int(240 * k)));
+
+            // 3. Reactor SVG, tinted, clipped to the squircle.
+            const int side = int(qMin(width(), height()));
+            if (m_svgPix.isNull() || m_svgSide != side) {
+                if (!m_svg) {
+                    m_svg = new QSvgRenderer(
+                        QString(":/assets/reactor-emblem.svg"),
+                        this);
+                    if (!m_svg->isValid()) {
+                        delete m_svg;
+                        m_svg = new QSvgRenderer(
+                            QString("/home/lytone/apokolips-shell/"
+                                    "assets/reactor-emblem.svg"),
+                            this);
+                    }
+                }
+                QPixmap pix(side, side);
+                pix.fill(Qt::transparent);
+                if (m_svg && m_svg->isValid()) {
+                    QPainter sp(&pix);
+                    sp.setRenderHint(QPainter::Antialiasing);
+                    sp.setRenderHint(
+                        QPainter::SmoothPixmapTransform);
+                    m_svg->render(&sp, QRectF(0, 0, side, side));
+                }
+                m_svgPix = pix;
+                m_svgSide = side;
+            }
+
+            if (!m_svgPix.isNull()) {
+                QPixmap tinted = m_svgPix;
+                {
+                    QPainter tp(&tinted);
+                    tp.setCompositionMode(
+                        QPainter::CompositionMode_SourceIn);
+                    tp.fillRect(tinted.rect(),
+                                QColor(110, 190, 255));
+                }
+
+                // Emblem fills the squircle almost entirely — the
+                // circle inside the SVG ends up tangent to all four
+                // squircle edges.
+                const qreal emblemSide = sqSide * 0.96;
+                QRectF dst(c.x() - emblemSide / 2.0,
+                           c.y() - emblemSide / 2.0,
+                           emblemSide, emblemSide);
+
+                p.save();
+                p.setClipPath(sqPath);
+                p.setOpacity(k);
+                p.drawPixmap(dst, tinted, QRectF(tinted.rect()));
+                p.setOpacity(1.0);
+
+                // 4. Subtle radial core glow, drawn inside the clip.
+                {
+                    QRadialGradient core(c, sqSide * 0.26);
+                    core.setColorAt(0.00,
+                        QColor(255, 255, 255, int(140 * k)));
+                    core.setColorAt(0.50,
+                        QColor(200, 240, 255, int(60 * k)));
+                    core.setColorAt(1.00,
+                        QColor(180, 235, 255, 0));
+                    p.setPen(Qt::NoPen);
+                    p.setBrush(core);
+                    p.drawEllipse(c, sqSide * 0.26, sqSide * 0.26);
+                }
+                p.restore();
+            }
+
+            // 5. Premium rim — bright on top-left, fading to
+            //    invisible on bottom-right. Reads as a bevel.
+            {
+                QLinearGradient rim(sq.topLeft(),
+                                    sq.bottomRight());
+                rim.setColorAt(0.00,
+                    QColor(210, 235, 255, int(140 * k)));
+                rim.setColorAt(0.45,
+                    QColor(150, 200, 240, int(60 * k)));
+                rim.setColorAt(0.75,
+                    QColor(120, 170, 220, int(20 * k)));
+                rim.setColorAt(1.00,
+                    QColor(120, 170, 220, 0));
+                p.setPen(QPen(QBrush(rim), 1.5));
+                p.setBrush(Qt::NoBrush);
+                p.drawPath(sqPath);
+            }
+        }
+
+    private:
+        QTimer *m_tick = nullptr;
+        int     m_pct = 100;
+        bool    m_charging = false;
+        qreal   m_phase = 0.0;
+        QSvgRenderer      *m_svg = nullptr;
+        QPixmap            m_svgPix;
+        int                m_svgSide = 0;
+
+        static int readPct() {
+            QFile f("/sys/class/power_supply/BAT0/capacity");
+            if (f.open(QIODevice::ReadOnly))
+                return f.readAll().trimmed().toInt();
+            return 100;
+        }
+        static bool readCharging() {
+            QFile f("/sys/class/power_supply/BAT0/status");
+            if (f.open(QIODevice::ReadOnly)) {
+                QString s = QString::fromUtf8(f.readAll()).trimmed();
+                return (s == "Charging" || s == "Full");
+            }
+            return false;
+        }
+
+        // Draws a ring of N short radial coil segments. The number
+        // that light up is (N * batteryFraction), so a full battery
+        // lights the whole ring and a low one lights just a few.
+        static void drawCoilRing(QPainter &p, const QPointF &c,
+                                 qreal rOuter, qreal rInner,
+                                 int n, qreal batt,
+                                 const QColor &cyan, qreal width) {
+            const int lit = int(n * batt + 0.5);
+            for (int i = 0; i < n; ++i) {
+                const qreal a = i * (2.0 * 3.14159265358979 / n)
+                                - 3.14159265358979 / 2.0;
+                const qreal span = (3.14159265358979 / n) * 0.55;
+                const bool on = i < lit;
+                QColor col = on
+                    ? cyan
+                    : QColor(cyan.red(), cyan.green(),
+                             cyan.blue(), 45);
+                QPen pen(col, width, Qt::SolidLine, Qt::RoundCap);
+                p.setPen(pen);
+                p.drawLine(
+                    QPointF(c.x() + std::cos(a - span) * rOuter,
+                            c.y() + std::sin(a - span) * rOuter),
+                    QPointF(c.x() + std::cos(a + span) * rInner,
+                            c.y() + std::sin(a + span) * rInner));
+            }
+        }
+    };
+
     QWidget *makeArcReactorPage() {
         QWidget *page = new QWidget;
         page->setAutoFillBackground(false);
@@ -7147,6 +7360,12 @@ private:
         v->setSpacing(18);
 
         v->addWidget(Sigil::sectionTitle("Arc Reactor"));
+
+        // ---- Hero — animated reactor, reacts to live battery ----
+        {
+            ArcReactorWidget *reactor = new ArcReactorWidget;
+            v->addWidget(reactor, 0, Qt::AlignHCenter);
+        }
 
         auto &vc = VisualConfigManager::instance().cfg();
 
