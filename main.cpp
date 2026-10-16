@@ -2715,11 +2715,6 @@ static int runShell(int argc, char *argv[])
     clockCard->applyVisibility();
     clockCard->raise();
 
-    QTimer *cardRaise = new QTimer(root);
-    cardRaise->setInterval(1000);
-    QObject::connect(cardRaise, &QTimer::timeout, clockCard,
-        [clockCard]() { clockCard->raise(); });
-    cardRaise->start();
 
     qInfo() << "[widgets] ClockCard installed"
             << "pos=" << clockCard->pos()
@@ -2732,11 +2727,6 @@ static int runShell(int argc, char *argv[])
     ringsCard->applyVisibility();
     ringsCard->raise();
 
-    QTimer *cardRaise2 = new QTimer(root);
-    cardRaise2->setInterval(1000);
-    QObject::connect(cardRaise2, &QTimer::timeout, ringsCard,
-        [ringsCard]() { ringsCard->raise(); });
-    cardRaise2->start();
 
     qInfo() << "[widgets] RingsCard installed"
             << "pos=" << ringsCard->pos()
@@ -2748,11 +2738,6 @@ static int runShell(int argc, char *argv[])
     statsCard->applyVisibility();
     statsCard->raise();
 
-    QTimer *cardRaise3 = new QTimer(root);
-    cardRaise3->setInterval(1000);
-    QObject::connect(cardRaise3, &QTimer::timeout, statsCard,
-        [statsCard]() { statsCard->raise(); });
-    cardRaise3->start();
 
     qInfo() << "[widgets] StatsCard installed"
             << "pos=" << statsCard->pos()
@@ -2764,11 +2749,6 @@ static int runShell(int argc, char *argv[])
     weatherCard->applyVisibility();
     weatherCard->raise();
 
-    QTimer *cardRaise4 = new QTimer(root);
-    cardRaise4->setInterval(1000);
-    QObject::connect(cardRaise4, &QTimer::timeout, weatherCard,
-        [weatherCard]() { weatherCard->raise(); });
-    cardRaise4->start();
 
     // ---- Dock-aware clamp: when the dock moves, nudge any
     // widget that would overlap the new dock strip back into
@@ -2839,11 +2819,6 @@ static int runShell(int argc, char *argv[])
     calendarCard->applyVisibility();
     calendarCard->raise();
 
-    QTimer *cardRaise5 = new QTimer(root);
-    cardRaise5->setInterval(1000);
-    QObject::connect(cardRaise5, &QTimer::timeout, calendarCard,
-        [calendarCard]() { calendarCard->raise(); });
-    cardRaise5->start();
 
     qInfo() << "[widgets] CalendarCard installed"
             << "pos=" << calendarCard->pos()
@@ -3185,16 +3160,25 @@ static int runShell(int argc, char *argv[])
         desktopIcons->rebuildIcons();     // render persisted desktop apps
         desktopIcons->show();
         desktopIcons->raise();
+        // PoolCanvas is a later child of root, so raising it
+        // buries the widget cards underneath and left-clicks
+        // never reach them (canvas ignores → goes to parent,
+        // not to sibling widgets). Re-raise every card right
+        // after every canvas raise.
+        for (QWidget *w : root->findChildren<QWidget *>())
+            if (dynamic_cast<WidgetCard *>(w)) w->raise();
     }
 
     // Keep the canvas sized to the middle strip (below top bar,
     // above dock) whenever the shell relayouts.
-    auto refitCanvas = [desktopIcons, desktop, middle]() {
+    auto refitCanvas = [desktopIcons, desktop, middle, root]() {
         if (!desktopIcons || !desktop) return;
         QPoint tl = desktop->mapTo(desktopIcons->parentWidget(),
                                     QPoint(0, 0));
         desktopIcons->setGeometry(QRect(tl, desktop->size()));
         desktopIcons->raise();
+        for (QWidget *w : root->findChildren<QWidget *>())
+            if (dynamic_cast<WidgetCard *>(w)) w->raise();
     };
     refitCanvas();
     // Re-run after the event loop settles (layout has real sizes)
