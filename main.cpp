@@ -3702,6 +3702,10 @@ int main(int argc, char *argv[])
 
     if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--thanos") {
         QApplication app(argc, argv);
+        // Same sway app_id as the other overlays so the
+        // for_window [app_id="apokolips-genie"] rules match —
+        // floating, border none, full-screen, top of stack.
+        app.setDesktopFileName("apokolips-genie");
         const QString png = QString::fromLocal8Bit(argv[2]);
         QRect startRect(QString::fromLocal8Bit(argv[3]).toInt(),
                         QString::fromLocal8Bit(argv[4]).toInt(),

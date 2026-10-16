@@ -2273,26 +2273,58 @@ private:
     QWidget     *m_displayCard = nullptr;
 };
 
+class ClipList : public QListWidget {
+public:
+    using QListWidget::QListWidget;
+    std::function<QMimeData*(QListWidgetItem*)> mimeFor;
+protected:
+    QMimeData *mimeData(const QList<QListWidgetItem*> &items)
+        const override {
+        if (items.isEmpty() || !mimeFor) return nullptr;
+        return mimeFor(items.first());
+    }
+};
+
 class ClipboardPanel : public QWidget {
 public:
     ClipboardPanel(QWidget *parent = nullptr) : QWidget(parent) {
         setAttribute(Qt::WA_NoSystemBackground, true);
-        setFixedSize(340, 420);
+        setFixedSize(380, 480);
         hide();
 
+        m_storeDir = QDir::homePath()
+                     + "/.local/share/apokolips/clipboard";
+        QDir().mkpath(m_storeDir);
+        m_storeFile = m_storeDir + "/history.json";
+
         QVBoxLayout *outer = new QVBoxLayout(this);
-        outer->setContentsMargins(14, 14, 14, 14);
+        outer->setContentsMargins(14, 12, 14, 14);
         outer->setSpacing(10);
 
+        // ---- Header: traffic lights + title ----
+        QHBoxLayout *hdr = new QHBoxLayout;
+        hdr->setContentsMargins(0, 0, 0, 0);
+        hdr->setSpacing(6);
+        hdr->addWidget(makeDot("#7a2b25", "#ff5f57",
+                               QString::fromUtf8("\xC3\x97"),
+                               [this]() { hidePanel(); }));
+        hdr->addWidget(makeDot("#7a5b18", "#febc2e",
+                               QString::fromUtf8("\xE2\x88\x92"),
+                               [this]() { animateMinimize(); }));
+        hdr->addWidget(makeDot("#155c1e", "#28c840", "+", nullptr));
+        hdr->addSpacing(10);
         QLabel *title = new QLabel("Clipboard");
         title->setStyleSheet(
             "color: rgb(240, 237, 232);"
-            "font-size: 15px; font-weight: 600;"
+            "font-size: 14px; font-weight: 600;"
             "background: transparent;");
-        outer->addWidget(title);
+        hdr->addWidget(title);
+        hdr->addStretch();
+        outer->addLayout(hdr);
 
+        // ---- Search ----
         m_search = new QLineEdit;
-        m_search->setPlaceholderText("Search clipboard…");
+        m_search->setPlaceholderText("Search clipboard\xE2\x80\xA6");
         m_search->setFixedHeight(30);
         m_search->setStyleSheet(
             "QLineEdit {"
@@ -2304,21 +2336,16 @@ public:
             "  padding: 0 10px;"
             "}"
             "QLineEdit:focus { background: rgba(255,255,255,35); }");
-        QObject::connect(m_search, &QLineEdit::textChanged,
-                         [this](const QString &s) {
-            for (int i = 0; i < m_list->count(); ++i) {
-                QListWidgetItem *it = m_list->item(i);
-                bool hide = !s.isEmpty() &&
-                    !it->text().contains(s, Qt::CaseInsensitive) &&
-                    !it->data(Qt::UserRole).toString()
-                        .contains(s, Qt::CaseInsensitive);
-                it->setHidden(hide);
-            }
-        });
         outer->addWidget(m_search);
+        QObject::connect(m_search, &QLineEdit::textChanged,
+                         [this](const QString &s) { applyFilter(s); });
 
-        m_list = new QListWidget;
+        // ---- List ----
+        m_list = new ClipList;
         m_list->setFrameShape(QFrame::NoFrame);
+        m_list->setSelectionMode(QAbstractItemView::SingleSelection);
+        m_list->setDragEnabled(true);
+        m_list->setDragDropMode(QAbstractItemView::DragOnly);
         m_list->setStyleSheet(
             "QListWidget {"
             "  background: rgba(255,255,255,12);"
@@ -2327,49 +2354,65 @@ public:
             "  font-size: 12px;"
             "  padding: 4px;"
             "}"
-            "QListWidget::item {"
-            "  padding: 8px 10px;"
-            "  border-radius: 6px;"
-            "}"
-            "QListWidget::item:hover { background: rgba(255,255,255,30); }"
+            "QListWidget::item { padding: 2px; border-radius: 8px; }"
+            "QListWidget::item:hover { background: rgba(255,255,255,25); }"
             "QListWidget::item:selected {"
-            "  background: rgba(168, 50, 50, 120);"
-            "  color: #ffffff;"
+            "  background: rgba(168, 50, 80, 100);"
             "}");
+        m_list->mimeFor = [this](QListWidgetItem *it) -> QMimeData* {
+            if (!it) return nullptr;
+            Entry e = entryAt(it);
+            QMimeData *m = new QMimeData;
+            if ((e.type == "image" || e.type == "file")
+                && !e.path.isEmpty()) {
+                m->setUrls({ QUrl::fromLocalFile(e.path) });
+                m->setData(ApoDrag::kMimeFile, e.path.toUtf8());
+            } else if (!e.text.isEmpty()) {
+                m->setText(e.text);
+            } else {
+                delete m; return nullptr;
+            }
+            return m;
+        };
         outer->addWidget(m_list, 1);
 
         QObject::connect(m_list, &QListWidget::itemClicked,
-                         [this](QListWidgetItem *it) {
-            QString text = it->data(Qt::UserRole).toString();
-            QProcess::startDetached("wl-copy", { text });
-            hidePanel();
+                         this, [this](QListWidgetItem *it) {
+            if (it) copyEntryToClipboard(entryAt(it));
         });
 
         m_search->installEventFilter(this);
 
-        // Poll the system clipboard for new entries
+        // ---- Poll ----
         m_poll = new QTimer(this);
         m_poll->setInterval(700);
         QObject::connect(m_poll, &QTimer::timeout,
                          this, &ClipboardPanel::pollClipboard);
         m_poll->start();
+
+        loadStore();
+        rebuildList();
         pollClipboard();
     }
 
     void toggle() { isVisible() ? hidePanel() : showPanel(); }
 
     void showPanel() {
-        QWidget *top = window();
-        if (top) {
-            QPoint c = top->mapToGlobal(QPoint(
-                (top->width() - width()) / 2,
-                (top->height() - height()) / 2));
-            move(c);
+        if (!m_positioned) {
+            QWidget *top = window();
+            if (top) {
+                QPoint c = top->mapToGlobal(QPoint(
+                    (top->width() - width()) / 2,
+                    (top->height() - height()) / 2));
+                move(c);
+            }
+            m_positioned = true;
         }
         raise();
         show();
         m_search->clear();
         m_search->setFocus();
+        rebuildList();
     }
 
     void hidePanel() { hide(); }
@@ -2380,7 +2423,6 @@ protected:
         p.setRenderHint(QPainter::Antialiasing);
         QRect r = rect().adjusted(0, 0, -1, -1);
 
-        // Soft shadow
         p.setPen(Qt::NoPen);
         for (int i = 14; i >= 1; --i) {
             QColor sh(0, 0, 0);
@@ -2422,66 +2464,482 @@ protected:
     }
 
     bool eventFilter(QObject *o, QEvent *ev) override {
-        if (ev->type() == QEvent::KeyPress) {
+        if (o == m_search && ev->type() == QEvent::KeyPress) {
             QKeyEvent *k = static_cast<QKeyEvent *>(ev);
-            if (k->key() == Qt::Key_Return || k->key() == Qt::Key_Enter) {
+            if (k->key() == Qt::Key_Return
+                || k->key() == Qt::Key_Enter) {
                 QListWidgetItem *it = m_list->currentItem();
                 if (!it && m_list->count() > 0)
                     it = m_list->item(0);
                 if (it) {
-                    QProcess::startDetached("wl-copy",
-                        { it->data(Qt::UserRole).toString() });
-                    hidePanel();
+                    copyEntryToClipboard(entryAt(it));
                     return true;
                 }
             }
-            if (k->key() == Qt::Key_Escape) {
-                hidePanel(); return true;
-            }
-        }
-        if (o == m_search && ev->type() == QEvent::KeyPress) {
-            QKeyEvent *k = static_cast<QKeyEvent *>(ev);
             if (k->key() == Qt::Key_Down) {
                 m_list->setFocus();
-                if (m_list->count() > 0) m_list->setCurrentRow(0);
+                if (m_list->count() > 0)
+                    m_list->setCurrentRow(0);
                 return true;
+            }
+            if (k->key() == Qt::Key_Escape) {
+                hidePanel(); return true;
             }
         }
         return QWidget::eventFilter(o, ev);
     }
 
 private:
-    void pollClipboard() {
-        QProcess p;
-        p.start("wl-paste", { "-n" });
-        p.waitForFinished(400);
-        QString text = QString::fromUtf8(p.readAllStandardOutput());
-        if (text.isEmpty() || text == m_last) return;
-        m_last = text;
+    struct Entry {
+        QString type;   // text | link | image | file
+        QString text;   // content for text/link
+        QString path;   // local file for image/file
+        QString preview;
+        qint64  ts = 0;
+        bool    pinned = false;
+    };
 
-        // Skip if already in list
-        for (int i = 0; i < m_list->count(); ++i) {
-            if (m_list->item(i)->data(Qt::UserRole).toString() == text)
-                return;
-        }
+    QList<Entry>  m_entries;
+    QString       m_storeDir;
+    QString       m_storeFile;
+    ClipList     *m_list = nullptr;
+    QLineEdit    *m_search = nullptr;
+    QTimer       *m_poll = nullptr;
+    QString       m_lastSig;
 
-        QString preview = text;
-        preview.replace("\n", " ⏎ ");
-        if (preview.length() > 100) preview = preview.left(97) + "…";
-
-        QListWidgetItem *it = new QListWidgetItem(preview);
-        it->setData(Qt::UserRole, text);
-        it->setToolTip(text.left(500));
-        m_list->insertItem(0, it);
-
-        while (m_list->count() > 20)
-            delete m_list->takeItem(m_list->count() - 1);
+    QPushButton *makeDot(const QString &idle,
+                         const QString &accent,
+                         const QString &glyph,
+                         std::function<void()> onClick) {
+        QPushButton *b = new QPushButton(glyph, this);
+        b->setFixedSize(12, 12);
+        b->setCursor(onClick ? Qt::PointingHandCursor
+                             : Qt::ArrowCursor);
+        b->setStyleSheet(QString(
+            "QPushButton {"
+            "  background: %1;"
+            "  border: none;"
+            "  border-radius: 6px;"
+            "  color: transparent;"
+            "  font-size: 9px; font-weight: 900;"
+            "  padding: 0;"
+            "}"
+            "QPushButton:hover { background: %2;"
+            "  color: rgba(60,25,25,220); }")
+            .arg(idle, accent));
+        if (onClick)
+            QObject::connect(b, &QPushButton::clicked, this, onClick);
+        else
+            b->setEnabled(false);
+        return b;
     }
 
-    QListWidget *m_list = nullptr;
-    QLineEdit   *m_search = nullptr;
-    QTimer      *m_poll = nullptr;
-    QString      m_last;
+    void loadStore() {
+        QFile f(m_storeFile);
+        if (!f.open(QIODevice::ReadOnly)) return;
+        QJsonDocument d = QJsonDocument::fromJson(f.readAll());
+        f.close();
+        if (!d.isArray()) return;
+        for (const QJsonValue &v : d.array()) {
+            QJsonObject o = v.toObject();
+            Entry e;
+            e.type    = o.value("type").toString("text");
+            e.text    = o.value("text").toString();
+            e.path    = o.value("path").toString();
+            e.preview = o.value("preview").toString();
+            e.ts      = (qint64)o.value("ts").toDouble();
+            e.pinned  = o.value("pinned").toBool(false);
+            if (!e.path.isEmpty() && !QFile::exists(e.path))
+                continue;
+            m_entries.append(e);
+        }
+    }
+
+    void saveStore() {
+        QJsonArray arr;
+        for (const Entry &e : m_entries) {
+            QJsonObject o;
+            o["type"]    = e.type;
+            o["text"]    = e.text;
+            o["path"]    = e.path;
+            o["preview"] = e.preview;
+            o["ts"]      = double(e.ts);
+            o["pinned"]  = e.pinned;
+            arr.append(o);
+        }
+        QFile f(m_storeFile);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return;
+        f.write(QJsonDocument(arr).toJson());
+    }
+
+    void rebuildList() {
+        m_list->clear();
+        QList<Entry> pinned, rest;
+        for (const Entry &e : m_entries)
+            (e.pinned ? pinned : rest).append(e);
+        std::sort(rest.begin(), rest.end(),
+                  [](const Entry &a, const Entry &b) {
+                      return a.ts > b.ts;
+                  });
+        QList<Entry> ordered = pinned + rest;
+        for (const Entry &e : ordered) addRow(e);
+        applyFilter(m_search->text());
+    }
+
+    void addRow(const Entry &e) {
+        QListWidgetItem *it = new QListWidgetItem(m_list);
+        it->setSizeHint(QSize(0, 44));
+        it->setData(Qt::UserRole,     e.type);
+        it->setData(Qt::UserRole + 1, e.text);
+        it->setData(Qt::UserRole + 2, e.path);
+        it->setData(Qt::UserRole + 3, e.preview);
+        it->setData(Qt::UserRole + 4, e.pinned);
+        it->setData(Qt::UserRole + 5, e.ts);
+
+        QWidget *row = new QWidget;
+        row->setAttribute(Qt::WA_TranslucentBackground, true);
+        QHBoxLayout *h = new QHBoxLayout(row);
+        h->setContentsMargins(8, 4, 6, 4);
+        h->setSpacing(8);
+
+        QLabel *chip = new QLabel(typeLetter(e.type));
+        chip->setFixedSize(34, 20);
+        chip->setAlignment(Qt::AlignCenter);
+        chip->setStyleSheet(
+            "QLabel {"
+            "  background: rgba(168, 50, 80, 190);"
+            "  color: #ffffff;"
+            "  border-radius: 5px;"
+            "  font-size: 9px; font-weight: 700;"
+            "}");
+        h->addWidget(chip);
+
+        QLabel *prev = new QLabel(e.preview);
+        prev->setStyleSheet(
+            "QLabel { color: rgb(240, 237, 232);"
+            "  background: transparent; font-size: 12px; }");
+        prev->setSizePolicy(QSizePolicy::Expanding,
+                            QSizePolicy::Preferred);
+        h->addWidget(prev, 1);
+
+        QPushButton *pin = new QPushButton(
+            e.pinned
+            ? QString::fromUtf8("\xE2\x98\x85")
+            : QString::fromUtf8("\xE2\x98\x86"));
+        pin->setFixedSize(24, 24);
+        pin->setCursor(Qt::PointingHandCursor);
+        pin->setFlat(true);
+        pin->setStyleSheet(
+            "QPushButton {"
+            "  background: transparent; border: none;"
+            "  color: rgb(200, 197, 192); font-size: 14px;"
+            "}"
+            "QPushButton:hover {"
+            "  background: rgba(255,255,255,20);"
+            "  border-radius: 6px; }");
+        QString type = e.type, path = e.path, text = e.text;
+        qint64 ts = e.ts;
+        QObject::connect(pin, &QPushButton::clicked,
+                         [this, type, path, text, ts]() {
+            for (auto &x : m_entries) {
+                if (x.type == type && x.path == path
+                    && x.text == text && x.ts == ts) {
+                    x.pinned = !x.pinned;
+                    break;
+                }
+            }
+            saveStore();
+            rebuildList();
+        });
+        h->addWidget(pin);
+
+        m_list->setItemWidget(it, row);
+    }
+
+    QString typeLetter(const QString &t) const {
+        if (t == "image") return "IMG";
+        if (t == "file")  return "FILE";
+        if (t == "link")  return "LINK";
+        return "TXT";
+    }
+
+    Entry entryAt(QListWidgetItem *it) const {
+        Entry e;
+        if (!it) return e;
+        e.type    = it->data(Qt::UserRole).toString();
+        e.text    = it->data(Qt::UserRole + 1).toString();
+        e.path    = it->data(Qt::UserRole + 2).toString();
+        e.preview = it->data(Qt::UserRole + 3).toString();
+        e.pinned  = it->data(Qt::UserRole + 4).toBool();
+        e.ts      = it->data(Qt::UserRole + 5).toLongLong();
+        return e;
+    }
+
+    void applyFilter(const QString &s) {
+        for (int i = 0; i < m_list->count(); ++i) {
+            QListWidgetItem *it = m_list->item(i);
+            QString prev = it->data(Qt::UserRole + 3).toString();
+            QString txt  = it->data(Qt::UserRole + 1).toString();
+            QString path = it->data(Qt::UserRole + 2).toString();
+            bool keep = s.isEmpty()
+                || prev.contains(s, Qt::CaseInsensitive)
+                || txt.contains(s, Qt::CaseInsensitive)
+                || path.contains(s, Qt::CaseInsensitive);
+            it->setHidden(!keep);
+        }
+    }
+
+    void copyEntryToClipboard(const Entry &e) {
+        if (e.type == "image" && !e.path.isEmpty()) {
+            QProcess::startDetached("bash", { "-c",
+                QString("wl-copy -t image/png < %1")
+                    .arg(e.path) });
+        } else if (e.type == "file" && !e.path.isEmpty()) {
+            QProcess::startDetached("wl-copy",
+                { "-t", "text/uri-list",
+                  "file://" + e.path });
+        } else {
+            QProcess::startDetached("wl-copy", { e.text });
+        }
+        hidePanel();
+    }
+
+    QByteArray wlPaste(const QString &mimetype) {
+        QProcess p;
+        if (mimetype.isEmpty())
+            p.start("wl-paste", { "-n" });
+        else
+            p.start("wl-paste", { "-t", mimetype });
+        p.waitForFinished(400);
+        return p.readAllStandardOutput();
+    }
+
+    void pollClipboard() {
+        Entry e;
+        bool filled = false;
+
+        // 1) image
+        QByteArray img = wlPaste("image/png");
+        if (!img.isEmpty()) {
+            QByteArray hash = QCryptographicHash::hash(
+                img, QCryptographicHash::Md5);
+            QString sig = "img:" + hash.toHex();
+            if (sig == m_lastSig) return;
+            m_lastSig = sig;
+            QString fname = m_storeDir + "/"
+                + QString::number(
+                    QDateTime::currentMSecsSinceEpoch())
+                + ".png";
+            QFile f(fname);
+            if (!f.open(QIODevice::WriteOnly)) return;
+            f.write(img);
+            f.close();
+            e.type    = "image";
+            e.path    = fname;
+            e.preview = "Image  \xC2\xB7  "
+                + QString::number(img.size() / 1024) + " KB";
+            filled = true;
+        }
+
+        // 2) uri-list (files)
+        if (!filled) {
+            QByteArray uri = wlPaste("text/uri-list");
+            if (!uri.isEmpty()) {
+                QString raw = QString::fromUtf8(uri);
+                QString first = raw.split(
+                    QRegularExpression("[\\r\\n]"),
+                    Qt::SkipEmptyParts).value(0);
+                if (first.startsWith("file://")) {
+                    QString path = QUrl(first).toLocalFile();
+                    if (!path.isEmpty()
+                        && QFile::exists(path)) {
+                        QString sig = "file:" + path;
+                        if (sig == m_lastSig) return;
+                        m_lastSig = sig;
+                        e.type = "file";
+                        e.path = path;
+                        e.preview = QFileInfo(path).fileName();
+                        filled = true;
+                    }
+                }
+            }
+        }
+
+        // 3) text
+        if (!filled) {
+            QByteArray raw = wlPaste("");
+            if (raw.isEmpty()) return;
+            QString text = QString::fromUtf8(raw);
+            QString sig = "text:" + text.left(200);
+            if (sig == m_lastSig) return;
+            m_lastSig = sig;
+            QString preview = text;
+            preview.replace("\n", " \xE2\x8F\x8E ");
+            if (preview.length() > 80)
+                preview = preview.left(77)
+                          + QString::fromUtf8("\xE2\x80\xA6");
+            bool isLink = text.startsWith("http://")
+                       || text.startsWith("https://");
+            e.type    = isLink ? "link" : "text";
+            e.text    = text;
+            e.preview = preview;
+        }
+
+        e.ts = QDateTime::currentMSecsSinceEpoch();
+
+        for (const Entry &x : m_entries) {
+            if (x.type == e.type && x.text == e.text
+                && x.path == e.path) return;
+        }
+
+        m_entries.prepend(e);
+        while (m_entries.size() > 100) {
+            Entry old = m_entries.takeLast();
+            if (old.type == "image" && !old.path.isEmpty()
+                && old.path.startsWith(m_storeDir)) {
+                QFile::remove(old.path);
+            }
+        }
+        saveStore();
+        if (isVisible()) rebuildList();
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton
+            && e->pos().y() < m_headerHeight) {
+            m_dragging = true;
+            m_dragOffset = e->globalPos()
+                           - mapToGlobal(QPoint(0, 0));
+            setCursor(Qt::ClosedHandCursor);
+            e->accept();
+            return;
+        }
+        QWidget::mousePressEvent(e);
+    }
+    void mouseMoveEvent(QMouseEvent *e) override {
+        if (m_dragging) {
+            QPoint newTL = e->globalPos() - m_dragOffset;
+            if (QWidget *par = parentWidget())
+                newTL = par->mapFromGlobal(newTL);
+            move(newTL);
+            e->accept();
+            return;
+        }
+        QWidget::mouseMoveEvent(e);
+    }
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (m_dragging) {
+            m_dragging = false;
+            setCursor(Qt::ArrowCursor);
+            e->accept();
+            return;
+        }
+        QWidget::mouseReleaseEvent(e);
+    }
+
+    void animateMinimize() {
+        // Capture what's on screen at the panel's location so the
+        // overlay animates the real pixels, not a transparent frame.
+        QString png = QDir::tempPath() + "/apokolips-clip-panel-"
+                      + QString::number(
+                            QDateTime::currentMSecsSinceEpoch())
+                      + ".png";
+        QPoint gp = mapToGlobal(QPoint(0, 0));
+        QProcess grim;
+        grim.start("grim", { "-g",
+            QString("%1,%2 %3x%4")
+                .arg(gp.x()).arg(gp.y())
+                .arg(width()).arg(height()),
+            png });
+        grim.waitForFinished(600);
+
+        // Read the user's chosen minimize style from visual.json.
+        // Accept every style the shell accepts — genie, scale, suck,
+        // thanos. Keep in sync with visualconfig.h validation.
+        QString style = "genie";
+        {
+            QFile f(QDir::homePath()
+                    + "/.config/apokolips/visual.json");
+            if (f.open(QIODevice::ReadOnly)) {
+                QJsonObject o = QJsonDocument::fromJson(
+                    f.readAll()).object();
+                QString s = o.value("minimizeStyle").toString();
+                if (s == "scale" || s == "suck"
+                    || s == "genie" || s == "thanos")
+                    style = s;
+            }
+        }
+
+        if (!QFile::exists(png)) { hidePanel(); return; }
+
+        QScreen *scr = screen();
+        int tx = scr ? scr->geometry().width() / 2 : 960;
+        int ty = 0;   // top of screen
+
+        const QString readyName =
+            "apokolips-clip-ready-"
+            + QString::number(QCoreApplication::applicationPid())
+            + "-"
+            + QString::number(
+                QDateTime::currentMSecsSinceEpoch() % 100000);
+
+        QLocalServer::removeServer(readyName);
+        // Parent to `this` so the server dies with the panel if
+        // nothing else cleans it up.
+        QLocalServer *readyServer = new QLocalServer(this);
+        readyServer->listen(readyName);
+
+        // Guard: safe to test after deleteLater() has run.
+        QPointer<QLocalServer> srvGuard(readyServer);
+        // Idempotency flag shared by the two completion paths.
+        QSharedPointer<bool> done = QSharedPointer<bool>::create(false);
+
+        auto finishOnce = [this, srvGuard, png, done]() {
+            if (*done) return;
+            *done = true;
+            if (srvGuard) {
+                srvGuard->close();
+                srvGuard->deleteLater();
+            }
+            hidePanel();
+            QFile::remove(png);
+        };
+
+        QObject::connect(readyServer, &QLocalServer::newConnection,
+                         this, [readyServer, finishOnce]() {
+            QLocalSocket *conn =
+                readyServer->nextPendingConnection();
+            if (conn) {
+                conn->readAll();
+                conn->deleteLater();
+            }
+            finishOnce();
+        });
+
+        QProcess::startDetached(
+            QCoreApplication::applicationFilePath(),
+            { "--" + style, png,
+              QString::number(gp.x()),
+              QString::number(gp.y()),
+              QString::number(width()),
+              QString::number(height()),
+              QString::number(tx),
+              QString::number(ty),
+              "--ms", "500",
+              "--ready-sock", readyName });
+
+        // Safety net: if the overlay never pings (crash, missing
+        // style binary, etc.), hide anyway after 1 s.
+        QTimer::singleShot(1000, this, [finishOnce]() { finishOnce(); });
+    }
+
+private:
+    int           m_headerHeight = 40;
+    bool          m_dragging = false;
+    QPoint        m_dragOffset;
+    bool          m_positioned = false;
 };
 
 class PoolIcon : public QWidget {
