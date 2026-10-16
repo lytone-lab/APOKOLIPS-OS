@@ -40,6 +40,29 @@ The user can override. He owns the project. But he asked for a
 safeguard, so the AI will push back — including when he'd rather
 it didn't.
 
+## Diagnostic before every feature — rule
+
+Before starting ANY feature — not just a bug fix — the AI must run a
+diagnostic to confirm whether the thing already exists, or already
+works. Same reason as the bug rule: the docs drift behind reality.
+An item listed as `[ ]` in PROJECT_STATE.txt is a *claim*, not a fact.
+
+Before writing any patch that builds, rewrites, or "finishes" a
+feature:
+
+1. Read the code. Does the feature already exist?
+2. If it exists, does it actually work in the running shell?
+3. If it works, the feature is closed. Tick it off. Do NOT patch.
+4. If it's partial, name exactly what's missing before patching.
+5. If it doesn't exist, patch.
+
+No exceptions — even for items the user names directly. The user
+named the item because they *think* it's open. Verify first.
+
+Diagnostic output goes in chat. The verdict (exists / partial /
+missing) is stated plainly before any patch is written.
+
+----
 ## What the AI vetoes
 
 - Starting the main.cpp split while any bug is open. Two-day job,
