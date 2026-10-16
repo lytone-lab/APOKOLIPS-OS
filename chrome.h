@@ -488,7 +488,9 @@ public:
         // Populate
         QVector<AppEntry> visible;
         for (const auto &e : appRegistry())
-            if (isInLauncher(QString::fromUtf8(e.id))) visible.append(e);
+            if (QString::fromUtf8(e.id) != "launchpad"
+                && isInLauncher(QString::fromUtf8(e.id)))
+                visible.append(e);
 
         for (int i = 0; i < visible.size(); ++i) {
             QWidget *tile = makeTile(QString::fromUtf8(visible[i].glyph),
@@ -647,7 +649,9 @@ private:
         // Pull from central registry — only entries flagged inLauncher.
         QVector<AppEntry> visible;
         for (const auto &e : appRegistry())
-            if (isInLauncher(QString::fromUtf8(e.id))) visible.append(e);
+            if (QString::fromUtf8(e.id) != "launchpad"
+                && isInLauncher(QString::fromUtf8(e.id)))
+                visible.append(e);
 
         // 4 fixed-width columns, each a vertical stack.
         QList<QVBoxLayout *> cols;
