@@ -431,6 +431,35 @@ public:
             restyle();
             repaint();
         });
+
+        // Live preview — Settings writes visual.json from another
+        // process, so watch the file directly.
+        {
+            QString cfgPath = QStandardPaths::writableLocation(
+                                  QStandardPaths::ConfigLocation);
+            if (cfgPath.isEmpty())
+                cfgPath = QDir::homePath() + "/.config";
+            cfgPath += "/apokolips/visual.json";
+
+            QFileSystemWatcher *watcher = new QFileSystemWatcher(this);
+            if (QFile::exists(cfgPath)) watcher->addPath(cfgPath);
+            QObject::connect(watcher, &QFileSystemWatcher::fileChanged,
+                             this, [this, cfgPath, watcher]() {
+                VisualConfigManager::instance().load();
+                // rebuildTiles tears down and recreates the tiles.
+                // restyleTiles then applies the theme stylesheet —
+                // without it new tiles render with Qt's default
+                // (light) look. repositionPanel updates geometry for
+                // a changed column count or anchor.
+                rebuildTiles();
+                restyleTiles();
+                repositionPanel();
+                update();
+                if (!watcher->files().contains(cfgPath)
+                    && QFile::exists(cfgPath))
+                    watcher->addPath(cfgPath);
+            });
+        }
     }
 
     void toggle() {
@@ -474,8 +503,10 @@ public:
             delete gi;
         }
 
-        // Build fresh columns
-        const int COLS = 4;
+        // Build fresh columns — same COLS value used to create the
+        // columns and to place the tiles. Must never diverge.
+        const int COLS = qBound(3, VisualConfigManager::instance()
+                                     .cfg().launcherColumns, 8);
         for (int c = 0; c < COLS; ++c) {
             QVBoxLayout *colLay = new QVBoxLayout;
             colLay->setContentsMargins(0, 0, 0, 0);
@@ -506,11 +537,11 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        QRect panelRect((width() - PANEL_W) / 2, 120, PANEL_W, PANEL_H);
+        if (m_panelRect.isNull()) return;
+        const auto &vc = VisualConfigManager::instance().cfg();
+        const QRect panelRect = m_panelRect;
 
         // ---- Soft edge: many thin rings = smooth fade ----
-        // Skip while fading out fast — the ring pass is the most
-        // expensive part of the frame.
         if (m_opacity > 0.35 || m_fadeTarget >= m_opacity) {
             p.setPen(Qt::NoPen);
             for (int i = 14; i >= 1; --i) {
@@ -522,21 +553,21 @@ protected:
             }
         }
 
-        // ---- Heavy blur through the panel (glassy) ----
+        // ---- Wallpaper blur through the panel ----
         const QPixmap &bg = ThemeManager::instance().blurredBg();
-        if (!bg.isNull()) {
+        if (!bg.isNull() && vc.launcherBlur > 0) {
             QPainterPath panelPath;
             panelPath.addRoundedRect(panelRect, 22, 22);
             p.save();
             p.setClipPath(panelPath);
-            p.setOpacity(0.85 * m_opacity);
+            p.setOpacity((vc.launcherBlur / 100.0) * m_opacity);
             p.drawPixmap(panelRect, bg, panelRect);
             p.restore();
         }
 
-        // ---- Very light tint so tiles stay legible ----
+        // ---- Tint so tiles stay legible ----
         StyleRenderer::drawPanel(p, QRectF(panelRect), 22, m_theme,
-                                 int(200 * m_opacity));
+                                 int(vc.launcherAlpha * m_opacity));
     }
 
     void keyPressEvent(QKeyEvent *e) override {
@@ -620,18 +651,14 @@ private:
     }
 
     void buildUi() {
-        QVBoxLayout *outer = new QVBoxLayout(this);
-        outer->setContentsMargins(0, 0, 0, 0);
-        outer->setSpacing(0);
+        // The panel is a direct child of this widget and is
+        // positioned absolutely by repositionPanel(). No layout —
+        // a layout would fight the anchor-move.
+        m_panel = new QWidget(this);
+        m_panel->setAttribute(Qt::WA_TranslucentBackground, true);
+        m_panel->setAttribute(Qt::WA_NoSystemBackground, true);
 
-        outer->addSpacing(120);
-
-        QWidget *panel = new QWidget;
-        panel->setFixedSize(PANEL_W, PANEL_H);
-        panel->setAttribute(Qt::WA_TranslucentBackground, true);
-        panel->setAttribute(Qt::WA_NoSystemBackground, true);
-
-        QVBoxLayout *pl = new QVBoxLayout(panel);
+        QVBoxLayout *pl = new QVBoxLayout(m_panel);
         pl->setContentsMargins(28, 26, 28, 30);
         pl->setSpacing(18);
 
@@ -646,19 +673,22 @@ private:
         m_tilesLayout->setSpacing(14);
         m_tilesLayout->setContentsMargins(20, 20, 20, 20);
 
-        // Pull from central registry — only entries flagged inLauncher.
         QVector<AppEntry> visible;
         for (const auto &e : appRegistry())
             if (QString::fromUtf8(e.id) != "launchpad"
                 && isInLauncher(QString::fromUtf8(e.id)))
                 visible.append(e);
 
-        // 4 fixed-width columns, each a vertical stack.
+        // COLS is read once and used by both the create loop and
+        // the placement loop. They must never use different values.
+        const int COLS = qBound(3, VisualConfigManager::instance()
+                                     .cfg().launcherColumns, 8);
+
         QList<QVBoxLayout *> cols;
         QHBoxLayout *gridRow = new QHBoxLayout;
         gridRow->setContentsMargins(0, 0, 0, 0);
         gridRow->setSpacing(14);
-        for (int c = 0; c < 4; ++c) {
+        for (int c = 0; c < COLS; ++c) {
             QVBoxLayout *colLay = new QVBoxLayout;
             colLay->setContentsMargins(0, 0, 0, 0);
             colLay->setSpacing(14);
@@ -668,7 +698,6 @@ private:
         }
 
         const int appCount = visible.size();
-        const int COLS = 4;
         for (int i = 0; i < appCount; ++i) {
             QWidget *tile = makeTile(QString::fromUtf8(visible[i].glyph),
                                      visible[i].label, i);
@@ -681,8 +710,43 @@ private:
         pl->addLayout(gridRow);
         pl->addStretch();
 
-        outer->addWidget(panel, 0, Qt::AlignHCenter);
-        outer->addStretch();
+        repositionPanel();
+    }
+
+    // Panel width grows with the column count and icon size so the
+    // grid never overflows the panel.
+    int computedPanelW() const {
+        const auto &vc = VisualConfigManager::instance().cfg();
+        const int cols = qBound(3, vc.launcherColumns, 8);
+        const int tileW = vc.launcherIconSize + 88;
+        const int contentW = cols * tileW + (cols - 1) * 14;
+        return 56 + contentW + 24;
+    }
+
+    // Position the panel per the 3x3 anchor grid. 0=TL, 1=TC,
+    // 2=TR, 3=ML, 4=MC, 5=MR, 6=BL, 7=BC, 8=BR.
+    void repositionPanel() {
+        if (!m_panel) return;
+        const auto &vc = VisualConfigManager::instance().cfg();
+        const int panelW = computedPanelW();
+        int px, py;
+        switch (vc.launcherAnchor % 3) {
+            case 0:  px = 40; break;
+            case 2:  px = width() - panelW - 40; break;
+            default: px = (width() - panelW) / 2;
+        }
+        switch (vc.launcherAnchor / 3) {
+            case 0:  py = 120; break;
+            case 2:  py = height() - PANEL_H - 120; break;
+            default: py = (height() - PANEL_H) / 2;
+        }
+        m_panel->setGeometry(px, py, panelW, PANEL_H);
+        m_panelRect = QRect(px, py, panelW, PANEL_H);
+    }
+
+    void resizeEvent(QResizeEvent *e) override {
+        QWidget::resizeEvent(e);
+        repositionPanel();
     }
 
     QWidget *makeTile(const QString &icon, const QString &name, int index) {
@@ -951,6 +1015,8 @@ private:
     QList<QLabel *> m_nameLabels;
     QList<QVBoxLayout *> m_gridColumns;
     QHBoxLayout *m_gridRow = nullptr;
+    QWidget *m_panel = nullptr;
+    QRect m_panelRect;
 };
 
 // ----------------------------------------------------------------

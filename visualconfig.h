@@ -125,6 +125,10 @@ struct VisualConfig {
     int     spotlightBarWidth  = 680;
     int     spotlightBarHeight = 260;
     int     launcherIconSize   = 52;      // 40 small / 52 medium / 64 large
+    int     launcherColumns    = 4;       // 3-8 icons per row
+    int     launcherBlur       = 85;      // 0-100% — wallpaper blur behind panel
+    int     launcherAnchor     = 1;       // 0-8: 3x3 grid, 0=TL 1=TC 2=TR
+                                          // 3=ML 4=MC 5=MR 6=BL 7=BC 8=BR
     QStringList dockApps;      // empty = registry default
     QStringList launcherApps;  // empty = registry default
     QStringList poolApps;   // empty = ["mymach"]
@@ -414,6 +418,12 @@ public:
                                         m_cfg.spotlightBarHeight);
         m_cfg.launcherIconSize  = getI("launcherIconSize",
                                        m_cfg.launcherIconSize);
+        m_cfg.launcherColumns   = getI("launcherColumns",
+                                       m_cfg.launcherColumns);
+        m_cfg.launcherBlur      = getI("launcherBlur",
+                                       m_cfg.launcherBlur);
+        m_cfg.launcherAnchor    = getI("launcherAnchor",
+                                       m_cfg.launcherAnchor);
         if (o.contains("dockApps") && o["dockApps"].isArray()) {
             m_cfg.dockApps.clear();
             for (const QJsonValue &v : o["dockApps"].toArray())
@@ -577,6 +587,12 @@ public:
             m_cfg.launcherIconSize = 36;
         if (m_cfg.launcherIconSize > 80)
             m_cfg.launcherIconSize = 80;
+        if (m_cfg.launcherColumns < 3)  m_cfg.launcherColumns = 3;
+        if (m_cfg.launcherColumns > 8)  m_cfg.launcherColumns = 8;
+        if (m_cfg.launcherBlur < 0)     m_cfg.launcherBlur = 0;
+        if (m_cfg.launcherBlur > 100)   m_cfg.launcherBlur = 100;
+        if (m_cfg.launcherAnchor < 0)   m_cfg.launcherAnchor = 0;
+        if (m_cfg.launcherAnchor > 8)   m_cfg.launcherAnchor = 8;
         if (m_cfg.shellBaseFontPt < 8)  m_cfg.shellBaseFontPt = 8;
         if (m_cfg.shellBaseFontPt > 18) m_cfg.shellBaseFontPt = 18;
         if (m_cfg.notificationBannerMs < 1000)  m_cfg.notificationBannerMs = 1000;
@@ -698,6 +714,9 @@ public:
         o["spotlightBarWidth"]   = m_cfg.spotlightBarWidth;
         o["spotlightBarHeight"]  = m_cfg.spotlightBarHeight;
         o["launcherIconSize"]    = m_cfg.launcherIconSize;
+        o["launcherColumns"]     = m_cfg.launcherColumns;
+        o["launcherBlur"]        = m_cfg.launcherBlur;
+        o["launcherAnchor"]      = m_cfg.launcherAnchor;
         {
             QJsonArray arr;
             for (const QString &s : m_cfg.dockApps)     arr << s;

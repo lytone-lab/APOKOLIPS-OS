@@ -4000,6 +4000,150 @@ private:
             v->addWidget(c);
         }
 
+        // ---- Launcher theming card — columns / blur / tint / anchor ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
+            cv->addWidget(Sigil::groupLabel("LAUNCHER THEMING"));
+
+            auto makeRow = [&](const QString &label, const QString &hint,
+                               int minV, int maxV, int cur,
+                               const QString &unit,
+                               std::function<void(int)> apply) {
+                QWidget *row = new QWidget;
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(6);
+                QHBoxLayout *top = new QHBoxLayout;
+                QLabel *t = new QLabel(label);
+                t->setStyleSheet(QString(
+                    "color: %1; font-size: 13px; background: transparent;")
+                    .arg(Sigil::textPrimary().name()));
+                QLabel *val = new QLabel(QString("%1%2").arg(cur).arg(unit));
+                val->setStyleSheet(QString(
+                    "color: %1; font-size: 12px; background: transparent;")
+                    .arg(Sigil::textSecondary().name()));
+                val->setMinimumWidth(70);
+                val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                top->addWidget(t);
+                top->addStretch();
+                top->addWidget(val);
+                rv->addLayout(top);
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(minV, maxV);
+                sl->setValue(cur);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px;"
+                    "  background: rgba(255,255,255,25);"
+                    "  border-radius: 2px; }"
+                    "QSlider::handle:horizontal {"
+                    "  background: #ffffff; width: 14px; height: 14px;"
+                    "  margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal {"
+                    "  background: rgb(168,50,50);"
+                    "  border-radius: 2px; }");
+                m_sliders.append(sl);
+                QObject::connect(sl, &QSlider::valueChanged,
+                                 [val, unit, apply](int x) {
+                    val->setText(QString("%1%2").arg(x).arg(unit));
+                    apply(x);
+                });
+                rv->addWidget(sl);
+                if (!hint.isEmpty()) {
+                    QLabel *h = new QLabel(hint);
+                    h->setStyleSheet(QString(
+                        "color: %1; font-size: 11px;"
+                        " background: transparent;")
+                        .arg(Sigil::textDim().name()));
+                    h->setWordWrap(true);
+                    rv->addWidget(h);
+                }
+                return row;
+            };
+
+            cv->addWidget(makeRow("Columns",
+                "Icons per row. Panel reflows instantly.",
+                3, 8, vc.launcherColumns, "",
+                [](int x) {
+                    VisualConfigManager::instance().setAndSave(
+                        [x](VisualConfig &c) { c.launcherColumns = x; });
+                }));
+
+            cv->addWidget(makeRow("Blur",
+                "How much of the wallpaper shows through the panel.",
+                0, 100, vc.launcherBlur, "%",
+                [](int x) {
+                    VisualConfigManager::instance().setAndSave(
+                        [x](VisualConfig &c) { c.launcherBlur = x; });
+                }));
+
+            cv->addWidget(makeRow("Tint",
+                "Panel darkness. Lower = glassier, higher = more solid.",
+                60, 255, vc.launcherAlpha, "",
+                [](int x) {
+                    VisualConfigManager::instance().setAndSave(
+                        [x](VisualConfig &c) { c.launcherAlpha = x; });
+                }));
+
+            // ---- Position anchor 3x3 grid ----
+            QLabel *anchorLbl = new QLabel("Position");
+            anchorLbl->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            cv->addWidget(anchorLbl);
+
+            QWidget *anchorGrid = new QWidget;
+            QGridLayout *ag = new QGridLayout(anchorGrid);
+            ag->setSpacing(6);
+            ag->setContentsMargins(0, 0, 0, 0);
+            // Exclusive button group — Qt enforces single selection.
+            // No manual re-style loop; the "on" state is the
+            // :checked pseudo-state in the stylesheet.
+            QButtonGroup *anchorGroup = new QButtonGroup(anchorGrid);
+            anchorGroup->setExclusive(true);
+            const int curAnchor = vc.launcherAnchor;
+            const QString anchorCss =
+                "QPushButton {"
+                "  background: rgba(255,255,255,18);"
+                "  border: 1px solid rgba(255,255,255,40);"
+                "  border-radius: 6px;"
+                "}"
+                "QPushButton:checked {"
+                "  background: rgba(168,50,50,220);"
+                "  border: 1px solid rgba(168,50,50,255);"
+                "}";
+            for (int i = 0; i < 9; ++i) {
+                QPushButton *b = new QPushButton;
+                b->setCheckable(true);
+                b->setChecked(i == curAnchor);
+                b->setFixedSize(30, 30);
+                b->setCursor(Qt::PointingHandCursor);
+                b->setStyleSheet(anchorCss);
+                anchorGroup->addButton(b, i);
+                ag->addWidget(b, i / 3, i % 3);
+            }
+            QObject::connect(anchorGroup, &QButtonGroup::idClicked,
+                             [](int i) {
+                VisualConfigManager::instance().setAndSave(
+                    [i](VisualConfig &c) { c.launcherAnchor = i; });
+            });
+            cv->addWidget(anchorGrid);
+            {
+                QLabel *h = new QLabel(
+                    "Where the launcher panel sits on screen.");
+                h->setStyleSheet(QString(
+                    "color: %1; font-size: 11px;"
+                    " background: transparent;")
+                    .arg(Sigil::textDim().name()));
+                h->setWordWrap(true);
+                cv->addWidget(h);
+            }
+
+            v->addWidget(c);
+        }
+
         v->addStretch();
         return page;
     }

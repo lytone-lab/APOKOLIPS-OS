@@ -63,6 +63,41 @@ Diagnostic output goes in chat. The verdict (exists / partial /
 missing) is stated plainly before any patch is written.
 
 ----
+## What the AI verifies before every patch
+
+Five checks. Non-negotiable. Every one of them exists because a
+patch that skipped it broke the build or crashed the shell.
+
+1. **Read the whole function.** Not a grep of the region — the
+   entire function, from signature to closing brace. Every loop,
+   every index, every helper call. Grep finds a name; reading
+   finds the mismatch.
+
+2. **Verify every helper exists.** Before referencing
+   `Sigil::X`, `Recents::Y`, any function or member — grep the
+   codebase to confirm it is defined. Never invent a helper
+   because the name sounds right.
+
+3. **Trace every lambda's captures.** Any lambda that captures
+   a pointer, a widget, a server, or a child object: name its
+   lifetime in a comment, then confirm the capture is still
+   valid when the lambda fires. This has caused two crashes.
+
+4. **Twin loops.** When a function has two loops that must use
+   the same value (create + populate, open + close, alloc +
+   free), change them in the same patch or change neither. Half
+   a fix is a crash.
+
+5. **Unfiltered build output.** Every build command ends with
+   `tail -20` and `echo "─── exit: $? ───"`. Never grep-only.
+   Grep hides successes and misreports failures.
+
+If any of the five cannot be satisfied from the available
+diagnostic, ask for another diagnostic. Do not patch through
+uncertainty.
+
+----
+
 ## What the AI vetoes
 
 - Starting the main.cpp split while any bug is open. Two-day job,

@@ -28,6 +28,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
+#include <QButtonGroup>
 #include <QLineEdit>
 #include <QTimer>
 #include <QDateTime>
@@ -86,6 +87,8 @@
 #include <QStandardPaths>
 #include <QFileSystemWatcher>
 #include <functional>
+#include <QCryptographicHash>
+#include <algorithm>
 #include <cmath>
 
 
