@@ -821,6 +821,16 @@ private:
         int offset = index;
         QObject::connect(tile, &QPushButton::clicked,
                          [this, appName, offset]() {
+            // Launchpad must never spawn a new shell process. If a
+            // Launchpad tile somehow ends up in the grid, toggle the
+            // existing launcher instead. Closes the orphan-shell /
+            // half-screen-tile bug at the source.
+            if (appName == "Launchpad") {
+                hideLauncher();
+                if (ShellRegistry::launcherToggle())
+                    ShellRegistry::launcherToggle()();
+                return;
+            }
             QStringList args;
             if (appName == "Settings")
                 args = { "--settings" };
