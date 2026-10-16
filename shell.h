@@ -57,6 +57,7 @@
 #include <QMovie>
 #include <QFileDialog>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QTextEdit>
 #include <QHeaderView>
 #include <QTreeView>
@@ -138,4 +139,6 @@ inline void installMenuFade() {
 #include "openwith.h"
 #include "dragdrop.h"
 #include "mail.h"
+#include "mosaic.h"
+#include "mesh.h"
 #endif // APOKOLIPS_SHELL_H

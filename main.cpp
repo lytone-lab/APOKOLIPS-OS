@@ -336,6 +336,7 @@ static QString minimizeStyleFlag()
     if (s == "scale")  return "--scale";
     if (s == "suck")   return "--suck";
     if (s == "thanos") return "--thanos";
+    if (s == "mesh")   return "--mesh";
     return "--genie";
 }
 
@@ -3784,6 +3785,35 @@ int main(int argc, char *argv[])
         return app.exec();
     }
 
+    if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--mesh") {
+        QApplication app(argc, argv);
+        const QString imagePath = QString::fromLocal8Bit(argv[2]);
+        const QRect start(
+            QString::fromLocal8Bit(argv[3]).toInt(),
+            QString::fromLocal8Bit(argv[4]).toInt(),
+            QString::fromLocal8Bit(argv[5]).toInt(),
+            QString::fromLocal8Bit(argv[6]).toInt());
+        const QPoint dock(
+            QString::fromLocal8Bit(argv[7]).toInt(),
+            QString::fromLocal8Bit(argv[8]).toInt());
+
+        bool reverse = false;
+        int durationMs = 0;
+        QString readySock;
+        for (int i = 9; i < argc; ++i) {
+            const QString arg = QString::fromLocal8Bit(argv[i]);
+            if (arg == "--reverse") reverse = true;
+            else if (arg == "--ms" && i + 1 < argc)
+                durationMs = QString::fromLocal8Bit(argv[++i]).toInt();
+            else if (arg == "--ready-sock" && i + 1 < argc)
+                readySock = QString::fromLocal8Bit(argv[++i]);
+        }
+        GenieMeshOverlay *o = new GenieMeshOverlay(
+            imagePath, start, dock, reverse, durationMs, readySock);
+        o->show();
+        return app.exec();
+    }
+
     if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--genie") {
         const QString imagePath = QString::fromLocal8Bit(argv[2]);
         const QRect start(
@@ -3982,6 +4012,14 @@ int main(int argc, char *argv[])
 
         QProcess::startDetached("gtklock", args);
         return 0;
+    }
+
+    // ---- Mesh warp proof of concept (temporary) ----
+    if (argc >= 3 && QString(argv[1]) == "--test-mesh") {
+        QApplication app(argc, argv);
+        MeshTestWindow w(QString::fromLocal8Bit(argv[2]));
+        w.show();
+        return app.exec();
     }
 
     if (argc >= 2 && QString(argv[1]) == "--mosaic") {

@@ -790,6 +790,8 @@ static bool animatorRequest(const AnimRequest &req)
     return true;
 }
 
+#include "meshgenie.h"
+
 static int runAnimatorDaemon(int argc, char **argv)
 {
     QApplication app(argc, argv);
@@ -845,6 +847,9 @@ static int runAnimatorDaemon(int argc, char **argv)
                 else if (style == "thanos")
                     w = new ThanosOverlay(png, rect, dock, ms, ready,
                                           reverse);
+                else if (style == "mesh")
+                    w = new GenieMeshOverlay(png, rect, dock, reverse,
+                                             ms, ready);
                 else
                     w = new GenieOverlay(png, rect, dock, reverse, ms,
                                          ready);

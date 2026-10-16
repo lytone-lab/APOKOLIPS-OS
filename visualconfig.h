@@ -541,7 +541,8 @@ public:
         if (m_cfg.minimizeStyle != "genie"
             && m_cfg.minimizeStyle != "scale"
             && m_cfg.minimizeStyle != "suck"
-            && m_cfg.minimizeStyle != "thanos")
+            && m_cfg.minimizeStyle != "thanos"
+            && m_cfg.minimizeStyle != "mesh")
             m_cfg.minimizeStyle = "genie";
         if (m_cfg.genieDurationMs < 120) m_cfg.genieDurationMs = 120;
         if (m_cfg.genieDurationMs > 1500) m_cfg.genieDurationMs = 1500;

@@ -6629,9 +6629,9 @@ private:
                 h->addLayout(left, 1);
 
                 QStringList labels = { "Genie", "Scale", "Suck",
-                                       "Thanos Snap" };
+                                       "Thanos Snap", "Mesh Genie" };
                 QStringList values = { "genie", "scale", "suck",
-                                       "thanos" };
+                                       "thanos", "mesh" };
                 int curIdx = values.indexOf(vc.minimizeStyle);
                 if (curIdx < 0) curIdx = 0;
 
