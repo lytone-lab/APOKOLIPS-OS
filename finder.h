@@ -1061,43 +1061,9 @@ private:
     }
 
     void openWith() {
-        QString p = selectedPath();
+        const QString p = selectedPath();
         if (p.isEmpty()) return;
-        const Theme &t = ThemeManager::instance().current();
-        QMenu m(this);
-        m.setStyleSheet(QString(
-            "QMenu { background: rgb(24, 22, 30);"
-            "  border: 1px solid rgba(255,255,255,30);"
-            "  border-radius: 12px; padding: 6px; color: #f0f0f5;"
-            "  font-size: 13px; }"
-            "QMenu::item { padding: 7px 22px 7px 16px;"
-            "  border-radius: 7px; background: transparent; }"
-            "QMenu::item:selected { background: rgba(255,255,255,45); }"));
-
-        QAction *aText = m.addAction("Text Editor");
-        QAction *aImg  = m.addAction("Image Viewer");
-        QAction *aVid  = m.addAction("Video Player");
-        QAction *aWeb  = m.addAction("Web Browser");
-        m.addSeparator();
-        QAction *aDefault = m.addAction("Open Default");
-
-        QObject::connect(aText, &QAction::triggered, [p]() {
-            QProcess::startDetached("gnome-text-editor", { p });
-        });
-        QObject::connect(aImg, &QAction::triggered, [p]() {
-            QProcess::startDetached("eog", { p });
-        });
-        QObject::connect(aVid, &QAction::triggered, [p]() {
-            QProcess::startDetached("totem", { p });
-        });
-        QObject::connect(aWeb, &QAction::triggered, [p]() {
-            QProcess::startDetached("firefox", { p });
-        });
-        QObject::connect(aDefault, &QAction::triggered, [p]() {
-            QProcess::startDetached("xdg-open", { p });
-        });
-
-        m.exec(m_view->mapToGlobal(m_view->rect().center()));
+        OpenWith::show(this, p, "apokolips-files");
     }
 
     void compressSelected() {

@@ -2350,35 +2350,41 @@ static int runShell(int argc, char *argv[])
 
     apoMenu->addSeparator();
 
-    // --- Recent Items submenu (live from Recents store)
+    // --- Recent Items submenu (rebuilt on every open)
     {
         QMenu *recent = apoMenu->addMenu("Recent Items");
-        const auto entries = Recents::list(15);
-        if (entries.isEmpty()) {
-            QAction *a = recent->addAction("(nothing yet)");
-            a->setEnabled(false);
-        } else {
-            for (const Recents::Entry &e : entries) {
-                QString label = QFileInfo(e.path).fileName();
-                if (label.isEmpty()) label = e.path;
-                if (label.length() > 40)
-                    label = label.left(37) + "\xE2\x80\xA6";
-                QAction *a = recent->addAction(label);
-                a->setToolTip(e.path);
-                QString path = e.path;
-                QObject::connect(a, &QAction::triggered,
-                                 [path]() {
-                    QProcess::startDetached("xdg-open", { path });
-                });
+
+        auto rebuildRecent = [recent]() {
+            recent->clear();
+            const auto entries = Recents::list(15);
+            if (entries.isEmpty()) {
+                QAction *a = recent->addAction("(nothing yet)");
+                a->setEnabled(false);
+            } else {
+                for (const Recents::Entry &e : entries) {
+                    QString label = QFileInfo(e.path).fileName();
+                    if (label.isEmpty()) label = e.path;
+                    if (label.length() > 40)
+                        label = label.left(37) + "\xE2\x80\xA6";
+                    QAction *a = recent->addAction(label);
+                    a->setToolTip(e.path);
+                    QString path = e.path;
+                    QObject::connect(a, &QAction::triggered,
+                                     [path]() {
+                        QProcess::startDetached("xdg-open", { path });
+                    });
+                }
             }
-        }
-        recent->addSeparator();
-        {
-            QAction *a = recent->addAction("Clear Menu");
-            QObject::connect(a, &QAction::triggered, []() {
+            recent->addSeparator();
+            QAction *clearAct = recent->addAction("Clear Menu");
+            QObject::connect(clearAct, &QAction::triggered, []() {
                 Recents::clear();
             });
-        }
+        };
+
+        QObject::connect(recent, &QMenu::aboutToShow,
+                         recent, rebuildRecent);
+        rebuildRecent();   // seed once so the first hover isn't empty
     }
 
     // --- Quick Actions submenu
