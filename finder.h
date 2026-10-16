@@ -823,6 +823,18 @@ private:
         m_clipboardPaths = { p };
         m_clipboardCut = cut;
         showStatus((cut ? "Cut: " : "Copied: ") + QFileInfo(p).fileName());
+
+        // Also write to the system clipboard so other apps and the
+        // ClipboardPanel can see it. text/uri-list is the standard
+        // MIME for file drops/copies on Wayland.
+        QProcess wlc;
+        wlc.start("wl-copy", { "-t", "text/uri-list" });
+        if (wlc.waitForStarted(300)) {
+            QString payload = "file://" + p + "\r\n";
+            wlc.write(payload.toUtf8());
+            wlc.closeWriteChannel();
+            wlc.waitForFinished(300);
+        }
     }
 
     void pasteInto() {
