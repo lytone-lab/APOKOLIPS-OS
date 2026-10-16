@@ -138,6 +138,41 @@ project next has a quiet session.
 
 ----
 
+## Adding a new app - the seven places
+
+Every shell app touches seven code locations. Missing any one
+means the app works from some entry points and silently breaks
+from others - usually by spawning a bare `apokolips-shell`
+process, which sway tiles next to the real shell and splits the
+screen.
+
+1. registry.h - three edits: drawXxx renderer, dispatch line in
+   Icons::drawFor, entry in appRegistry.
+
+2. registry.h - desktopLaunchArgs(id) if the app can live on
+   the desktop. Do not rely on the --demo fallback; it is gone.
+
+3. main.cpp - --appname dispatch block. Copy an existing one
+   (Calc, Notes, or Mail) exactly.
+
+4. main.cpp - dockNameForAppId() if the app can be minimized.
+
+5. chrome.h - dock matchId line.
+
+6. chrome.h - dock launch program.
+
+7. chrome.h - launcher tile click handler.
+
+Never use --demo as a fallback. A bare shell spawn inherits
+app_id=apokolips-shell, which sway's for_window rule forces
+into tiling mode.
+
+The refactor that ends this class of bug: replace all seven
+call sites with one appLaunchSpec(id) function. Do that when
+the project next has a quiet session.
+
+----
+
 ## What the AI vetoes
 
 - Starting the main.cpp split while any bug is open. Two-day job,
