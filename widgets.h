@@ -1088,6 +1088,186 @@ private:
     bool    m_batCharging = false;
 };
 
+class NowPlayingCard : public WidgetCard {
+public:
+    explicit NowPlayingCard(QWidget *parent)
+        : WidgetCard("nowplaying", QSize(360, 170),
+                     QPoint(60, 400), parent)
+    {
+        m_tick = new QTimer(this);
+        m_tick->setInterval(500);
+        QObject::connect(m_tick, &QTimer::timeout,
+                         this, [this]() { refresh(); update(); });
+        m_tick->start();
+
+        const QString btnCss =
+            "QPushButton {"
+            "  background: rgba(255,255,255,22);"
+            "  border: 1px solid rgba(255,255,255,35);"
+            "  border-radius: 8px;"
+            "  color: rgb(240,237,232);"
+            "  font-size: 13px;"
+            "  padding: 0;"
+            "}"
+            "QPushButton:hover { background: rgba(255,255,255,50); }"
+            "QPushButton:pressed { background: rgba(168,50,80,160); }";
+
+        m_prevBtn = new QPushButton(
+            QString::fromUtf8("\xE2\x8F\xAE"), this);
+        m_playBtn = new QPushButton(
+            QString::fromUtf8("\xE2\x96\xB6"), this);
+        m_nextBtn = new QPushButton(
+            QString::fromUtf8("\xE2\x8F\xAD"), this);
+
+        for (QPushButton *b : { m_prevBtn, m_playBtn, m_nextBtn }) {
+            b->setStyleSheet(btnCss);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setFixedSize(36, 30);
+        }
+
+        // Absolute-position the three buttons, right-aligned.
+        // Card is 360x170. Content pad is 18.
+        m_prevBtn->move(216, 96);
+        m_playBtn->move(258, 96);
+        m_nextBtn->move(300, 96);
+
+        QObject::connect(m_prevBtn, &QPushButton::clicked,
+                         [this]() { sendCmd("prev"); });
+        QObject::connect(m_playBtn, &QPushButton::clicked,
+                         [this]() { sendCmd("toggle"); });
+        QObject::connect(m_nextBtn, &QPushButton::clicked,
+                         [this]() { sendCmd("next"); });
+
+        refresh();
+    }
+
+protected:
+    void paintContent(QPainter &p, const QRect &r) override {
+        // ---- Album art tile (left) ----
+        QRectF art(r.left(), r.top() + 4, 96, 96);
+        QPainterPath artPath;
+        artPath.addRoundedRect(art, 12, 12);
+        QLinearGradient g(art.topLeft(), art.bottomRight());
+        g.setColorAt(0.0, QColor(168, 50, 80));
+        g.setColorAt(1.0, QColor(80, 26, 46));
+        p.fillPath(artPath, g);
+
+        QFont gf = font();
+        gf.setPixelSize(40);
+        p.setFont(gf);
+        p.setPen(QColor(240, 237, 232, 230));
+        p.drawText(art, Qt::AlignCenter,
+                   QString::fromUtf8("\xE2\x99\xAB"));
+
+        // ---- Title + state + time (right) ----
+        const int tx = int(art.right()) + 16;
+        const int tw = r.right() - tx;
+
+        QFont f = font();
+        f.setPixelSize(15); f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        p.setPen(QColor(240, 237, 232));
+        const QString title = m_title.isEmpty()
+            ? QString("Nothing playing") : m_title;
+        QRect titleR(tx, r.top() + 6, tw, 44);
+        p.drawText(titleR,
+                   Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap,
+                   title);
+
+        f.setPixelSize(11); f.setWeight(QFont::Normal);
+        p.setFont(f);
+        p.setPen(QColor(176, 173, 168));
+        QString st = m_state == "playing" ? "Playing"
+                   : m_state == "paused"  ? "Paused"
+                                          : "Stopped";
+        QString t  = fmt(m_posMs) + " / " + fmt(m_durMs);
+        QRect infoR(tx, r.top() + 56, tw, 16);
+        p.drawText(infoR, Qt::AlignLeft | Qt::AlignVCenter,
+                   st + "  \xC2\xB7  " + t);
+
+        // ---- Progress bar (bottom) ----
+        QRectF bar(r.left() + 2, r.bottom() - 10,
+                   r.width() - 4, 3);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(255, 255, 255, 30));
+        p.drawRoundedRect(bar, 1.5, 1.5);
+        if (m_durMs > 0) {
+            qreal pct = qBound(0.0,
+                double(m_posMs) / double(m_durMs), 1.0);
+            QRectF fill(bar.left(), bar.top(),
+                        bar.width() * pct, bar.height());
+            p.setBrush(QColor(168, 50, 80));
+            p.drawRoundedRect(fill, 1.5, 1.5);
+        }
+    }
+
+private:
+    QTimer      *m_tick    = nullptr;
+    QPushButton *m_prevBtn = nullptr;
+    QPushButton *m_playBtn = nullptr;
+    QPushButton *m_nextBtn = nullptr;
+    QString      m_title;
+    QString      m_path;
+    QString      m_state;
+    qint64       m_posMs = 0;
+    qint64       m_durMs = 0;
+
+    static QString fmt(qint64 ms) {
+        if (ms < 0) ms = 0;
+        qint64 s = ms / 1000;
+        return QString("%1:%2").arg(s / 60)
+                               .arg(s % 60, 2, 10, QChar('0'));
+    }
+
+    void refresh() {
+        const QString path = QDir::tempPath()
+                             + "/apokolips-boombube-state.json";
+        QFileInfo fi(path);
+        if (!fi.exists()
+            || fi.lastModified().msecsTo(
+                   QDateTime::currentDateTime()) > 3000) {
+            // BoomTube isn't running or hasn't published recently.
+            m_title.clear();
+            m_path.clear();
+            m_state = "stopped";
+            m_posMs = m_durMs = 0;
+            m_playBtn->setText(QString::fromUtf8("\xE2\x96\xB6"));
+            return;
+        }
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) return;
+        QJsonDocument d = QJsonDocument::fromJson(f.readAll());
+        f.close();
+        if (!d.isObject()) return;
+        QJsonObject o = d.object();
+        m_title = o.value("title").toString();
+        m_path  = o.value("path").toString();
+        m_state = o.value("state").toString();
+        m_posMs = (qint64)o.value("posMs").toDouble();
+        m_durMs = (qint64)o.value("durMs").toDouble();
+
+        m_playBtn->setText(m_state == "playing"
+            ? QString::fromUtf8("\xE2\x8F\xB8")
+            : QString::fromUtf8("\xE2\x96\xB6"));
+    }
+
+    void sendCmd(const QString &cmd) {
+        const QString dst = QDir::tempPath()
+                            + "/apokolips-boombube-cmd.json";
+        const QString tmp = dst + ".tmp";
+        QJsonObject o;
+        o["cmd"] = cmd;
+        o["ts"]  = double(QDateTime::currentMSecsSinceEpoch());
+        QFile f(tmp);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return;
+        f.write(QJsonDocument(o).toJson());
+        f.close();
+        QFile::remove(dst);
+        QFile::rename(tmp, dst);
+    }
+};
+
 
 // ----------------------------------------------------------------
 // WeatherCard — current conditions + high/low + wind + humidity.

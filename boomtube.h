@@ -251,6 +251,25 @@ public:
                          [this](int v) {
             m_audioOut->setVolume(v / 100.0);
         });
+
+        // Publish state to a file so external consumers (the Now
+        // Playing desktop widget) can see what's playing. 500 ms
+        // is fast enough for a progress bar and cheap enough not
+        // to matter.
+        m_publishTimer = new QTimer(this);
+        m_publishTimer->setInterval(500);
+        QObject::connect(m_publishTimer, &QTimer::timeout,
+                         this, [this]() { publishState(); });
+        m_publishTimer->start();
+
+        // Poll for commands from external controls (the Now
+        // Playing widget's buttons). 300 ms keeps button feedback
+        // feeling immediate without busy-looping.
+        m_cmdTimer = new QTimer(this);
+        m_cmdTimer->setInterval(300);
+        QObject::connect(m_cmdTimer, &QTimer::timeout,
+                         this, [this]() { pollCommand(); });
+        m_cmdTimer->start();
         QObject::connect(m_seek, &QSlider::sliderMoved, [this](int pos) {
             m_player->setPosition(qint64(pos) * 1000);
         });
@@ -491,6 +510,54 @@ private:
             m_player->play();
     }
 
+    void publishState() {
+        const QString dst = QDir::tempPath()
+                            + "/apokolips-boombube-state.json";
+        const QString tmp = dst + ".tmp";
+        QJsonObject o;
+        const QString curPath =
+            (m_index >= 0 && m_index < m_playlist.size())
+                ? m_playlist[m_index] : QString();
+        o["title"] = curPath.isEmpty()
+            ? QString()
+            : QFileInfo(curPath).completeBaseName();
+        o["path"]  = curPath;
+        QMediaPlayer::PlaybackState st = m_player->playbackState();
+        o["state"] = st == QMediaPlayer::PlayingState ? "playing"
+                   : st == QMediaPlayer::PausedState  ? "paused"
+                                                     : "stopped";
+        o["posMs"] = double(m_player->position());
+        o["durMs"] = double(m_player->duration());
+        QFile f(tmp);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return;
+        f.write(QJsonDocument(o).toJson());
+        f.close();
+        QFile::remove(dst);
+        QFile::rename(tmp, dst);
+    }
+
+    void pollCommand() {
+        const QString path = QDir::tempPath()
+                             + "/apokolips-boombube-cmd.json";
+        QFile f(path);
+        if (!f.exists()) return;
+        if (!f.open(QIODevice::ReadOnly)) return;
+        QJsonDocument d = QJsonDocument::fromJson(f.readAll());
+        f.close();
+        QFile::remove(path);
+        if (!d.isObject()) return;
+        const QString cmd = d.object().value("cmd").toString();
+        if (cmd == "toggle")      togglePlay();
+        else if (cmd == "next")   goNext();
+        else if (cmd == "prev")   goPrev();
+        else if (cmd == "play")   m_player->play();
+        else if (cmd == "pause")  m_player->pause();
+        publishState();
+    }
+
+    QTimer         *m_publishTimer = nullptr;
+    QTimer         *m_cmdTimer     = nullptr;
     QMediaPlayer   *m_player   = nullptr;
     QAudioOutput   *m_audioOut = nullptr;
     QVideoWidget   *m_video    = nullptr;

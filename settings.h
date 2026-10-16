@@ -5849,11 +5849,12 @@ private:
 
             struct WItem { const char *id; const char *label; };
             const WItem items[] = {
-                { "clock",    "Clock" },
-                { "rings",    "System rings" },
-                { "weather",  "Weather" },
-                { "stats",    "Disk / Memory / Battery" },
-                { "calendar", "Calendar" },
+                { "clock",      "Clock" },
+                { "rings",      "System rings" },
+                { "weather",    "Weather" },
+                { "stats",      "Disk / Memory / Battery" },
+                { "calendar",   "Calendar" },
+                { "nowplaying", "Now Playing (BoomTube)" },
             };
 
             for (const auto &it : items) {

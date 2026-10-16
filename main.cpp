@@ -2824,6 +2824,16 @@ static int runShell(int argc, char *argv[])
             << "pos=" << calendarCard->pos()
             << "size=" << calendarCard->size();
 
+    // NowPlayingCard — what BoomTube is playing.
+    NowPlayingCard *nowPlayingCard = new NowPlayingCard(root);
+    nowPlayingCard->placeAtSavedOr();
+    nowPlayingCard->applyVisibility();
+    nowPlayingCard->raise();
+
+    qInfo() << "[widgets] NowPlayingCard installed"
+            << "pos=" << nowPlayingCard->pos()
+            << "size=" << nowPlayingCard->size();
+
     // Deferred layout — root->size() is the QMainWindow default
     // (640x480) at construction; the real size arrives after the
     // Wayland surface is mapped. Wait for the real size before
@@ -2867,7 +2877,7 @@ static int runShell(int argc, char *argv[])
 
             QList<WidgetCard *> all = {
                 clockCard, ringsCard, weatherCard,
-                statsCard, calendarCard
+                statsCard, calendarCard, nowPlayingCard
             };
 
             if (stale) {
