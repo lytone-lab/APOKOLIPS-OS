@@ -609,6 +609,8 @@ static QString dockNameForAppId(const QString &appId)
     if (appId == "apokolips-mymach")      return "myMach";
     if (appId == "apokolips-notes")       return "Notes";
     if (appId == "apokolips-calculator")  return "Calculator";
+    if (appId == "apokolips-mosaic")      return "Mosaic";
+    if (appId == "apokolips-mail")        return "Mail";
     if (appId == "thunderbird")           return "Mail";
     if (appId == "org.gnome.Nautilus")    return "Finder";
     return {};
@@ -3980,6 +3982,30 @@ int main(int argc, char *argv[])
 
         QProcess::startDetached("gtklock", args);
         return 0;
+    }
+
+    if (argc >= 2 && QString(argv[1]) == "--mosaic") {
+        QApplication app(argc, argv);
+        app.setApplicationName("Mosaic");
+        app.setDesktopFileName("apokolips-mosaic");
+
+        // Single-instance forward.
+        {
+            QLocalSocket probe;
+            probe.connectToServer("apokolips-mosaic");
+            if (probe.waitForConnected(300)) {
+                probe.write("focus");
+                probe.waitForBytesWritten(300);
+                probe.disconnectFromServer();
+                return 0;
+            }
+        }
+
+        ThemeManager::instance().setTheme(
+            WallpaperConfig::themeForId(WallpaperConfig::loadId()));
+        MosaicApp w;
+        w.show();
+        return app.exec();
     }
 
     if (argc >= 2 && QString(argv[1]) == "--mail") {

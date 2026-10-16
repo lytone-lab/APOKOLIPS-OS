@@ -925,6 +925,9 @@ private:
             else if (appName == "Calculator") {
                 args = { "--calc" };
             }
+            else if (appName == "Mosaic") {
+                args = { "--mosaic" };
+            }
             else {
                 // Unknown tile — do NOT spawn a bare shell. A bare
                 // spawn inherits app_id=apokolips-shell and gets
@@ -1435,6 +1438,7 @@ protected:
         else if (m_name == "Aperture")  matchId = "apokolips-aperture";
         else if (m_name == "Node")      matchId = "apokolips-node";
         else if (m_name == "myMach")    matchId = "apokolips-mymach";
+        else if (m_name == "Mosaic")    matchId = "apokolips-mosaic";
         else if (m_name == "Notes")     matchId = "apokolips-notes";
         else if (m_name == "Mail")      matchId = "apokolips-mail";
         else if (m_name == "Files")     matchId = "org.gnome.Nautilus";
@@ -1486,6 +1490,9 @@ protected:
         } else if (m_name == "myMach") {
             program = QCoreApplication::applicationFilePath();
             args = { "--mymach" };
+        } else if (m_name == "Mosaic") {
+            program = QCoreApplication::applicationFilePath();
+            args = { "--mosaic" };
         } else if (m_name == "BoomTube") {
             program = QCoreApplication::applicationFilePath();
             args = { "--boomtube" };
@@ -3529,9 +3536,19 @@ public:
             int before = m_icons.size();
             addIcon(id, label, paint,
                 [capId]() {
+                    QStringList args = desktopLaunchArgs(capId);
+                    if (args.isEmpty()) {
+                        // Unknown id or explicit refusal. Do NOT
+                        // spawn a bare shell — it would inherit
+                        // app_id=apokolips-shell and get tiled.
+                        qWarning()
+                            << "[desktop] click: no args for"
+                            << capId << "\u2014 ignoring";
+                        return;
+                    }
                     QProcess::startDetached(
                         QCoreApplication::applicationFilePath(),
-                        desktopLaunchArgs(capId));
+                        args);
                 }, pos);
             if (m_icons.size() > before) {
                 PoolIcon *added = m_icons.last();

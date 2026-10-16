@@ -424,6 +424,53 @@ static void drawCalculator(QPainter &p, const QRectF &r,
     p.restore();
 }
 
+// ---- Mosaic — literal mosaic tiles ----
+static void drawMosaic(QPainter &p, const QRectF &r, const QColor &) {
+    // Dark tile background — the "mortar" colour.
+    appTile(p, r, QColor(60, 60, 68), QColor(24, 24, 30));
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // 3x3 mini mosaic — six coloured tiles, three gap-fills.
+    const qreal pad = r.width() * 0.20;
+    QRectF inner = r.adjusted(pad, pad, -pad, -pad);
+    const int cols = 3, rows = 3;
+    const qreal gap  = inner.width() * 0.055;
+    const qreal tileW = (inner.width()  - gap * (cols - 1)) / cols;
+    const qreal tileH = (inner.height() - gap * (rows - 1)) / rows;
+
+    struct Col { int r, g, b; };
+    // Ambient palette — warm and cool mixed, low saturation.
+    const Col palette[9] = {
+        {168,  50,  50},   // oxblood
+        {200, 165,  90},   // amber
+        { 90, 130, 200},   // slate blue
+        {140,  80, 130},   // muted plum
+        {200, 165,  90},   // amber again
+        { 60, 130, 100},   // forest
+        { 90, 130, 200},   // slate blue
+        {168,  50,  50},   // oxblood
+        {140, 140, 148},   // grey
+    };
+    for (int i = 0; i < 9; ++i) {
+        const int cx = i % cols;
+        const int cy = i / cols;
+        QRectF t(inner.left() + cx * (tileW + gap),
+                 inner.top()  + cy * (tileH + gap),
+                 tileW, tileH);
+        QColor c(palette[i].r, palette[i].g, palette[i].b);
+        // Slight dark gradient per tile — reads as physical.
+        QLinearGradient g(t.topLeft(), t.bottomRight());
+        g.setColorAt(0.0, c.lighter(115));
+        g.setColorAt(1.0, c.darker(120));
+        p.setPen(Qt::NoPen);
+        p.setBrush(g);
+        p.drawRoundedRect(t, tileW * 0.14, tileW * 0.14);
+    }
+    p.restore();
+}
+
 static void drawNotes(QPainter &p, const QRectF &r, const QColor &) {
     appTile(p, r, QColor(232, 220, 198), QColor(190, 175, 145));
     // Page rectangle
@@ -593,6 +640,7 @@ static void drawFor(const QString &name, QPainter &p,
     else if (name == "Music")     drawMusic(p, r, c);
     else if (name == "Notes")     drawNotes(p, r, c);
     else if (name == "Calculator") drawCalculator(p, r, c);
+    else if (name == "Mosaic")     drawMosaic(p, r, c);
     else if (name == "Mail")      drawMail(p, r, c);
     else if (name == "Settings")  drawSettings(p, r, c);
     else if (name == "Power")     drawPower(p, r, c);
@@ -705,6 +753,7 @@ static const QVector<AppEntry> &appRegistry() {
         { "aperture",    "Aperture",  "\xE2\x9C\xA6",       true,  true  },
         { "mymach",      "myMach",    "\xE2\x9A\x99",       true,  true  },
         { "boombube",    "BoomTube",  "\xE2\x96\xB6",       true,  true  },
+        { "mosaic",      "Mosaic",    "\xF0\x9F\x8E\xA8",  true,  true  },
         { "notes",       "Notes",     "\xF0\x9F\x93\x9D",  true,  true  },
         { "mail",        "Mail",      "\xE2\x9C\x89",       true,  true  },
         { "settings",    "Settings",  "\xE2\x9A\x99",       true,  true  },
@@ -793,7 +842,16 @@ static QStringList desktopLaunchArgs(const QString &id) {
     if (id == "notes")      return { "--notes" };
     if (id == "node")       return { "--node" };
     if (id == "terminal")   return { "--node" };
-    return { "--demo", id, "0" };
+    if (id == "mosaic")     return { "--mosaic" };
+    if (id == "mail")       return { "--mail" };
+
+    // No --demo fallback. A bare-shell spawn inherits
+    // app_id=apokolips-shell and gets tiled next to the real
+    // shell, splitting the screen. Refuse instead. The caller
+    // in chrome.h must also check for empty and bail.
+    qWarning() << "[desktop] no launch args for id:" << id
+               << "\u2014 refusing to spawn";
+    return {};
 }
 
 static void desktopIconsLaunchArg(const QString &) {}
