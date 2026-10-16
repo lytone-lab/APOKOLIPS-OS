@@ -1,3 +1,29 @@
+ARCHITECTURE NOTES — Apokolips OS
+
+------------------------------------------------------------------------
+SESSION LOG — 2026-10-16
+------------------------------------------------------------------------
+Status of the tagged items in this file:
+
+  [NOW]  Bake the defaults — done as part of launcher theming
+         and widget tuning.
+  [NOW]  "What's new / Take the tour" panel — still open.
+  [SOON] Restore path via animator daemon — still open; user
+         reports no felt delay on un-minimize, so low priority.
+  [SOON] Terminal (foot) decorations — still open.
+  [SOON] Monetization — deferred (waiting on the project
+         being more presentable).
+  [EVENTUAL] Split main.cpp — DONE (22k → ~3.5k lines across
+         21 headers).
+  [EVENTUAL] Shared behaviors across apps — ShellApp base class
+         DONE. Now Playing + clipboard both inherit.
+  [EVENTUAL] Shared app-to-app protocols — DONE. Open With,
+         Recents, drag-and-drop, clipboard all shipped.
+  [PHILO] Four UI styles — still open (decision, not code).
+  [PHILO] Windhawk-vision vs. Opinion — still open.
+
+------------------------------------------------------------------------
+
 # ARCHITECTURE_NOTES.md — Design critiques + opportunistic roadmap
 
 Not a bug list. A design review. Each item is either:

@@ -127,7 +127,7 @@ Rollback:
 
 ---
 
-## 4. Current state (2026-10-11)
+## 4. Current state (2026-10-16)
 
 **Working:**
 
@@ -145,6 +145,19 @@ Rollback:
 - Single-instance: opening a running app focuses it
 - Release build (2 MB binary, ~200 ms overlay spawn)
 - Finder opacity slider updates live
+
+**Shipped since the 2026-10-11 snapshot:**
+
+- Shared protocols: Open With picker, Recents store (all apps
+  write, omega menu reads live), drag-and-drop between apps
+  (Finder → Notes / Aperture).
+- Clipboard panel: traffic lights, images + files, pin, persistent
+  history, drag-out.
+- Launcher theming: columns / blur / tint / 3x3 position anchor.
+- Now Playing desktop widget (BoomTube) with prev/play/next.
+- Widget blip fix: no more 1 Hz raise timer war.
+- Thanos minimize: app_id fix; runs full-screen like the other
+  three styles.
 
 **Known issues / next items:**
 
@@ -301,15 +314,16 @@ read-only diagnostic before assuming it is.
 
 ## 10. Immediate next steps
 
-1. Restore via animator daemon — minimize already uses it,
-   restore still spawns a fresh process (~200ms).
-2. Genie option A rewrite — 4-6 bands, kills strip seams.
-3. Rich clipboard history panel — the last remaining shared
-   protocol (see PROJECT_STATE.txt).
-4. Customisation layer — ship-order V1 #1 is System monitors as
-   desktop widgets (myMach data already exists). See
-   CUSTOMISATION_VISION.md.
-5. Keyboard bindings — Settings page that writes `swaymsg bindsym`.
+1. Per-app chrome rewrite — the flagship. Settings page with
+   per-app overrides: chrome style (flat/glass/solid), accent,
+   radius, traffic-light side. Foundation for the theme
+   marketplace. See CUSTOMISATION_VISION.md Elaboration 4.
+2. Weather widget with forecast — data already in the top bar.
+   One session. V1 ship-order #5.
+3. Genie option A rewrite — 4-6 bands, kills visible strip seams.
+4. Keyboard bindings — Settings page that writes `swaymsg bindsym`.
+5. Customisation layer P1 breadth — 40 knobs across 12
+   categories. 4-6 sessions.
 6. Settings polish — wallpaper solid color + local file; display
    refresh/scale/Night Shift; sound input + per-app volume.
 7. Real mesh-warp genie — V2, multi-session.

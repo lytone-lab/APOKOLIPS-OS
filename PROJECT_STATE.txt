@@ -1,9 +1,57 @@
 ========================================================================
 APOKOLIPS OS — PROJECT STATE
-Last updated: 2026-10-09
+Last updated: 2026-10-16
 Maintained by: user (Lytone) + AI collaborators
 Read this file FIRST if you are a new AI joining the project.
 ========================================================================
+
+------------------------------------------------------------------------
+SESSION LOG — 2026-10-16
+------------------------------------------------------------------------
+Shipped today (each line = one commit on main):
+
+  [x] Shared protocols — Open With picker (reads .desktop files,
+      filters by MIME, Sigil-styled menu). Commit d7f5a14.
+  [x] Shared protocols — Recents live-refresh in omega menu
+      (rebuilds on aboutToShow; entries land immediately).
+  [x] Shared protocols — drag-and-drop between apps. Finder drags
+      files with an oxblood glow thumbnail; Notes and Aperture
+      accept drops with a border glow. dragdrop.h. Commit 6dcb4f5.
+  [x] Clipboard panel rewrite — traffic lights, images/files, pin,
+      persistence, drag-out. chrome.h. Commits 33221d7, 030432b.
+  [x] Thanos minimize: app_id fix so the overlay floats full-screen.
+  [x] Launcher: excluded self from grid; guarded tile click against
+      spawning an orphan shell; removed the --demo bare-shell
+      fallback. Commits 71ddece, af3eaac.
+  [x] Launcher theming — columns (3-8), blur (0-100%), tint, 3x3
+      position anchor. Settings → Launcher & Spotlight. Commit
+      664eee9.
+  [x] Widget blip fix — dropped five per-card 1 Hz raise timers;
+      re-raise cards after the Pool canvas instead. Commit 057df14.
+  [x] Now Playing widget — BoomTube publishes state to
+      /tmp/apokolips-boombube-state.json, reads commands from
+      /tmp/apokolips-boombube-cmd.json. Widget in widgets.h with
+      prev/play/next + progress. Live visibility toggle.
+      Commit 1dbacc3.
+  [x] Finder Ctrl+C/Ctrl+X writes uri-list to system clipboard.
+
+Also today: TEAM_PROTOCOL.md gained two new rule sections:
+  - "Diagnostic before every feature" (features, not just bugs).
+  - "What the AI verifies before every patch" (read whole
+    function; verify every helper exists; trace lambda lifetimes;
+    twin loops change together; unfiltered build output).
+
+Still open (no work started):
+  [ ] V1 ship-order #4 — Per-app chrome rewrite (the flagship).
+  [ ] V1 ship-order #5 — Weather widget with forecast.
+  [ ] Genie option A (4-6 band rewrite, queued after G7).
+  [ ] Restore via animator daemon (user reports no felt delay;
+      low priority).
+  [ ] Real mesh-warp genie — V2.
+  [ ] Clipboard history rich image/file drag-out polish.
+
+------------------------------------------------------------------------
+
 
 WHY THIS FILE EXISTS
 --------------------

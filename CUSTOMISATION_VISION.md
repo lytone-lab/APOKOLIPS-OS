@@ -1,5 +1,30 @@
 # APOKOLIPS-OS — Customisation Vision
 
+------------------------------------------------------------------------
+SESSION LOG — 2026-10-16
+------------------------------------------------------------------------
+V1 ship-order progress:
+
+  [x] #1 — System monitors as desktop widgets (CPU/RAM/DISK gauges,
+      StatsCard hybrid, clock, calendar, weather). Shipped earlier;
+      framework in widgets.h (WidgetCard base + subclasses).
+  [x] #2 — Launcher theming. Columns, blur, tint, 3x3 position
+      anchor, live preview. Settings → Launcher & Spotlight.
+  [x] #3 — Now Playing widget on desktop (BoomTube). State via
+      /tmp/apokolips-boombube-state.json, controls via
+      /tmp/apokolips-boombube-cmd.json. Prev/play/next buttons.
+      Live visibility toggle.
+  [ ] #4 — Per-app chrome rewrite. NEXT. The flagship — nobody
+      else has this.
+  [ ] #5 — Weather widget with forecast (data already in top bar).
+
+P1 customisation breadth (40 knobs / 12 categories): not started.
+Platform note: no audio output on the VM (sound work deferred to
+ISO). Settings → Widgets page now hosts per-widget toggles.
+
+------------------------------------------------------------------------
+
+
 **What this is:** the full plan for what will eventually be the
 "Windhawk-class" customisation layer — every visual knob the user
 can turn, every automation they can build, every mod they can
