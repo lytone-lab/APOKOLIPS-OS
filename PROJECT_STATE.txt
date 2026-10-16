@@ -706,6 +706,51 @@ from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
       Recommendation: B. Small, safe, no risk to the rest of the
       config system. One small session.
 
+  [~] SUGGESTION — Auto-themes from wallpapers
+      Idea (from CUSTOMISATION_VISION.md Elaboration 3): when the
+      wallpaper changes, extract its dominant colours and recolour
+      the whole shell to match.
+
+      STATUS: deferred indefinitely at the user's request
+      (2026-10-16). Reason logged so a future AI does not
+      re-propose it without context.
+
+      WHY IT WAS DECLINED:
+        - ThemeManager::neutralize() (theme.h ~line 78) strips all
+          colour from any theme passed to it. This is a deliberate
+          design rule, not an oversight: "nothing in the UI carries
+          colour except traffic lights and app icons." Auto-themes
+          would have to delete or bypass that rule.
+        - Sigil::* accessors in style.h (~lines 220-232) return
+          hardcoded QColor values. Widgets call those, not
+          ThemeManager::current(). Even a successfully extracted
+          theme would change nothing on screen without rewriting
+          every Sigil accessor and re-testing every call site.
+        - The 7 curated seals (style.h ~line 230) are the
+          sanctioned source of accent colour. Their rule is
+          "warm, muted, earth-bound. No neon, no default blue."
+          Auto-extraction from photographs produces saturated
+          colours and would contradict that rule.
+        - Livery (2026-10-16) added a third colour axis: per-app
+          border accent. A fourth (wallpaper-driven) would create
+          competing colour systems with no priority order.
+        - Every one of the 8 wallpaper subclasses already overrides
+          theme() with a hand-tuned Theme. Auto-extraction would
+          make those dead code.
+
+      WHAT STILL COULD WORK (if ever revisited):
+        - Variant 2 from the 2026-10-16 discussion: an eighth seal
+          called "Wild" that pulls ONE accent colour from the
+          wallpaper. Everything else stays graphite/bone/oxblood.
+          Smallest possible breach of the aesthetic.
+        - Variant 1: a suggestion toast that maps the wallpaper to
+          the closest of the existing 7 seals. Non-destructive.
+
+      DECISION: do not build. The shell's identity is graphite,
+      bone, and one accent chosen from 7 curated seals. That is
+      the product. Auto-themes is a Windows/Rainmeter-class
+      feature that fights the design language.
+
   [~] SUGGESTION — The Pool V2: windows as obstacles
       Exploratory. Not scheduled. Logged in case it's wanted.
 
