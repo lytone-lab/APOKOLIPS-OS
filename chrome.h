@@ -861,8 +861,16 @@ private:
             else if (appName == "Calculator") {
                 args = { "--calc" };
             }
-            else
-                args = { "--demo", appName, QString::number(offset) };
+            else {
+                // Unknown tile — do NOT spawn a bare shell. A bare
+                // spawn inherits app_id=apokolips-shell and gets
+                // tiled next to the real shell, splitting the screen.
+                // Log and bail.
+                qWarning() << "[launcher] no click handler for tile:"
+                           << appName << "— refusing to spawn";
+                hideLauncher();
+                return;
+            }
             QProcess::startDetached(
                 QCoreApplication::applicationFilePath(),
                 args);
