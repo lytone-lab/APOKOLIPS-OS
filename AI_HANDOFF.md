@@ -148,15 +148,22 @@ Rollback:
 
 **Known issues / next items:**
 
-- **Strip seams visible** in genie animation. Interim fix: draw each
-  strip 1 px wider (overlap). Real fix: mesh warp (queued as Genie
-  option A).
-- **Super+Shift+R sway bind** doesn't fire. Config line needs fixing.
+- **Genie option A rewrite** — 4-6 wide bands instead of 100+ strips.
+  Queued. Kills visible strip seams.
+- **Restore via animator daemon** — minimize already routes through
+  the daemon (~10-20ms). Restore still spawns a fresh process
+  (~200ms). Same pattern applies. Short.
+- **Real mesh-warp genie** — V2, OpenGL/QSGMaterial. Multi-session.
 - **Keyboard bindings** — Settings page for rebinding shortcuts.
   Reverted experiment needs a redesign.
-- Genie option A rewrite: 4-6 bands, or full mesh for zero seams.
-- Terminal (foot) decorations: no title bar.
-- Customisation layer — Windhawk/Rainmeter-class knobs in Settings.
+- **Customisation layer** — Windhawk/Rainmeter-class knobs in
+  Settings. See CUSTOMISATION_VISION.md. Ship-order V1 #1-5.
+
+**Recently shipped (2026-10-16):**
+
+- Shared protocols — drag-and-drop between apps (Finder -> Notes,
+  Finder -> Aperture), Open With picker, Recents live-refresh in
+  the omega menu.
 
 ---
 
@@ -294,15 +301,18 @@ read-only diagnostic before assuming it is.
 
 ## 10. Immediate next steps
 
-1. Keyboard bindings — Settings page that writes `swaymsg bindsym`.
-2. Restore path via animator daemon — minimize already uses it,
-   restore still spawns a fresh process (~200 ms).
-3. Genie quadToQuad rewrite — borrow Suck's technique, keep the
-   genie silhouette. Eliminates strips in genie entirely.
-4. Terminal (foot) decorations — sway-side title bar.
-5. Customisation layer — Windhawk/Rainmeter-class knobs in Settings.
+1. Restore via animator daemon — minimize already uses it,
+   restore still spawns a fresh process (~200ms).
+2. Genie option A rewrite — 4-6 bands, kills strip seams.
+3. Rich clipboard history panel — the last remaining shared
+   protocol (see PROJECT_STATE.txt).
+4. Customisation layer — ship-order V1 #1 is System monitors as
+   desktop widgets (myMach data already exists). See
+   CUSTOMISATION_VISION.md.
+5. Keyboard bindings — Settings page that writes `swaymsg bindsym`.
 6. Settings polish — wallpaper solid color + local file; display
    refresh/scale/Night Shift; sound input + per-app volume.
+7. Real mesh-warp genie — V2, multi-session.
 
 ---
 

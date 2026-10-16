@@ -918,13 +918,30 @@ WIRING BACKLOG (saved but not yet acting)
       Settings app is next (not done — it's a QDialog-ish thing)
       or skip: Settings has its own chrome model.
 
-  [ ] Shared protocols (do one at a time, only when a feature needs
+  [x] Shared protocols (do one at a time, only when a feature needs
       one — no speculative abstraction):
-        - Drag-and-drop standard between apps (Finder -> Notes,
-          Finder -> Aperture).
-        - "Recent files" store every app reads/writes.
-        - "Open with" wired through Core Matrix.
-        - Rich clipboard panel all apps share.
+        - [x] Drag-and-drop standard between apps — DONE 2026-10-16.
+              Finder drags files out with an oxblood glow thumbnail
+              (dragdrop.h :: ApoDrag::startFileDrag). Notes and
+              Aperture accept drops; their window borders glow
+              oxblood via DropOverlay while a valid payload hovers.
+              Notes converts any dropped file into a new note
+              (text files: raw content; others: path reference).
+              Aperture accepts image MIMEs only and loads them
+              in-place. Cross-process via QMimeData URLs.
+        - [x] "Recent files" store every app reads/writes — DONE.
+              ~/.local/share/apokolips/recents.json, Recents::add()
+              from Finder/OpenWith/BoomTube/Aperture. Omega menu
+              "Recent Items" submenu rebuilds on aboutToShow.
+        - [x] "Open with" wired through Core Matrix — DONE.
+              OpenWith picker reads .desktop files, filters by
+              target MIME, launches via Exec=. Replaces the old
+              hardcoded 5-item Finder menu.
+        - [ ] Rich clipboard panel all apps share — still open.
+              Clipboard IPC is fixed (was parked). The shared
+              *history panel* is the remaining piece.
+
+
 
   [ ] System services (deferred — do when app count justifies it):
         - Spotlight indexes Notes content.

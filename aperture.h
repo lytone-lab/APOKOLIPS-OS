@@ -232,6 +232,10 @@ public:
         m_canvas = new ImageCanvas;
         root->addWidget(m_canvas, 1);
 
+        // Accept file drops (Apokolips shared protocol)
+        setAcceptDrops(true);
+        m_dropOverlay = new DropOverlay(this);
+
         // ---- Status bar ----
         QWidget *status = new QWidget;
         status->setFixedHeight(28);
@@ -302,6 +306,33 @@ protected:
     }
 
 private:
+    void dragEnterEvent(QDragEnterEvent *e) override {
+        if (!e->mimeData()) { e->ignore(); return; }
+        QString p = ApoDrag::acceptedPath(e->mimeData());
+        if (p.isEmpty() || !isImageFile(p)) { e->ignore(); return; }
+        e->acceptProposedAction();
+        if (m_dropOverlay) m_dropOverlay->setActive(true);
+    }
+    void dragLeaveEvent(QDragLeaveEvent *) override {
+        if (m_dropOverlay) m_dropOverlay->setActive(false);
+    }
+    void dropEvent(QDropEvent *e) override {
+        if (m_dropOverlay) m_dropOverlay->setActive(false);
+        if (!e->mimeData()) { e->ignore(); return; }
+        QString p = ApoDrag::acceptedPath(e->mimeData());
+        if (p.isEmpty() || !isImageFile(p)) { e->ignore(); return; }
+        e->acceptProposedAction();
+        m_siblings.clear();
+        loadFolderFor(p);
+        loadFile(p);
+    }
+    bool isImageFile(const QString &p) const {
+        QFileInfo fi(p);
+        static const QStringList exts = {
+            "png","jpg","jpeg","gif","bmp","svg","ico","webp"
+        };
+        return exts.contains(fi.suffix().toLower());
+    }
     void loadFolderFor(const QString &path) {
         QFileInfo fi(path);
         QDir d = fi.absoluteDir();
@@ -368,6 +399,7 @@ private:
     }
 
     ImageCanvas *m_canvas = nullptr;
+    DropOverlay *m_dropOverlay = nullptr;
     QLabel      *m_statusLabel = nullptr;
     QStringList  m_siblings;
     int          m_index = -1;

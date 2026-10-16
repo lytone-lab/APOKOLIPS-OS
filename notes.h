@@ -19,6 +19,10 @@ public:
         m_dir = QDir::homePath() + "/.local/share/apokolips/notes";
         QDir().mkpath(m_dir);
 
+        // Accept file drops (Apokolips shared protocol)
+        setAcceptDrops(true);
+        m_dropOverlay = new DropOverlay(this);
+
         buildUi();
         loadNotesList();
 
@@ -47,7 +51,65 @@ public:
     }
 
 protected:
+    void dragEnterEvent(QDragEnterEvent *e) override {
+        if (!e->mimeData()) { e->ignore(); return; }
+        QString p = ApoDrag::acceptedPath(e->mimeData());
+        if (p.isEmpty()) { e->ignore(); return; }
+        e->acceptProposedAction();
+        if (m_dropOverlay) m_dropOverlay->setActive(true);
+    }
+    void dragLeaveEvent(QDragLeaveEvent *) override {
+        if (m_dropOverlay) m_dropOverlay->setActive(false);
+    }
+    void dropEvent(QDropEvent *e) override {
+        if (m_dropOverlay) m_dropOverlay->setActive(false);
+        if (!e->mimeData()) { e->ignore(); return; }
+        QString p = ApoDrag::acceptedPath(e->mimeData());
+        if (p.isEmpty()) { e->ignore(); return; }
+        e->acceptProposedAction();
+        addFileAsNote(p);
+    }
+
 private:
+    void addFileAsNote(const QString &path) {
+        QFileInfo fi(path);
+        if (!fi.exists() || !fi.isFile()) return;
+        QString name = fi.completeBaseName();
+        if (name.isEmpty()) name = "Dropped";
+        QString notePath = m_dir + "/" + name + ".txt";
+        int n = 1;
+        while (QFile::exists(notePath)) {
+            notePath = m_dir + "/" + name + " "
+                       + QString::number(++n) + ".txt";
+        }
+        QMimeDatabase db;
+        QString mime = db.mimeTypeForFile(path).name();
+        QString content;
+        if (mime.startsWith("text/")
+            || mime == "application/json"
+            || mime == "application/xml") {
+            QFile f(path);
+            if (f.open(QIODevice::ReadOnly))
+                content = QString::fromUtf8(f.readAll());
+        }
+        if (content.isEmpty()) {
+            content = QString::fromUtf8("\xF0\x9F\x93\x8E ")
+                      + path + "\n";
+        }
+        QFile out(notePath);
+        if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return;
+        out.write(content.toUtf8());
+        out.close();
+        loadNotesList();
+        for (int i = 0; i < m_list->count(); ++i) {
+            QListWidgetItem *it = m_list->item(i);
+            if (it && it->data(Qt::UserRole).toString() == notePath) {
+                m_list->setCurrentRow(i);
+                break;
+            }
+        }
+    }
     void buildUi() {
         QVBoxLayout *outer = new QVBoxLayout(this);
         outer->setContentsMargins(16, 16, 16, 16);
@@ -207,6 +269,7 @@ private:
     QLabel        *m_title = nullptr;
     QListWidget   *m_list = nullptr;
     QTextEdit     *m_editor = nullptr;
+    DropOverlay   *m_dropOverlay = nullptr;
     QPushButton   *m_newBtn = nullptr;
     QPushButton   *m_delBtn = nullptr;
     QTimer        *m_saveTimer = nullptr;

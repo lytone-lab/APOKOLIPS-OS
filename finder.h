@@ -9,6 +9,44 @@
 #include "shellapp.h"
 #include "helpers.h"
 
+class FileDragFilter final : public QObject {
+public:
+    FileDragFilter(QAbstractItemView *view, std::function<QString()> pathFn)
+        : QObject(view), m_view(view), m_pathFn(std::move(pathFn)) {
+        if (view && view->viewport())
+            view->viewport()->installEventFilter(this);
+    }
+protected:
+    bool eventFilter(QObject *obj, QEvent *e) override {
+        if (e->type() == QEvent::MouseButtonPress) {
+            auto *me = static_cast<QMouseEvent*>(e);
+            if (me->button() == Qt::LeftButton) {
+                m_pressPos = me->pos();
+                m_armed = true;
+            }
+        } else if (e->type() == QEvent::MouseMove && m_armed) {
+            auto *me = static_cast<QMouseEvent*>(e);
+            if ((me->pos() - m_pressPos).manhattanLength()
+                >= QApplication::startDragDistance()) {
+                m_armed = false;
+                QString path = m_pathFn ? m_pathFn() : QString();
+                if (!path.isEmpty() && QFileInfo::exists(path)) {
+                    ApoDrag::startFileDrag(m_view, path);
+                    return true;
+                }
+            }
+        } else if (e->type() == QEvent::MouseButtonRelease) {
+            m_armed = false;
+        }
+        return QObject::eventFilter(obj, e);
+    }
+private:
+    QAbstractItemView *m_view = nullptr;
+    std::function<QString()> m_pathFn;
+    QPoint m_pressPos;
+    bool m_armed = false;
+};
+
 class FileExplorer : public ShellApp {
 public:
     explicit FileExplorer(QWidget *parent = nullptr) : ShellApp(parent) {
@@ -116,6 +154,14 @@ public:
         // List view by default
         setViewMode(false);
         setShellWindowGeometry(this, QSize(900, 560));
+
+        // ---- File drag-out (Apokolips shared protocol) ----
+        if (m_treeView)
+            new FileDragFilter(m_treeView,
+                [this]() { return selectedPath(); });
+        if (m_view)
+            new FileDragFilter(m_view,
+                [this]() { return selectedPath(); });
 
         show();
         update();

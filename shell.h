@@ -131,4 +131,5 @@ inline void installMenuFade() {
 #include <QSoundEffect>
 #include "recents.h"
 #include "openwith.h"
+#include "dragdrop.h"
 #endif // APOKOLIPS_SHELL_H
