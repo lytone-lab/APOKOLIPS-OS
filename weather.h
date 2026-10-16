@@ -20,6 +20,16 @@ struct Snapshot {
     QString sunset      = "19:54";    // "HH:mm"
     QList<double> hourlyTemps;        // next 12 hours
     QList<int>    hourlyCodes;        // parallel weather codes
+
+    // Multi-day forecast — first entry is today.
+    struct Day {
+        QString name;   // "Mon", "Tue"
+        int     code = -1;
+        double  maxC = 21.0;
+        double  minC = 15.0;
+    };
+    QList<Day> daily;
+
     bool    valid       = false;
 };
 
@@ -55,9 +65,9 @@ public:
             "&current=temperature_2m,weather_code,"
             "wind_speed_10m,relative_humidity_2m"
             "&daily=temperature_2m_max,temperature_2m_min,"
-            "sunrise,sunset"
+            "sunrise,sunset,weather_code"
             "&hourly=temperature_2m,weather_code"
-            "&forecast_days=1"
+            "&forecast_days=6"
             "&timezone=auto").arg(lat).arg(lon);
 
         QNetworkRequest req{QUrl(url)};
@@ -82,6 +92,25 @@ public:
                     QJsonArray mn = day.value("temperature_2m_min").toArray();
                     if (!mx.isEmpty()) s.tempMax = mx.first().toDouble(27.0);
                     if (!mn.isEmpty()) s.tempMin = mn.first().toDouble(17.0);
+
+                    // Multi-day forecast — build the week list.
+                    {
+                        QJsonArray dTime = day.value("time").toArray();
+                        QJsonArray dCode = day.value("weather_code").toArray();
+                        int n = qMin(qMin(dTime.size(), mx.size()),
+                                     qMin(mn.size(), dCode.size()));
+                        for (int i = 0; i < n; ++i) {
+                            Snapshot::Day d;
+                            QDate dt = QDate::fromString(
+                                dTime[i].toString(), "yyyy-MM-dd");
+                            d.name = dt.isValid()
+                                ? dt.toString("ddd") : QString("---");
+                            d.maxC = mx[i].toDouble(21.0);
+                            d.minC = mn[i].toDouble(15.0);
+                            d.code = dCode[i].toInt(-1);
+                            s.daily.append(d);
+                        }
+                    }
                     // sunrise / sunset come as ISO strings "2026-10-15T06:29"
                     auto tailTime = [](const QString &iso) -> QString {
                         int t = iso.indexOf('T');

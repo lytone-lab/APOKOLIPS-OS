@@ -1282,6 +1282,7 @@ public:
     {
         if (variant() == "full")         setFixedSize(320, 240);
         else if (variant() == "compact") setFixedSize(340, 150);
+        else if (variant() == "week")    setFixedSize(340, 180);
         else                             setFixedSize(280, 170);
 
         m_weather = new Weather::Fetcher(this);
@@ -1299,19 +1300,21 @@ public:
     }
 
     QStringList variants() const override {
-        return { "full", "compact", "sunset", "conditions" };
+        return { "full", "compact", "sunset", "conditions", "week" };
     }
     QString variantLabel(const QString &v) const override {
         if (v == "full")       return "Full";
         if (v == "compact")    return "Compact";
         if (v == "sunset")     return "Sunset";
         if (v == "conditions") return "Conditions";
+        if (v == "week")       return "5-Day";
         return v;
     }
 
     void setVariant(const QString &v) override {
         if (v == "full")         setFixedSize(320, 240);
         else if (v == "compact") setFixedSize(340, 150);
+        else if (v == "week")    setFixedSize(340, 180);
         else                     setFixedSize(280, 170);
         WidgetCard::setVariant(v);
     }
@@ -1332,6 +1335,7 @@ protected:
     void paintContent(QPainter &p, const QRect &r) override {
         const QString v = variant();
         if      (v == "sunset")   paintSunset(p, r);
+        else if (v == "week")     paintWeek(p, r);
         else if (v == "full")     paintFull(p, r);
         else if (v == "compact")  paintCompact(p, r);
         else                      paintConditions(p, r);
@@ -1533,6 +1537,154 @@ private:
                    Qt::AlignCenter,
                    QString::fromUtf8("Sunrise: ")
                    + m_wx.sunrise);
+    }
+
+    void paintWeek(QPainter &p, const QRect &r) {
+        QFont f = font();
+
+        // Header — city (left) + "5-DAY" (right)
+        f.setPixelSize(12); f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        p.setPen(QColor(240, 245, 255));
+        p.drawText(QRect(r.left(), r.top(), r.width(), 16),
+                   Qt::AlignLeft | Qt::AlignVCenter, m_wx.city);
+        f.setPixelSize(9); f.setWeight(QFont::Normal);
+        p.setFont(f);
+        p.setPen(QColor(200, 215, 235));
+        p.drawText(QRect(r.left(), r.top(), r.width(), 16),
+                   Qt::AlignRight | Qt::AlignVCenter, "5-DAY");
+
+        if (m_wx.daily.isEmpty()) return;
+
+        const int cols   = qMin(5, m_wx.daily.size());
+        const int stripTop = r.top() + 22;
+        const int cellW = r.width() / cols;
+
+        for (int i = 0; i < cols; ++i) {
+            const Weather::Snapshot::Day &d = m_wx.daily[i];
+            const int cx = r.left() + cellW * i + cellW / 2;
+
+            // Day name
+            f.setPixelSize(10); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(QColor(230, 240, 255));
+            p.drawText(QRect(cx - cellW/2, stripTop, cellW, 14),
+                       Qt::AlignCenter, d.name);
+
+            // Icon
+            QRectF iconR(cx - 13, stripTop + 18, 26, 26);
+            drawDayIcon(p, iconR, d.code);
+
+            // High temp
+            f.setPixelSize(11); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(QColor(240, 245, 255));
+            p.drawText(QRect(cx - cellW/2, stripTop + 50, cellW, 14),
+                       Qt::AlignCenter,
+                       QString("%1\xC2\xB0").arg(int(d.maxC + 0.5)));
+
+            // Low temp
+            f.setPixelSize(10); f.setWeight(QFont::Normal);
+            p.setFont(f);
+            p.setPen(QColor(190, 205, 225));
+            p.drawText(QRect(cx - cellW/2, stripTop + 66, cellW, 14),
+                       Qt::AlignCenter,
+                       QString("%1\xC2\xB0").arg(int(d.minC + 0.5)));
+        }
+    }
+
+    // Simple inline icon per weather code — a sun, cloud, rain,
+    // snow, fog, or storm drawn with plain QPainter primitives so
+    // there is nothing to load and nothing to cache.
+    void drawDayIcon(QPainter &p, const QRectF &r, int code) {
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing);
+
+        const bool isClear  = (code == 0 || code == 1);
+        const bool isCloudy = (code == 2 || code == 3);
+        const bool isFog    = (code == 45 || code == 48);
+        const bool isRain   = (code >= 51 && code <= 67)
+                           || (code >= 80 && code <= 82);
+        const bool isSnow   = (code >= 71 && code <= 77)
+                           || (code >= 85 && code <= 86);
+        const bool isStorm  = (code >= 95);
+
+        const QPointF c = r.center();
+        const qreal rad = r.width() * 0.28;
+
+        if (isClear) {
+            QColor sun(255, 220, 120);
+            p.setPen(Qt::NoPen);
+            p.setBrush(sun);
+            p.drawEllipse(c, rad, rad);
+            p.setPen(QPen(sun, 1.6, Qt::SolidLine, Qt::RoundCap));
+            for (int i = 0; i < 8; ++i) {
+                qreal a = i * M_PI / 4.0;
+                p.drawLine(
+                    QPointF(c.x() + std::cos(a) * rad * 1.4,
+                            c.y() + std::sin(a) * rad * 1.4),
+                    QPointF(c.x() + std::cos(a) * rad * 1.9,
+                            c.y() + std::sin(a) * rad * 1.9));
+            }
+        } else if (isCloudy || isRain || isSnow || isStorm) {
+            QColor cloud(225, 232, 242);
+            p.setPen(Qt::NoPen);
+            p.setBrush(cloud);
+            const qreal cw = r.width() * 0.55;
+            const qreal ch = r.height() * 0.32;
+            p.drawEllipse(QPointF(c.x() - cw * 0.35,
+                                  c.y() + ch * 0.15),
+                          cw * 0.50, ch * 0.80);
+            p.drawEllipse(QPointF(c.x() + cw * 0.15,
+                                  c.y() + ch * 0.15),
+                          cw * 0.55, ch * 0.90);
+            p.drawEllipse(QPointF(c.x(), c.y() - ch * 0.20),
+                          cw * 0.65, ch * 1.00);
+
+            if (isRain || isStorm) {
+                p.setPen(QPen(QColor(140, 200, 240), 1.4,
+                              Qt::SolidLine, Qt::RoundCap));
+                for (int i = 0; i < 3; ++i) {
+                    qreal x = c.x() - cw * 0.30 + i * cw * 0.30;
+                    p.drawLine(QPointF(x, c.y() + ch * 0.90),
+                               QPointF(x - 2, c.y() + ch * 1.70));
+                }
+            } else if (isSnow) {
+                p.setPen(QPen(QColor(220, 230, 240), 1.2,
+                              Qt::SolidLine, Qt::RoundCap));
+                for (int i = 0; i < 3; ++i) {
+                    qreal x = c.x() - cw * 0.30 + i * cw * 0.30;
+                    qreal y = c.y() + ch * 1.20;
+                    p.drawLine(QPointF(x - 2, y), QPointF(x + 2, y));
+                    p.drawLine(QPointF(x, y - 2), QPointF(x, y + 2));
+                }
+            }
+            if (isStorm) {
+                QPolygonF bolt;
+                bolt << QPointF(c.x() + 3, c.y() + 8)
+                     << QPointF(c.x() - 2, c.y() + 13)
+                     << QPointF(c.x() + 1, c.y() + 13)
+                     << QPointF(c.x() - 3, c.y() + 21)
+                     << QPointF(c.x() + 4, c.y() + 14)
+                     << QPointF(c.x() + 1, c.y() + 14);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(255, 220, 90));
+                p.drawPolygon(bolt);
+            }
+        } else if (isFog) {
+            p.setPen(QPen(QColor(215, 225, 240), 1.6,
+                          Qt::SolidLine, Qt::RoundCap));
+            for (int i = 0; i < 3; ++i) {
+                qreal y = c.y() - 4 + i * 4;
+                p.drawLine(QPointF(r.left() + r.width() * 0.2, y),
+                           QPointF(r.right() - r.width() * 0.2, y));
+            }
+        } else {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(200, 210, 225));
+            p.drawEllipse(c, 3, 3);
+        }
+        p.restore();
     }
 
     Weather::Fetcher  *m_weather = nullptr;
