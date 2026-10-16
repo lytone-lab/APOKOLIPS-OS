@@ -518,6 +518,10 @@ from wallpapers, per-app chrome rewrite. Phase-tagged P1/P2/P3.
       variations. One session.
 
   [ ] "The Pool" — fluid desktop icons (V2 chosen)
+      Sound assets (pool_bubble.wav, pool_pop.wav) already in
+      assets/sounds/ — intended to fire on icon displacement
+      (bubble) and settle (pop). NOT wired yet. VM has no working
+      audio output; test on ISO after build.
       User's own invention. Desktop icons behave like water: when
       a widget card moves into a group of icons, they part and
       slide around it, staying nearby. Same for folders and any
