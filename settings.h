@@ -437,6 +437,10 @@ private:
 
         addSection(sb, "Appearance", QString::fromUtf8("\xE2\x9C\xA8"),
                    QColor(122, 106, 159), [this]() { return makeAppearancePage(); });
+        addSection(sb, "Livery",
+                   QString::fromUtf8("\xF0\x9F\x8E\xA8"),
+                   QColor(168, 50, 50),
+                   [this]() { return makePerAppPage(); });
         addSection(sb, "Control Center", QString::fromUtf8("\xE2\x98\xB0"),
                    QColor(90, 122, 158), [this]() { return makeControlCenterPage(); });
         addSection(sb, "General", QString::fromUtf8("\xE2\x9A\x99"),
@@ -5113,6 +5117,520 @@ private:
                      selected ? "rgb(200, 74, 74)"
                               : "rgba(255,255,255,45)"));
         }
+    }
+
+    // ---- Per-App Appearance page ----
+    // Left column: app list. Right column: overrides for the
+    // selected app, plus a live preview window that uses the
+    // exact same paint code as ShellApp::paintChrome.
+
+    QVariant appOverrideGet(const QString &id, const QString &key,
+                            const QVariant &def) const {
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        QVariant v = cfg.appOverrides.value(id);
+        if (!v.canConvert<QVariantMap>()) return def;
+        return v.toMap().value(key, def);
+    }
+
+    void appOverrideSet(const QString &id, const QString &key,
+                        const QVariant &val) {
+        VisualConfigManager::instance().setAndSave(
+            [id, key, val](VisualConfig &c) {
+                QVariantMap m = c.appOverrides.value(id).toMap();
+                m[key] = val;
+                c.appOverrides[id] = m;
+            });
+    }
+
+    // Small preview widget — draws the chrome exactly as the app
+    // would. Reused across every app entry.
+    class AppChromePreview : public QWidget {
+    public:
+        explicit AppChromePreview(QWidget *parent = nullptr)
+            : QWidget(parent) {
+            setFixedSize(340, 220);
+            setAttribute(Qt::WA_StyledBackground, true);
+        }
+        void setOverride(const ShellApp::AppOverride &o) {
+            m_ovr = o; update();
+        }
+        void setTitle(const QString &t) { m_title = t; update(); }
+    protected:
+        void paintEvent(QPaintEvent *) override {
+            QPainter p(this);
+            // Rich multi-stop background — a mock wallpaper with
+            // visible features so glass shows through as glass and
+            // solid shows as a clearly distinct band.
+            p.setRenderHint(QPainter::Antialiasing);
+            QLinearGradient g(rect().topLeft(), rect().bottomRight());
+            g.setColorAt(0.00, QColor(120, 90, 200));
+            g.setColorAt(0.35, QColor(200, 110, 150));
+            g.setColorAt(0.70, QColor(90, 160, 220));
+            g.setColorAt(1.00, QColor(40, 50, 100));
+            p.fillRect(rect(), g);
+
+            // Faux wallpaper detail — a couple of diagonal bands
+            // so blur/glass have something visible to smear.
+            p.setPen(QPen(QColor(255, 255, 255, 60), 3));
+            p.drawLine(0, rect().height() / 3,
+                       rect().width(), rect().height() / 2);
+            p.drawLine(0, rect().height() * 2 / 3,
+                       rect().width(), rect().height() / 2);
+
+            // Draw the chrome.
+            ShellApp::paintChrome(p, rect().adjusted(10, 10, -10, -10),
+                                  false, m_ovr);
+
+            // Draw header title + traffic-light dots on the
+            // correct side.
+            const QRect r = rect().adjusted(10, 10, -10, -10);
+            bool right = m_ovr.trafficSide == "right";
+
+            const int dotD = 12, dotPad = 8;
+            int dotY = r.top() + (40 - dotD) / 2;
+            int x0 = r.left() + 14;
+            int xr = r.right() - 14 - 3 * dotD - 2 * dotPad;
+            int startX = right ? xr : x0;
+
+            QColor colours[3] = {
+                QColor(255, 95, 87),
+                QColor(254, 188, 46),
+                QColor(40, 200, 64)
+            };
+            for (int i = 0; i < 3; ++i) {
+                QColor c = colours[i];
+                p.setPen(Qt::NoPen);
+                p.setBrush(c);
+                QRectF dot(startX + i * (dotD + dotPad), dotY,
+                           dotD, dotD);
+                p.drawEllipse(dot);
+            }
+
+            QFont f = font();
+            f.setPixelSize(12); f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            p.setPen(QColor(240, 237, 232));
+            int textX = right ? r.left() + 14
+                              : startX + 3 * (dotD + dotPad) + 6;
+            QRect tr(textX, r.top(), r.width() - 2*14, 40);
+            p.drawText(tr, Qt::AlignLeft | Qt::AlignVCenter,
+                       m_title);
+        }
+    private:
+        ShellApp::AppOverride m_ovr;
+        QString m_title = "Preview";
+    };
+
+    QWidget *buildAppOverridesPanel(const QString &id,
+                                    const QString &label,
+                                    AppChromePreview *preview) {
+        QWidget *page = new QWidget;
+        QVBoxLayout *v = new QVBoxLayout(page);
+        v->setContentsMargins(0, 0, 0, 0);
+        v->setSpacing(14);
+
+        auto refreshPreview = [this, id, preview, label]() {
+            ShellApp::AppOverride ovr;
+            ovr.chromeStyle = appOverrideGet(
+                id, "chromeStyle", "system").toString();
+            ovr.trafficSide = appOverrideGet(
+                id, "trafficSide", "left").toString();
+            ovr.accent      = appOverrideGet(
+                id, "accent", "inherit").toString();
+            ovr.radius      = appOverrideGet(
+                id, "radius", -1).toInt();
+            preview->setOverride(ovr);
+            preview->setTitle(label);
+        };
+
+        // ---- Preview card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("PREVIEW"));
+            cv->addWidget(preview, 0, Qt::AlignHCenter);
+            v->addWidget(c);
+        }
+
+        // ---- Chrome style ----
+        QButtonGroup *chromeGrp = nullptr;
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("CHROME STYLE"));
+
+            QWidget *row = new QWidget;
+            QHBoxLayout *h = new QHBoxLayout(row);
+            h->setContentsMargins(0, 0, 0, 0);
+            h->setSpacing(8);
+
+            QButtonGroup *grp = new QButtonGroup(row);
+            grp->setExclusive(true);
+            chromeGrp = grp;
+            const QStringList styles = {
+                "system", "flat", "glass", "solid"
+            };
+            const QStringList labels = {
+                "System", "Flat", "Glass", "Solid"
+            };
+            QString cur = appOverrideGet(id, "chromeStyle",
+                                          "system").toString();
+            for (int i = 0; i < styles.size(); ++i) {
+                QPushButton *b = new QPushButton(labels[i]);
+                b->setCheckable(true);
+                b->setChecked(styles[i] == cur);
+                b->setCursor(Qt::PointingHandCursor);
+                b->setMinimumHeight(32);
+                b->setStyleSheet(
+                    "QPushButton {"
+                    "  background: rgba(255,255,255,20);"
+                    "  border: 1px solid rgba(255,255,255,40);"
+                    "  border-radius: 8px;"
+                    "  color: rgb(240,237,232);"
+                    "  font-size: 12px;"
+                    "  padding: 0 10px;"
+                    "}"
+                    "QPushButton:checked {"
+                    "  background: rgba(168,50,50,220);"
+                    "  border: 1px solid rgba(168,50,50,255);"
+                    "}");
+                grp->addButton(b, i);
+                h->addWidget(b);
+            }
+            h->addStretch();
+            cv->addWidget(row);
+
+            QString idLocal = id;
+            QObject::connect(grp, &QButtonGroup::idClicked,
+                [this, idLocal, styles, refreshPreview](int i) {
+                    appOverrideSet(idLocal, "chromeStyle",
+                                   styles.value(i));
+                    refreshPreview();
+                });
+            v->addWidget(c);
+        }
+
+        // ---- Traffic lights side ----
+        QButtonGroup *sideGrp = nullptr;
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("TRAFFIC LIGHTS"));
+
+            QWidget *row = new QWidget;
+            QHBoxLayout *h = new QHBoxLayout(row);
+            h->setContentsMargins(0, 0, 0, 0);
+            h->setSpacing(8);
+
+            QButtonGroup *grp = new QButtonGroup(row);
+            grp->setExclusive(true);
+            sideGrp = grp;
+            const QStringList sides = { "left", "right" };
+            const QStringList labels = { "Left", "Right" };
+            QString cur = appOverrideGet(id, "trafficSide",
+                                          "left").toString();
+            for (int i = 0; i < sides.size(); ++i) {
+                QPushButton *b = new QPushButton(labels[i]);
+                b->setCheckable(true);
+                b->setChecked(sides[i] == cur);
+                b->setCursor(Qt::PointingHandCursor);
+                b->setMinimumHeight(32);
+                b->setStyleSheet(
+                    "QPushButton {"
+                    "  background: rgba(255,255,255,20);"
+                    "  border: 1px solid rgba(255,255,255,40);"
+                    "  border-radius: 8px;"
+                    "  color: rgb(240,237,232);"
+                    "  font-size: 12px;"
+                    "  padding: 0 14px;"
+                    "}"
+                    "QPushButton:checked {"
+                    "  background: rgba(168,50,50,220);"
+                    "  border: 1px solid rgba(168,50,50,255);"
+                    "}");
+                grp->addButton(b, i);
+                h->addWidget(b);
+            }
+            h->addStretch();
+            cv->addWidget(row);
+
+            QString idLocal = id;
+            QObject::connect(grp, &QButtonGroup::idClicked,
+                [this, idLocal, sides, refreshPreview](int i) {
+                    appOverrideSet(idLocal, "trafficSide",
+                                   sides.value(i));
+                    refreshPreview();
+                });
+            v->addWidget(c);
+        }
+
+        // ---- Accent ----
+        QButtonGroup *accentGrp = nullptr;
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("BORDER ACCENT"));
+
+            QWidget *row = new QWidget;
+            QHBoxLayout *h = new QHBoxLayout(row);
+            h->setContentsMargins(0, 0, 0, 0);
+            h->setSpacing(8);
+
+            struct Swatch {
+                const char *val;
+                QColor col;
+                const char *name;
+            };
+            const Swatch swatches[] = {
+                { "inherit",   QColor(255,255,255,30), "Inherit" },
+                { "#a83250",   QColor(168,50,80),      "Oxblood" },
+                { "#5a82c8",   QColor(90,130,200),     "Finder blue" },
+                { "#e8dcc6",   QColor(232,220,198),    "Notes amber" },
+                { "#3c6e46",   QColor(60,110,70),      "myMach green" },
+                { "#8c2d2d",   QColor(140,45,45),      "BoomTube red" },
+            };
+            QButtonGroup *grp = new QButtonGroup(row);
+            grp->setExclusive(true);
+            accentGrp = grp;
+            QString cur = appOverrideGet(id, "accent",
+                                          "inherit").toString();
+            for (int i = 0; i < 6; ++i) {
+                QPushButton *b = new QPushButton;
+                b->setFixedSize(36, 36);
+                b->setCheckable(true);
+                b->setChecked(QString(swatches[i].val) == cur);
+                b->setCursor(Qt::PointingHandCursor);
+                b->setToolTip(QString::fromUtf8(swatches[i].name));
+                QString bg = swatches[i].col.name(QColor::HexArgb);
+                b->setStyleSheet(QString(
+                    "QPushButton {"
+                    "  background: %1;"
+                    "  border: 2px solid rgba(255,255,255,60);"
+                    "  border-radius: 10px;"
+                    "}"
+                    "QPushButton:checked {"
+                    "  border: 3px solid rgb(255,255,255);"
+                    "}")
+                    .arg(bg));
+                grp->addButton(b, i);
+                h->addWidget(b);
+            }
+            h->addStretch();
+            cv->addWidget(row);
+
+            QString idLocal = id;
+            QObject::connect(grp, &QButtonGroup::idClicked,
+                [this, idLocal, refreshPreview](int i) {
+                    static const char *vals[] = {
+                        "inherit", "#a83250", "#5a82c8",
+                        "#e8dcc6", "#3c6e46", "#8c2d2d"
+                    };
+                    if (i >= 0 && i < 6)
+                        appOverrideSet(idLocal, "accent",
+                                       QString(vals[i]));
+                    refreshPreview();
+                });
+            v->addWidget(c);
+        }
+
+        // ---- Corner radius ----
+        QSlider *radiusSl  = nullptr;
+        QLabel  *radiusLbl = nullptr;
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("CORNER RADIUS"));
+
+            QWidget *row = new QWidget;
+            QVBoxLayout *rv = new QVBoxLayout(row);
+            rv->setContentsMargins(0, 0, 0, 0);
+            rv->setSpacing(6);
+
+            int curR = appOverrideGet(id, "radius", -1).toInt();
+            int sliderVal = curR < 0 ? 14 : curR;
+
+            QHBoxLayout *top = new QHBoxLayout;
+            QLabel *t = new QLabel("Radius");
+            t->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            QLabel *val = new QLabel(QString("%1 px").arg(sliderVal));
+            val->setStyleSheet(QString(
+                "color: %1; font-size: 12px; background: transparent;")
+                .arg(Sigil::textSecondary().name()));
+            val->setMinimumWidth(70);
+            val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            top->addWidget(t);
+            top->addStretch();
+            top->addWidget(val);
+            rv->addLayout(top);
+
+            QSlider *sl = new QSlider(Qt::Horizontal);
+            sl->setRange(0, 32);
+            sl->setValue(sliderVal);
+            sl->setStyleSheet(
+                "QSlider::groove:horizontal { height: 4px;"
+                "  background: rgba(255,255,255,25);"
+                "  border-radius: 2px; }"
+                "QSlider::handle:horizontal {"
+                "  background: #ffffff; width: 14px; height: 14px;"
+                "  margin: -5px 0; border-radius: 7px; }"
+                "QSlider::sub-page:horizontal {"
+                "  background: rgb(168,50,50);"
+                "  border-radius: 2px; }");
+            m_sliders.append(sl);
+            QString idLocal = id;
+            QObject::connect(sl, &QSlider::valueChanged,
+                [this, idLocal, val, refreshPreview](int x) {
+                    val->setText(QString("%1 px").arg(x));
+                    appOverrideSet(idLocal, "radius", x);
+                    refreshPreview();
+                });
+            rv->addWidget(sl);
+            cv->addWidget(row);
+            v->addWidget(c);
+            radiusSl  = sl;
+            radiusLbl = val;
+        }
+
+        // ---- Reset button ----
+        {
+            QPushButton *reset = new QPushButton("Reset to system defaults");
+            reset->setCursor(Qt::PointingHandCursor);
+            reset->setMinimumHeight(34);
+            reset->setStyleSheet(
+                "QPushButton {"
+                "  background: rgba(255,255,255,15);"
+                "  border: 1px solid rgba(255,255,255,30);"
+                "  border-radius: 8px;"
+                "  color: rgb(240,237,232);"
+                "  font-size: 12px;"
+                "}"
+                "QPushButton:hover {"
+                "  background: rgba(168,50,50,120);"
+                "}");
+            QString idLocal = id;
+            QObject::connect(reset, &QPushButton::clicked,
+                [this, idLocal, chromeGrp, sideGrp, accentGrp,
+                 radiusSl, radiusLbl, refreshPreview]() {
+                    // 1) Clear the app's overrides in config.
+                    VisualConfigManager::instance().setAndSave(
+                        [idLocal](VisualConfig &c) {
+                            c.appOverrides.remove(idLocal);
+                        });
+
+                    // 2) Snap each control back visually.
+                    //    QSignalBlocker stops the callbacks from
+                    //    writing the defaults back as fresh
+                    //    overrides — config stays clean.
+                    //    setChecked(true) on a button inside an
+                    //    exclusive QButtonGroup unchecks siblings.
+                    if (chromeGrp) {
+                        if (auto *b = chromeGrp->button(0)) {
+                            QSignalBlocker blk(chromeGrp);
+                            b->setChecked(true);
+                        }
+                    }
+                    if (sideGrp) {
+                        if (auto *b = sideGrp->button(0)) {
+                            QSignalBlocker blk(sideGrp);
+                            b->setChecked(true);
+                        }
+                    }
+                    if (accentGrp) {
+                        if (auto *b = accentGrp->button(0)) {
+                            QSignalBlocker blk(accentGrp);
+                            b->setChecked(true);
+                        }
+                    }
+                    if (radiusSl) {
+                        QSignalBlocker blk(radiusSl);
+                        radiusSl->setValue(14);
+                    }
+                    if (radiusLbl) radiusLbl->setText("14 px");
+
+                    // 3) Redraw preview.
+                    refreshPreview();
+                    qInfo() << "[livery] reset" << idLocal;
+                });
+            v->addWidget(reset);
+        }
+
+        v->addStretch();
+        refreshPreview();
+        return page;
+    }
+
+    QWidget *makePerAppPage() {
+        QWidget *page = new QWidget;
+        QHBoxLayout *outer = new QHBoxLayout(page);
+        outer->setContentsMargins(28, 26, 28, 30);
+        outer->setSpacing(20);
+
+        struct A { const char *id; const char *label; };
+        const A allApps[] = {
+            { "apokolips-files",      "Finder" },
+            { "apokolips-notes",      "Notes" },
+            { "apokolips-aperture",   "Aperture" },
+            { "apokolips-boombute",   "BoomTube" },
+            { "apokolips-mymach",     "myMach" },
+            { "apokolips-node",       "Node" },
+            { "apokolips-calculator", "Calculator" },
+            { "apokolips-settings",   "Settings" },
+        };
+
+        QListWidget *list = new QListWidget;
+        list->setFixedWidth(200);
+        list->setFrameShape(QFrame::NoFrame);
+        list->setStyleSheet(
+            "QListWidget {"
+            "  background: rgba(255,255,255,10);"
+            "  border-radius: 10px;"
+            "  color: rgb(240,237,232);"
+            "  font-size: 13px;"
+            "  padding: 6px;"
+            "}"
+            "QListWidget::item {"
+            "  padding: 8px 10px;"
+            "  border-radius: 6px;"
+            "}"
+            "QListWidget::item:hover {"
+            "  background: rgba(255,255,255,25);"
+            "}"
+            "QListWidget::item:selected {"
+            "  background: rgba(168,50,50,120);"
+            "  color: #ffffff;"
+            "}");
+
+        QStackedWidget *stack = new QStackedWidget;
+        for (const auto &a : allApps) {
+            QListWidgetItem *it = new QListWidgetItem(a.label);
+            it->setData(Qt::UserRole, QString::fromUtf8(a.id));
+            list->addItem(it);
+
+            auto *preview = new AppChromePreview;
+            stack->addWidget(buildAppOverridesPanel(
+                QString::fromUtf8(a.id),
+                QString::fromUtf8(a.label),
+                preview));
+        }
+        QObject::connect(list, &QListWidget::currentRowChanged,
+                         stack, &QStackedWidget::setCurrentIndex);
+        list->setCurrentRow(0);
+
+        outer->addWidget(list);
+        outer->addWidget(stack, 1);
+        return page;
     }
 
     QWidget *makeControlCenterPage() {

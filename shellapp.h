@@ -6,6 +6,7 @@
 // theme subscription, standard paint, drag-to-move.
 // Subclasses override onThemeChanged() for custom restyling.
 
+#include "visualconfig.h"
 #include "shell.h"
 #include "theme.h"
 #include "style.h"
@@ -18,6 +19,28 @@
 
 class ShellApp : public QWidget {
 public:
+    // ---- Per-app chrome override ----
+    struct AppOverride {
+        QString chromeStyle = "system";   // system|flat|glass|solid
+        QString trafficSide = "left";     // left|right
+        QString accent      = "inherit";  // inherit or #RRGGBB
+        int     radius      = -1;         // -1 = default 14
+    };
+
+    // Maps an app's title (as passed to setupShellApp) to the
+    // canonical id used as the key in cfg.appOverrides.
+    static QString appIdForTitle(const QString &title) {
+        if (title == "Files")      return "apokolips-files";
+        if (title == "Aperture")   return "apokolips-aperture";
+        if (title == "Notes")      return "apokolips-notes";
+        if (title == "Node")       return "apokolips-node";
+        if (title == "myMach")     return "apokolips-mymach";
+        if (title == "BoomTube")   return "apokolips-boombute";
+        if (title == "Calculator") return "apokolips-calculator";
+        if (title == "Settings")   return "apokolips-settings";
+        return QString();
+    }
+
     explicit ShellApp(QWidget *parent = nullptr) : QWidget(parent) {}
 
     // Call from subclass ctor. Sets window flags, subscribes to
@@ -28,6 +51,8 @@ public:
     {
         m_embedded      = embedded;
         m_preferredSize = preferred;
+        m_appId         = appIdForTitle(title);
+        readOverride();
 
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
@@ -109,18 +134,26 @@ protected:
                                                  QString::fromUtf8("\xE2\x88\x92"));
         QPushButton *maxBtn   = makeTrafficLight("#155c1e", "#28c840",
                                                  "+");
-        hdr->addWidget(closeBtn);
-        hdr->addWidget(minBtn);
-        hdr->addWidget(maxBtn);
-        hdr->addSpacing(10);
-
         QLabel *titleLabel = new QLabel(title);
         titleLabel->setStyleSheet(QString(
             "color: %1; font-size: 13px; font-weight: 600;"
             " background: transparent;")
             .arg(Sigil::textPrimary().name()));
-        hdr->addWidget(titleLabel);
-        hdr->addStretch();
+
+        if (m_override.trafficSide == "right") {
+            hdr->addWidget(titleLabel);
+            hdr->addStretch();
+            hdr->addWidget(closeBtn);
+            hdr->addWidget(minBtn);
+            hdr->addWidget(maxBtn);
+        } else {
+            hdr->addWidget(closeBtn);
+            hdr->addWidget(minBtn);
+            hdr->addWidget(maxBtn);
+            hdr->addSpacing(10);
+            hdr->addWidget(titleLabel);
+            hdr->addStretch();
+        }
 
         QObject::connect(closeBtn, &QPushButton::clicked, [this]() {
             // Red light: minimize animation, then exit the process.
@@ -185,6 +218,82 @@ protected:
         w->setGeometry(target);
     }
 
+    // Read this app's override entry from visual.json. Called at
+    // construction. Unknown or empty values fall back to defaults.
+    void readOverride() {
+        if (m_appId.isEmpty()) return;
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        QVariant v = cfg.appOverrides.value(m_appId);
+        if (!v.canConvert<QVariantMap>()) return;
+        QVariantMap m = v.toMap();
+        m_override.chromeStyle =
+            m.value("chromeStyle", m_override.chromeStyle).toString();
+        m_override.trafficSide =
+            m.value("trafficSide", m_override.trafficSide).toString();
+        m_override.accent      =
+            m.value("accent", m_override.accent).toString();
+        m_override.radius      =
+            m.value("radius", m_override.radius).toInt();
+    }
+
+public:
+    // The chrome renderer. Used by paintEvent and by the Settings
+    // preview so both draw the *same* pixels. Static so the preview
+    // can call it without constructing a ShellApp.
+    static void paintChrome(QPainter &p, const QRect &r, bool embedded,
+                            const AppOverride &ovr)
+    {
+        p.setRenderHint(QPainter::Antialiasing);
+        int radius = ovr.radius >= 0 ? ovr.radius : 14;
+        radius = qBound(0, radius, 32);
+
+        QRectF body = QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath full;
+        full.addRoundedRect(body, radius, radius);
+        p.fillPath(full, Sigil::contentBg());
+
+        if (!embedded) {
+            QString style = ovr.chromeStyle;
+            if (style == "system") style = "glass";
+
+            if (style == "glass") {
+                const QPixmap &bg = ThemeManager::instance().blurredBg();
+                if (!bg.isNull() && r.height() > 40 && r.width() > 40) {
+                    p.save();
+                    p.setClipPath(full);
+                    constexpr int HDR = 40;
+                    QRect srcRect(0, 0, bg.width(),
+                        qMax(1, bg.height() * HDR / qMax(1, r.height())));
+                    p.drawPixmap(QRect(0, 0, r.width(), HDR), bg, srcRect);
+                    p.fillRect(0, 0, r.width(), HDR,
+                               QColor(0, 0, 0, 95));
+                    p.restore();
+                }
+            } else if (style == "solid") {
+                p.save();
+                p.setClipPath(full);
+                // Distinct header band — lighter than the body so
+                // the boundary is obvious, with a bottom hairline
+                // to separate header from content.
+                p.fillRect(0, 0, r.width(), 40, QColor(34, 34, 38));
+                p.setPen(QPen(QColor(255, 255, 255, 40), 1));
+                p.drawLine(0, 40, r.width(), 40);
+                p.restore();
+            }
+            // "flat" = no header strip at all.
+        }
+
+        QColor borderCol = Sigil::border();
+        if (ovr.accent != "inherit" && !ovr.accent.isEmpty()) {
+            QColor a(ovr.accent);
+            if (a.isValid()) borderCol = a;
+        }
+        p.setPen(QPen(borderCol, 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(full);
+    }
+
+protected:
     void installStandardShortcuts()
     {
         auto add = [this](const QKeySequence &k,
@@ -205,34 +314,7 @@ protected:
     void paintEvent(QPaintEvent *) override
     {
         QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-        QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
-        QPainterPath full;
-        full.addRoundedRect(body, 14, 14);
-        p.fillPath(full, Sigil::contentBg());
-
-        // Glassy header — blurred wallpaper behind the traffic
-        // lights instead of a flat colour. Tinted dark for
-        // legibility. Only for top-level windows; embedded apps
-        // skip it.
-        if (!m_embedded) {
-            const QPixmap &bg = ThemeManager::instance().blurredBg();
-            if (!bg.isNull() && height() > 40 && width() > 40) {
-                p.save();
-                p.setClipPath(full);
-                constexpr int HDR = 40;
-                QRect srcRect(0, 0, bg.width(),
-                    qMax(1, bg.height() * HDR / qMax(1, height())));
-                p.drawPixmap(QRect(0, 0, width(), HDR),
-                             bg, srcRect);
-                p.fillRect(0, 0, width(), HDR, QColor(0, 0, 0, 95));
-                p.restore();
-            }
-        }
-
-        p.setPen(QPen(Sigil::border(), 1));
-        p.setBrush(Qt::NoBrush);
-        p.drawPath(full);
+        paintChrome(p, rect(), m_embedded, m_override);
     }
 
     void mousePressEvent(QMouseEvent *e) override
@@ -247,6 +329,8 @@ protected:
     Theme m_appTheme;
     bool  m_embedded      = false;
     QSize m_preferredSize;
+    QString m_appId;
+    AppOverride m_override;
 };
 
 #endif // APOKOLIPS_SHELLAPP_H

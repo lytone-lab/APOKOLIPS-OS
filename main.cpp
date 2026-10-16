@@ -2846,7 +2846,7 @@ static int runShell(int argc, char *argv[])
         QObject::connect(layoutDelay, &QTimer::timeout, root,
             [root, layoutDelay, tries,
              clockCard, ringsCard, weatherCard,
-             statsCard, calendarCard]() {
+             statsCard, calendarCard, nowPlayingCard]() {
             if (++(*tries) > 50) {  // give up after ~5 s
                 layoutDelay->stop();
                 qWarning() << "[widgets] layout wait timed out";

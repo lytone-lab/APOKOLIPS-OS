@@ -32,6 +32,12 @@ struct VisualConfig {
     bool   widgetSnapToGrid   = false;  // snap drag to grid
     int    widgetGridSize     = 40;     // px grid unit
     QVariantMap widgetVisibility;       // id -> bool (visible?)
+    // Per-app chrome overrides. Key = "apokolips-<name>";
+    // value = { chromeStyle: "system|flat|glass|solid",
+    //           trafficSide: "left|right",
+    //           accent: "inherit" or "#RRGGBB",
+    //           radius: 0..24 (-1 = default 14) }.
+    QVariantMap appOverrides;
     int    cursorGlowBrightness = 95;   // 20..200
     int    cursorGlowRadius     = 42;   // 20..100
     int    cursorGlowTrail      = 8;    // 0..16
@@ -481,6 +487,10 @@ public:
             && o["widgetVisibility"].isObject())
             m_cfg.widgetVisibility =
                 o["widgetVisibility"].toObject().toVariantMap();
+        if (o.contains("appOverrides")
+            && o["appOverrides"].isObject())
+            m_cfg.appOverrides =
+                o["appOverrides"].toObject().toVariantMap();
         if (o.contains("cursorGlowBrightness"))
             m_cfg.cursorGlowBrightness =
                 o["cursorGlowBrightness"].toInt(95);
@@ -753,6 +763,8 @@ public:
         o["widgetGridSize"]       = m_cfg.widgetGridSize;
         o["widgetVisibility"]     = QJsonObject::fromVariantMap(
                                         m_cfg.widgetVisibility);
+        o["appOverrides"]         = QJsonObject::fromVariantMap(
+                                        m_cfg.appOverrides);
         o["cursorGlowBrightness"] = m_cfg.cursorGlowBrightness;
         o["cursorGlowRadius"]     = m_cfg.cursorGlowRadius;
         o["cursorGlowTrail"]      = m_cfg.cursorGlowTrail;

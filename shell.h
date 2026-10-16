@@ -130,6 +130,7 @@ inline void installMenuFade() {
     if (qApp) qApp->installEventFilter(new MenuFadeFilter(qApp));
 }
 
+#include "shellapp.h"
 #include "widgets.h"
 #include <QSoundEffect>
 #include "recents.h"
