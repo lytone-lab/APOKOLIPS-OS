@@ -148,6 +148,12 @@ Rollback:
 
 **Shipped since the 2026-10-11 snapshot:**
 
+- ApoNotify service (2026-10-17) — cross-app notification entry point.
+  Any app calls `ApoNotify::send(app, title, body)` to drop a JSON
+  file in `/tmp/apokolips-notify/`. `NotificationCenter` polls the
+  dir every 400 ms, gates each entry through focus mode, and shows
+  it as a flash card. First consumer: Glyph (screenshot save).
+
 - Dynamic Top Bar HUD (2026-10-17): Focus poller morphs the bar per-app.
   Finder gets `< > + Win`, Notes gets `+ Note`, Settings gets `Close`.
   Hover detection via `enterEvent`/`leaveEvent` (Wayland-safe).

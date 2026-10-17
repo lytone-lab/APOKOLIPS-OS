@@ -8,6 +8,13 @@ Read this file FIRST if you are a new AI joining the project.
 ------------------------------------------------------------------------
 SESSION LOG — 2026-10-17
 ------------------------------------------------------------------------
+  [x] ApoNotify service — cross-app notification entry point.
+      Any app calls ApoNotify::send(); shell gates per focus mode.
+  [x] Glyph sends "Screenshot saved" via ApoNotify.
+  [x] Flash card styling fixed (scoped stylesheet to #notifCard).
+
+SESSION LOG — 2026-10-17
+------------------------------------------------------------------------
 Shipped today:
   [x] Dynamic Top Bar HUD: Focus poller morphs the bar to match the
       active app (Finder slate-blue, Notes amber, Aperture indigo,
