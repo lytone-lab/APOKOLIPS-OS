@@ -1411,6 +1411,38 @@ static int runShell(int argc, char *argv[])
     MissionControl *missionControl = new MissionControl(root);
     root->setMissionControl(missionControl);
 
+    // ---- Corner peek (Variant A, 2026-10-17) ----
+    // Hover the top-left 8x8 px corner for 400ms → Mission Control
+    // appears. Click a thumbnail to focus (existing MC behavior),
+    // or press Esc / click empty space to hide. Hot-corner model:
+    // MC stays up after the trigger until you interact, so you can
+    // travel from corner to thumbnail without it disappearing.
+    // 400ms delay prevents accidental pops when clicking near
+    // the top-left of any window.
+    {
+        QElapsedTimer *cornerTimer = new QElapsedTimer;
+        QTimer *cornerPoll = new QTimer(root);
+        cornerPoll->setInterval(100);
+        QObject::connect(cornerPoll, &QTimer::timeout,
+                         [missionControl, cornerTimer]() {
+            const QPoint pos = QCursor::pos();
+            const bool inCorner = (pos.x() < 8 && pos.y() < 8);
+            if (inCorner) {
+                if (!cornerTimer->isValid()) {
+                    cornerTimer->start();
+                } else if (cornerTimer->elapsed() >= 400
+                           && !missionControl->isVisible()) {
+                    missionControl->show2();
+                    cornerTimer->invalidate();
+                }
+            } else {
+                cornerTimer->invalidate();
+            }
+        });
+        cornerPoll->start();
+        qInfo() << "[corner-peek] top-left 8x8, 400ms delay";
+    }
+
     QTimer *signalPoll = new QTimer(&window);
     signalPoll->setInterval(120);
     QObject::connect(signalPoll, &QTimer::timeout,
