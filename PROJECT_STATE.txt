@@ -6,6 +6,19 @@ Read this file FIRST if you are a new AI joining the project.
 ========================================================================
 
 ------------------------------------------------------------------------
+SESSION LOG — 2026-10-17
+------------------------------------------------------------------------
+Shipped today:
+  [x] Dynamic Top Bar HUD: Focus poller morphs the bar to match the
+      active app (Finder slate-blue, Notes amber, Aperture indigo,
+      etc.). Replaces File/Edit/View menus with app-specific actions
+      (e.g., Finder gets < > + Win, Settings gets Close).
+  [x] Hover persistence: TopBar tracks enterEvent/leaveEvent so the
+      HUD doesn't snap back to Apokolips when the mouse touches it.
+  [x] Spotlight indexes Notes content.
+  [x] Magic Carpet: Wall-clock timing + handshake for all minimize
+      styles (Genie, Scale, Suck, Thanos). Dead sliders removed.
+
 SESSION LOG — 2026-10-16
 ------------------------------------------------------------------------
 Shipped today (each line = one commit on main):

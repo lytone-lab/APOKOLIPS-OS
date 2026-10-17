@@ -148,6 +148,11 @@ Rollback:
 
 **Shipped since the 2026-10-11 snapshot:**
 
+- Dynamic Top Bar HUD (2026-10-17): Focus poller morphs the bar per-app.
+  Finder gets `< > + Win`, Notes gets `+ Note`, Settings gets `Close`.
+  Hover detection via `enterEvent`/`leaveEvent` (Wayland-safe).
+  Cycling buttons query `swaymsg -t get_tree` to cycle same-app windows.
+
 - Shared protocols: Open With picker, Recents store (all apps
   write, omega menu reads live), drag-and-drop between apps
   (Finder → Notes / Aperture).
