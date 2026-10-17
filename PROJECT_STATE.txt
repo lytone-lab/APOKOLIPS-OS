@@ -82,6 +82,75 @@ Still open (verified 2026-10-17 — Phase B/C reconciliation):
   [ ] Clipboard history rich image/file drag-out polish.
 
 ------------------------------------------------------------------------
+MULTI-WINDOW MODEL (design 2026-10-17 — build starts next session)
+------------------------------------------------------------------------
+Decision (user, 2026-10-17): N processes per app, one window each —
+Model A, Windows-style (two File Explorers with independent state,
+transfer between them). NOT one-process-many-windows. Replaces the
+old single-instance requirement in MANDATORY APP CHECKLIST.
+
+Why: matches the user's actual workflow (two Finder windows pointing
+at different disks, transferring between them). Windows/macOS-style.
+Single-instance was a Linux-era constraint the shell inherited; it
+does not fit the "macOS look, Windows compatibility" mission.
+
+BEHAVIOUR MATRIX — every click path
+
+  Action             App state        Result
+  -----------------  ---------------  -------------------------------
+  Dock single-click  not running      Launch (1 process, 1 window)
+  Dock single-click  minimized        Restore + focus
+  Dock single-click  focused          Minimize (Win 11 toggle)
+  Dock single-click  running bg       Focus (bring to front)
+  Pool icon click    not running      Launch (1 process, 1 window)
+  Pool icon click    running (any)    Spawn NEW process (fresh window,
+                                      independent state — the point)
+  Dock middle-click  running          Quit App (kill ALL processes)
+  Dock right-click   running          Menu: Close Window / Quit App /
+                                             Remove from Dock
+  Dock right-click   not running      Menu: Open App / Remove from Dock
+
+No separate double-click handler: Win 11 taskbar is single-click
+toggle, so implementing single-click correctly covers it. A double-
+click is just two toggles; harmless.
+
+OPEN QUESTIONS — resolve during pilot, not before
+  1. Running dot with N processes: dot lit if ANY process with
+     matching app_id exists (Windows taskbar behavior). Verify.
+  2. Close Window targeting: right-click "Close Window" needs the
+     focused process — swaymsg [app_id=X] kill targets the focused
+     con. Middle-click needs to kill ALL: swaymsg [app_id=X] kill
+     on every con, or kill -TERM every tracked PID.
+  3. Settings double-instance bug: currently spawns a second Settings
+     when clicking twice, because matchId = "apokolips-shell" catches
+     Settings AND Finder AND the shell itself. Fix falls out of the
+     rewrite (no more matchId focus probe on launch path).
+  4. HUD focus tracking: g_trackedConId points at one window; with N
+     windows, need the focused leaf. Existing focus poll already
+     handles this — verify.
+
+BUILD PLAN — one app per session
+  S1  Notes (has tabs already; smallest surface) — remove IPC
+      probe, fix running dot, add Close Window + Quit App menu
+      entries, verify matrix
+  S2  Finder
+  S3  Calculator + myMach + BoomTube
+  S4  Aperture + Node + Settings
+  S5  Pool icon click path (always spawn new on desktop click)
+  S6  Middle-click across all apps (Quit App)
+
+Total 5-6 sessions. NOT a fast win. Picked because it's coherent,
+user-facing, and matches the actual workflow.
+
+The pre-Model-A middle-click patch (Variant A, chrome.h, held
+2026-10-17) is SUPERSEDED — do not apply it. Under Model A, middle-
+click must kill ALL processes for the app, not one.
+
+OUT OF SCOPE, do not resume without user naming (Rule #2):
+  - Model B (one process, N windows)
+  - Model C (every click spawns a new window, even from dock)
+
+------------------------------------------------------------------------
 
 
 WHY THIS FILE EXISTS
@@ -282,7 +351,12 @@ System / sway:
 ------------------------------------------------------------------------
 IN PROGRESS
 ------------------------------------------------------------------------
-  (empty — all four prior items shipped, verified 2026-10-17)
+  [ ] MULTI-WINDOW MODEL build — design 2026-10-17, pilot starts
+      next session. See the "MULTI-WINDOW MODEL" section above for
+      the full behaviour matrix, open questions, and build plan.
+      Session 1 target: Notes.
+
+  (all four prior items shipped, verified 2026-10-17)
     - Launcher Arc Reactor tile: shipped 51abb37 (bug #9 archived)
     - Reverse Genie: shipped (G1b below)
     - Scale minimize: shipped (G2 below)
@@ -1293,9 +1367,10 @@ exceptions. This applies to AI #1, Manus, and any future AI.
       Apps that need it: Settings, Finder, Aperture, BoomTube,
       Notes, Calculator, DemoWindow, any future shell app.
 
-  [ ] Single-instance launch — spawn once, then send a "focus"
-      message over QLocalSocket / QLocalServer on subsequent
-      launches. Socket lives at /tmp/apokolips-<app> (NOT
+  [~] Single-instance launch (SUPERSEDED 2026-10-17 by MULTI-WINDOW
+      MODEL — see that section above) — historical spec: spawn once,
+      then send a "focus" message over QLocalSocket / QLocalServer on
+      subsequent launches. Socket lives at /tmp/apokolips-<app> (NOT
       QLocalServer default path — we use explicit /tmp paths).
 
       STATUS 2026-10-17: 5 of 8 apps have it — notes (main.cpp:4111),
