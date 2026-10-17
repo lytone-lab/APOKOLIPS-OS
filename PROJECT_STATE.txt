@@ -80,6 +80,15 @@ Still open (verified 2026-10-17 — Phase B/C reconciliation):
       mesh-warp" line above may now be redundant — do not resume
       genie work without user naming it (Rule #2).
   [ ] Clipboard history rich image/file drag-out polish.
+  [~] Night light (colour temperature) — UNVERIFIABLE ON VM.
+      Tools installed 2026-10-17: wlsunset 0.3.0, gammastep 2.0.9
+      (both in /usr/bin). Diagnostic: neither visibly tints the
+      screen on VirtualBox. Sway advertises wlr-gamma-control but
+      VBox's display pipeline likely ignores it. Real-hardware-only
+      feature. Build the Settings UI + wlsunset invocation when a
+      non-VM display is available. Fast-wins list closes here:
+      3 done (middle-click, sticky note, corner peek), 1 deferred
+      (always-on-top, V2), 1 unverifiable (night light).
 
 ------------------------------------------------------------------------
 MULTI-WINDOW MODEL (design 2026-10-17 — build starts next session)
