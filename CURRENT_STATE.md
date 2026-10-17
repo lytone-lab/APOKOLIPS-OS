@@ -14,7 +14,7 @@ list, `CUSTOMISATION_VISION.md` for the long-term plan.
 `d3aaee5` (ApoNotify service + Glyph wiring + flash card style fix).
 
 Ubuntu VM via SSH (host = Windows 11, port 2222). sway/Wayland +
-Qt6. `apokolips-shell.service` user unit. Debug build (`-j1`),
+Qt6. `apokolips-shell.service` user unit. Debug build (`-j2`),
 3 GB VM RAM.
 
 ## Shipped recently
@@ -25,14 +25,22 @@ Qt6. `apokolips-shell.service` user unit. Debug build (`-j1`),
 - Widget blip fix (no more 1 Hz raise war).
 - Now Playing desktop widget with controls.
 
-## Currently open
+## Currently open (reconciled 2026-10-17)
 
-- Per-app chrome rewrite — the flagship, next up.
-- Weather widget with forecast (V1 #5).
-- Genie option A (band rewrite), mesh-warp genie (V2).
-- Restore via animator daemon (user reports no delay; low pri).
-- Clipboard rich drag-out polish.
-- Keyboard bindings Settings page.
+- Per-app chrome rewrite — Settings UI + config shipped
+  (settings.h:5140+, visualconfig.h:40,490,767). Application to apps
+  at construct is what's left. V1 #4 next up.
+- Weather widget — SHIPPED (WeatherCard in widgets.h:1277). Doc
+  claim was stale.
+- Genie family — RETIRED (Rule #2). "Option A + mesh-warp V2" above
+  are stale; do not resume without user naming it.
+- Restore via animator daemon — low pri (no felt delay).
+- Clipboard rich drag-out polish — open.
+- Keyboard bindings Settings page — open, reverted 2026-10-09,
+  redesign needed.
+- Accessibility High-contrast / Reduce-motion — labels honest today
+  (GTK works, shell V2). V2 plan logged in PROJECT_STATE WIRING
+  BACKLOG.
 
 ## Rules
 

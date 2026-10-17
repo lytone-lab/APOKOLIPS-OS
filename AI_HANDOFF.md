@@ -55,7 +55,7 @@ Every code change is **one bash command** that:
   writing. Roll back on failure.
 - **`main.cpp` is one 22k-line file.** Rebuilds are 2–5 min in Release.
   Warn the user when a patch will take a while.
-- **Release build is the default.** If you see Debug in
+- **Release build is recommended** (faster, no debug symbols). If you see Debug in
   `build/CMakeCache.txt`, reconfigure with
   `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`.
 - **Backups are gitignored.** User can `rm main.cpp.pre-*` after a
@@ -144,11 +144,11 @@ Rollback:
   selectable in Settings -> Appearance
 - Reverse restore: dock click on a minimized app plays reverse
   animation back to original position (state file + scratchpad)
-- Dock position changes are live and don't freeze
-- Settings has ~20 pages, all wired to real config
+- Dock position changes are live and don't freeze (NOT re-verified Phase B 2026-10-17 — claim retained, mark for future verification)
+- Settings has ~20 pages. Most wired; Accessibility High-contrast / Reduce-motion were half-wired (GTK-only) until 2026-10-17 (labels now honest, shell side V2). Not exhaustively audited for other half-wired pages.
 - Wallpaper engine: animated wallpapers + image/GIF
-- Single-instance: opening a running app focuses it
-- Release build (2 MB binary, ~200 ms overlay spawn)
+- Single-instance: opening a running app focuses it — 5 of 8 apps (notes, calculator, files, boomtube, mymach per main.cpp:4111-4426). Settings, Aperture, Node lack it (bug-listed per MANDATORY APP CHECKLIST).
+- Build type: Debug in build/CMakeCache.txt (2026-10-17). Binary ~2 MB. Overlay spawn ~200 ms. AI_HANDOFF §1 recommends Release for speed; no user complaint, left as-is.
 - Finder opacity slider updates live
 
 **Shipped since the 2026-10-11 snapshot:**

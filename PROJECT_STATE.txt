@@ -63,13 +63,22 @@ Also today: TEAM_PROTOCOL.md gained two new rule sections:
     function; verify every helper exists; trace lambda lifetimes;
     twin loops change together; unfiltered build output).
 
-Still open (no work started):
-  [ ] V1 ship-order #4 — Per-app chrome rewrite (the flagship).
-  [ ] V1 ship-order #5 — Weather widget with forecast.
-  [ ] Genie option A (4-6 band rewrite, queued after G7).
-  [ ] Restore via animator daemon (user reports no felt delay;
-      low priority).
-  [ ] Real mesh-warp genie — V2.
+Still open (verified 2026-10-17 — Phase B/C reconciliation):
+  [~] V1 ship-order #4 — Per-app chrome rewrite — PARTIAL.
+      Settings UI + config shipped (settings.h:5140+, visualconfig.h:40,
+      490, 767). The per-app application at app construct is the
+      remaining work. V1 ship-order position unchanged.
+  [x] V1 ship-order #5 — Weather widget with forecast — SHIPPED.
+      WeatherCard class exists in widgets.h:1277 with Weather::Fetcher
+      wired. Doc claim was stale.
+  [~] Genie option A (4-6 band rewrite) — RETIRED with genie family
+      2026-10-17. Do not resume without user naming it (Rule #2).
+  [ ] Restore via animator daemon — low priority per user (no felt
+      delay reported).
+  [~] Real mesh-warp genie — the V1 GenieMeshOverlay already uses
+      QOpenGLWidget (meshgenie.h:28, commit 6df9467). "V2 real
+      mesh-warp" line above may now be redundant — do not resume
+      genie work without user naming it (Rule #2).
   [ ] Clipboard history rich image/file drag-out polish.
 
 ------------------------------------------------------------------------
@@ -1256,6 +1265,11 @@ exceptions. This applies to AI #1, Manus, and any future AI.
       launches. Socket lives at /tmp/apokolips-<app> (NOT
       QLocalServer default path — we use explicit /tmp paths).
 
+      STATUS 2026-10-17: 5 of 8 apps have it — notes (main.cpp:4111),
+      calculator (4151), files (4192), boomtube (4383), mymach (4426).
+      Settings, Aperture, Node do not. Per the "If any of these is
+      missing" rule below, those three are bug-listed, not shipped.
+
 If any of these is missing, the app is bug-listed, not shipped.
 
 ------------------------------------------------------------------------
@@ -1496,7 +1510,7 @@ KEY FILES
   build/apokolips-shell                       compiled binary
   /home/lytone/.config/systemd/user/apokolips-shell.service
   ~/.config/sway/config                       sway config
-  ~/visual.json                               (or in $HOME, wherever
+  ~/.config/apokolips/visual.json                               (hardcoded in visualconfig.h:795 — do not move)
                                                VisualConfigManager
                                                writes — check code)
   /tmp/apokolips-clipboard.sock               clipboard IPC
@@ -1512,6 +1526,28 @@ RETIRED FILES
   state doc. Genie Bugs A/B closed 2026-10-13; genie family G1a-G7
   shipped 2026-10-16. Only surviving item: Genie option A band
   rewrite, still queued in ANIMATION QUEUE above. Do not resurrect.
+
+------------------------------------------------------------------------
+ORPHAN ITEMS — live only in ARCHITECTURE_NOTES, cross-referenced here
+------------------------------------------------------------------------
+These items live in ARCHITECTURE_NOTES.md but were not surfaced in
+this file. Logged here so they aren't lost when a session reads only
+PROJECT_STATE.
+
+  [NOW] "What's new / Take the tour" panel — ARCHITECTURE_NOTES.
+        A first-launch modal with 6-8 "did you know..." lines. Not
+        in V1 queue. Do not start without user naming it.
+  [PHILO] Four UI styles (Glass / Neumorphism / Skeuomorphism /
+        Claymorphism) — ARCHITECTURE_NOTES. Decision: pick one, hide
+        other three under Developer toggle. Not scheduled.
+  [PHILO] Windhawk-vision vs Opinion — ARCHITECTURE_NOTES. Two paths
+        (A: every knob, B: defended choices + overrides). Rule #2
+        (V1 only) is aligned with path B for primary surfaces.
+        Final call belongs to user.
+  [ ] Keyboard bindings Settings page — reverted 2026-10-09, needs
+        redesign (root cause of the sway include being skipped was
+        never found). Logged in CURRENT_STATE + ARCHITECTURE_NOTES
+        but not here until now.
 
 ------------------------------------------------------------------------
 HOW TO UPDATE THIS FILE
