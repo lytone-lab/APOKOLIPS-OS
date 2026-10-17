@@ -4111,38 +4111,10 @@ int main(int argc, char *argv[])
         QApplication app(argc, argv);
         app.setApplicationName("Calculator");
         app.setDesktopFileName("apokolips-calculator");
-
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-calculator");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
+        // Model A multi-window: every invocation opens fresh.
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         CalculatorApp w;
-
-        QLocalServer::removeServer("apokolips-calculator");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-calculator")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    if (wptr)
-                        shellRestoreWindow(wptr, "Calculator",
-                                           QSize(320, 480));
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
@@ -4151,42 +4123,12 @@ int main(int argc, char *argv[])
         QApplication app(argc, argv);
         app.setApplicationName("Apokolips Files");
         app.setDesktopFileName("apokolips-files");
-
-        // Single-instance: forward to running Files if one exists.
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-files");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
+        // Model A multi-window: every invocation opens fresh. Two
+        // Finders can point at different directories and transfer
+        // between them — the user's stated use case.
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         FileExplorer w;
-
-        QLocalServer::removeServer("apokolips-files");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-files")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    QByteArray data = conn->readAll();
-                    if (wptr) {
-                        shellRestoreWindow(wptr,
-                            "Files",
-                            QSize(900, 560));
-                    }
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
@@ -4235,19 +4177,7 @@ int main(int argc, char *argv[])
         QApplication app(argc, argv);
         app.setApplicationName("Mosaic");
         app.setDesktopFileName("apokolips-mosaic");
-
-        // Single-instance forward.
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-mosaic");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
+        // Model A multi-window: every invocation opens fresh.
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         MosaicApp w;
@@ -4333,51 +4263,18 @@ int main(int argc, char *argv[])
         const QString path = (argc >= 3)
             ? QString::fromUtf8(argv[2]) : QString();
 
-        // Log every open (and every forward-to-running-instance)
-        // into the shared Recents store.
+        // Log every open into the shared Recents store.
         if (!path.isEmpty())
             Recents::add(path,
                 QMimeDatabase().mimeTypeForFile(path).name(),
                 "apokolips-boombube");
 
-        // Single-instance: forward to running BoomTube if one exists.
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-boombube");
-            if (probe.waitForConnected(300)) {
-                QByteArray payload = "focus";
-                if (!path.isEmpty())
-                    payload += " " + path.toUtf8();
-                probe.write(payload);
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
+        // Model A multi-window: every invocation opens fresh with
+        // its own playlist state. Path (if supplied) seeds the new
+        // window.
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         BoomTubeWindow w(path);
-
-        QLocalServer::removeServer("apokolips-boombube");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-boombube")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    QByteArray data = conn->readAll();
-                    if (wptr) {
-                        shellRestoreWindow(wptr,
-                            "BoomTube",
-                            QSize(1000, 700));
-                    }
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
@@ -4386,40 +4283,10 @@ int main(int argc, char *argv[])
         QApplication app(argc, argv);
         app.setApplicationName("myMach");
         app.setDesktopFileName("apokolips-mymach");
-
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-mymach");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
+        // Model A multi-window: every invocation opens fresh.
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         MyMachWindow w;
-
-        QLocalServer::removeServer("apokolips-mymach");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-mymach")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    if (wptr) {
-                        shellRestoreWindow(wptr,
-                            "myMach",
-                            QSize(900, 640));
-                    }
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
@@ -4453,9 +4320,8 @@ int main(int argc, char *argv[])
         app.setApplicationName("Node");
         app.setDesktopFileName("apokolips-node");
 
-        // Optional --run "<cmd>" argument: type the command into a
-        // fresh Node window. When present, skip single-instance
-        // behavior so the new window actually opens.
+        // Optional --run "<cmd>" argument: type the command into
+        // the new window.
         QString runCmd;
         for (int i = 2; i + 1 < argc; ++i) {
             if (QString::fromLocal8Bit(argv[i]) == "--run") {
@@ -4464,39 +4330,11 @@ int main(int argc, char *argv[])
             }
         }
 
-        if (runCmd.isEmpty()) {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-node");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
+        // Model A multi-window: every invocation opens fresh,
+        // whether or not --run is supplied.
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         NodeWindow w(nullptr, runCmd);
-
-        QLocalServer::removeServer("apokolips-node");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-node")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    if (wptr) {
-                        shellRestoreWindow(wptr,
-                            "Node",
-                            QSize(900, 600));
-                    }
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
@@ -4509,53 +4347,17 @@ int main(int argc, char *argv[])
         const QString filePath = (argc >= 3)
             ? QString::fromUtf8(argv[2]) : QString();
 
-        // Log into Recents before either launching or forwarding.
+        // Log into Recents.
         if (!filePath.isEmpty())
             Recents::add(filePath,
                 QMimeDatabase().mimeTypeForFile(filePath).name(),
                 "apokolips-aperture");
 
-        // Single-instance: if Aperture is already up, forward the
-        // request (and optional new file) to the running instance and
-        // exit. The running instance restores itself via the shared
-        // shellRestoreWindow helper.
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-aperture");
-            if (probe.waitForConnected(300)) {
-                QByteArray payload = "focus";
-                if (!filePath.isEmpty())
-                    payload += " " + filePath.toUtf8();
-                probe.write(payload);
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
+        // Model A multi-window: every invocation opens a fresh
+        // window. The file path (if supplied) seeds the new window.
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         SigilImageWindow w(filePath);
-
-        QLocalServer::removeServer("apokolips-aperture");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-aperture")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    QByteArray data = conn->readAll();
-                    if (wptr) {
-                        shellRestoreWindow(wptr,
-                            "Aperture",
-                            QSize(1000, 700));
-                    }
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
