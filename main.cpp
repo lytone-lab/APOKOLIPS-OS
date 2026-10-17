@@ -1572,6 +1572,8 @@ static int runShell(int argc, char *argv[])
                     dockName = "BoomTube";
                 } else if (target.appId == "apokolips-mymach") {
                     dockName = "myMach";
+                } else if (target.appId == "apokolips-mosaic") {
+                    dockName = "Mosaic";
                 } else if (target.appId == "apokolips-notes") {
                     dockName = "Notes";
                 } else if (target.appId == "apokolips-calculator") {
@@ -1597,7 +1599,9 @@ static int runShell(int argc, char *argv[])
                         << "title=" << target.title
                         << "→ dockName=" << dockName;
 
-                QPoint dockPt(960, 820);   // fallback — bottom center
+                // Instead of a hardcoded fallback, use the root's own geometry.
+                // If we can't find the icon, aim for the closest corner of the screen.
+                QPoint dockPt = root->rect().center();
                 bool tileMatched = false;
                 int iconsScanned = 0;
                 for (QWidget *w : root->findChildren<QWidget *>()) {
@@ -1991,17 +1995,24 @@ static int runShell(int argc, char *argv[])
     });
     topLayout->addWidget(brand);
 
+    HUDWidget *hud = new HUDWidget;
+    hud->setVisible(false);
+    topLayout->addWidget(hud);
+
+    // Menu buttons list needed by focusPoll below
+    QList<QPushButton *> menuButtons;
+
 
     // ---- Per-app label — top bar shows the focused app's name ----
     // IMPORTANT: swaymsg runs async. Calling it synchronously would block
     // the shell's event loop and freeze the UI (including window close).
     QTimer *focusPoll = new QTimer(&window);
     focusPoll->setInterval(250);
-    QObject::connect(focusPoll, &QTimer::timeout, [brand]() {
+    QObject::connect(focusPoll, &QTimer::timeout, [brand, hud, topBar, &menuButtons]() {
         QProcess *p = new QProcess;
         QObject::connect(p,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            [p, brand](int, QProcess::ExitStatus) {
+            [p, brand, hud, topBar, &menuButtons](int, QProcess::ExitStatus) {
             QByteArray out = p->readAllStandardOutput();
             p->deleteLater();
             QJsonDocument doc = QJsonDocument::fromJson(out);
@@ -2073,24 +2084,203 @@ static int runShell(int argc, char *argv[])
             g_trackedRect = focusedRect;
         }
 
-        QString label = "Apokolips";
-            if (id == "org.gnome.Nautilus")      label = "Files";
-        else if (id == "org.gnome.Terminal") label = "Terminal";
-        else if (id == "foot")               label = "Terminal";
-        else if (id == "firefox")            label = "Firefox";
-        else if (id == "thunderbird")        label = "Mail";
-        else if (id == "eog")                label = "Photos";
-        else if (id == "org.gnome.Totem")    label = "Videos";
-        else if (id == "org.gnome.TextEditor" ||
-                 id == "gnome-text-editor")  label = "Text Editor";
-        else if (id == "gnome-control-center") label = "Settings";
-        else if (id == "gnome-calculator")   label = "Calculator";
-        else if (id == "apokolips-calculator") label = "Calculator";
-        else if (id == "apokolips-notes")    label = "Notes";
-        else if (id == "apokolips-shell")    label = "Apokolips";
-        else if (!id.isEmpty())              label = id;
+        // Hovering the top bar makes sway focus the shell itself.
+        // g_trackedAppId holds the last REAL app — stick with it
+        // so the top bar doesn't snap back to "Apokolips" every
+        // time the pointer touches the bar.
+        QString effectiveId = id;
+        // Filter shell-internal processes.
+        if (id == "apokolips-animator") {
+            effectiveId = g_trackedAppId;
+        } else if (id.isEmpty() || id == "apokolips-shell") {
+            if (focusedTitle == "Apokolips Settings" ||
+                focusedTitle == "Settings") {
+                effectiveId = "apokolips-settings";
+            } else {
+                // Robust hover check. QApplication::widgetAt() asks
+                // the platform for the actual widget under the
+                // pointer — works on Wayland where QCursor::pos()
+                // alone often returns (0,0).
+                bool overTopBar = topBar->isMouseOver();
+                if (overTopBar && !g_trackedAppId.isEmpty()) {
+                    effectiveId = g_trackedAppId;
+                } else {
+                    g_trackedAppId.clear();
+                    effectiveId.clear();
+                }
+            }
+        }
 
-            if (brand->text() != label) brand->setText(label);
+        QString label = "Apokolips";
+        if (effectiveId == "org.gnome.Nautilus" ||
+            effectiveId == "apokolips-files")           label = "Files";
+        else if (effectiveId == "apokolips-aperture")   label = "Aperture";
+        else if (effectiveId == "apokolips-notes")      label = "Notes";
+        else if (effectiveId == "apokolips-mosaic")     label = "Mosaic";
+        else if (effectiveId == "apokolips-boombube")   label = "BoomTube";
+        else if (effectiveId == "apokolips-mymach")     label = "myMach";
+        else if (effectiveId == "apokolips-node")       label = "Node";
+        else if (effectiveId == "apokolips-calculator") label = "Calculator";
+        else if (effectiveId == "org.gnome.Terminal" ||
+                 effectiveId == "foot")                 label = "Terminal";
+        else if (effectiveId == "firefox")              label = "Firefox";
+        else if (effectiveId == "thunderbird")          label = "Mail";
+        else if (effectiveId == "eog")                  label = "Photos";
+        else if (effectiveId == "org.gnome.Totem")      label = "Videos";
+        else if (effectiveId == "org.gnome.TextEditor" ||
+                 effectiveId == "gnome-text-editor")    label = "Text Editor";
+        else if (effectiveId == "gnome-control-center" ||
+                 effectiveId == "apokolips-settings") label = "Settings";
+        else if (effectiveId == "gnome-calculator")     label = "Calculator";
+        else if (!effectiveId.isEmpty() &&
+                 effectiveId != "apokolips-shell")      label = effectiveId;
+
+        if (brand->text() != label) brand->setText(label);
+
+            // --- HUD Morphing Logic ---
+            // Cycle through windows of the current app. Queries
+            // sway's tree, finds all con_ids matching the app_id,
+            // focuses the next/prev one.
+            auto cycleApp = [](const QString &appId, int dir) {
+                QProcess p;
+                QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+                env.insert("SWAYSOCK", discoverSwaySock());
+                p.setProcessEnvironment(env);
+                p.start("swaymsg", {"-t", "get_tree", "-r"});
+                if (!p.waitForFinished(800)) return;
+                QJsonDocument doc = QJsonDocument::fromJson(
+                    p.readAllStandardOutput());
+                if (!doc.isObject()) return;
+
+                QList<int> ids;
+                int current = -1;
+                std::function<void(const QJsonObject &)> walk =
+                    [&](const QJsonObject &n) {
+                    const QString app = n.value("app_id").toString();
+                    const QString title = n.value("name").toString();
+                    bool match = (app == appId);
+                    if (!match && appId == "apokolips-settings") {
+                        match = (app == "apokolips-shell" &&
+                                 (title == "Apokolips Settings" ||
+                                  title == "Settings"));
+                    }
+                    if (match) {
+                        int id = n.value("id").toInt();
+                        if (id > 0) ids.append(id);
+                        if (n.value("focused").toBool())
+                            current = id;
+                    }
+                    for (auto v : n.value("nodes").toArray())
+                        walk(v.toObject());
+                    for (auto v : n.value("floating_nodes").toArray())
+                        walk(v.toObject());
+                };
+                walk(doc.object());
+
+                if (ids.isEmpty()) {
+                    qDebug() << "[hud] cycleApp: no windows for" << appId;
+                    return;
+                }
+                int idx = ids.indexOf(current);
+                int next;
+                if (idx < 0) {
+                    next = 0;
+                } else {
+                    next = (idx + dir + ids.size()) % ids.size();
+                }
+                int target = ids[next];
+                QProcess p2;
+                p2.setProcessEnvironment(env);
+                p2.start("swaymsg",
+                    {QString("[con_id=%1]").arg(target), "focus"});
+                p2.waitForFinished(500);
+                qDebug() << "[hud] cycleApp" << appId
+                         << "from" << current << "to" << target
+                         << "of" << ids.size();
+            };
+
+            auto launchSelf = [](const QStringList &args) {
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(), args);
+            };
+
+            auto setHud = [&](const QColor &col,
+                              const QList<QPair<QString,
+                                  std::function<void()>>> &acts) {
+                topBar->setBrandColor(col);
+                hud->setActions(acts);
+                for (QPushButton *b : menuButtons) b->setVisible(false);
+                hud->setVisible(true);
+            };
+
+            auto closeActive = []() {
+                QProcess p;
+                QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+                env.insert("SWAYSOCK", discoverSwaySock());
+                p.setProcessEnvironment(env);
+                p.start("swaymsg", {"kill"});
+                p.waitForFinished(500);
+            };
+
+            if (label == "Files" || label == "Finder") {
+                setHud(QColor(30, 55, 100),
+                       {
+                    {"<", [cycleApp, effectiveId](){
+                        cycleApp(effectiveId, -1); }},
+                    {">", [cycleApp, effectiveId](){
+                        cycleApp(effectiveId, +1); }},
+                    {"+ Win", [launchSelf](){
+                        launchSelf({"--files"}); }}
+                });
+            } else if (label == "Notes") {
+                setHud(QColor(80, 60, 20),
+                       {
+                    {"+ Note", [launchSelf](){
+                        launchSelf({"--notes"}); }}
+                });
+            } else if (label == "Aperture") {
+                setHud(QColor(40, 30, 90),
+                       {
+                    {"Zoom +", [](){}},
+                    {"Zoom -", [](){}}
+                });
+            } else if (label == "myMach") {
+                setHud(QColor(20, 50, 30),
+                       {
+                    {"Refresh", [](){}}
+                });
+            } else if (label == "BoomTube") {
+                setHud(QColor(90, 30, 30),
+                       {
+                    {"Play", [](){}},
+                    {"Pause", [](){}}
+                });
+            } else if (label == "Mosaic") {
+                setHud(QColor(50, 50, 60),
+                       {
+                    {"Refresh", [](){}}
+                });
+            } else if (label == "Node" || label == "Terminal") {
+                setHud(QColor(30, 30, 35),
+                       {
+                    {"+ Tab", [launchSelf](){
+                        launchSelf({"--node"}); }}
+                });
+            } else if (label == "Settings") {
+                setHud(QColor(50, 50, 60),
+                       {
+                    {"Close", [closeActive](){ closeActive(); }}
+                });
+            } else if (label == "Calculator") {
+                setHud(QColor(60, 40, 30),
+                       {
+                    {"Close", [closeActive](){ closeActive(); }}
+                });
+            } else {
+                topBar->setBrandColor(QColor()); // transparent
+                hud->setVisible(false);
+                for (QPushButton *b : menuButtons) b->setVisible(true);
+            }
         });
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         env.insert("SWAYSOCK", discoverSwaySock());
@@ -2100,8 +2290,7 @@ static int runShell(int argc, char *argv[])
     focusPoll->start();
     topLayout->addSpacing(10);
 
-    // Menu buttons
-    QList<QPushButton *> menuButtons;
+
     auto makeMenuButton = [&](const QString &label, QMenu *menu) {
         QPushButton *b = new QPushButton(label);
         b->setCursor(Qt::PointingHandCursor);

@@ -1499,6 +1499,9 @@ protected:
         } else if (m_name == "Node") {
             program = QCoreApplication::applicationFilePath();
             args = { "--node" };
+        } else if (m_name == "Calculator") {
+            program = QCoreApplication::applicationFilePath();
+            args = { "--calc" };
         } else if (m_name == "Notes") {
             program = QCoreApplication::applicationFilePath();
             args = { "--notes" };
@@ -1948,6 +1951,36 @@ private:
     Theme m_theme;
 };
 
+class HUDWidget : public QWidget {
+public:
+    explicit HUDWidget(QWidget *parent = nullptr) : QWidget(parent) {
+        m_layout = new QHBoxLayout(this);
+        m_layout->setContentsMargins(0, 0, 0, 0);
+        m_layout->setSpacing(4);
+    }
+    void setActions(const QList<QPair<QString, std::function<void()>>> &actions) {
+        QLayoutItem *item;
+        while ((item = m_layout->takeAt(0)) != nullptr) {
+            if (item->widget()) item->widget()->deleteLater();
+            delete item;
+        }
+        for (const auto &act : actions) {
+            QPushButton *b = new QPushButton(act.first);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setFlat(true);
+            b->setStyleSheet(
+                "QPushButton { color: rgba(255,255,255,220); background: rgba(0,0,0,60);"
+                "  border: 1px solid rgba(255,255,255,30); padding: 2px 10px;"
+                "  font-size: 12px; border-radius: 6px; }"
+                "QPushButton:hover { background: rgba(255,255,255,60); color: #fff; }");
+            QObject::connect(b, &QPushButton::clicked, act.second);
+            m_layout->addWidget(b);
+        }
+    }
+private:
+    QHBoxLayout *m_layout;
+};
+
 class TopBar : public QWidget {
 public:
     explicit TopBar(QWidget *parent = nullptr) : QWidget(parent) {
@@ -1956,7 +1989,29 @@ public:
         setAutoFillBackground(false);
         setCursor(Qt::OpenHandCursor);
     }
+    void setBrandColor(const QColor &c) {
+        m_brandColor = c;
+        update();
+    }
+    bool isMouseOver() const { return m_hovered; }
 protected:
+    void enterEvent(QEnterEvent *e) override {
+        m_hovered = true;
+        QWidget::enterEvent(e);
+    }
+    void leaveEvent(QEvent *e) override {
+        m_hovered = false;
+        QWidget::leaveEvent(e);
+    }
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        // No app focused → leave the bar transparent so the
+        // wallpaper shows through, exactly like before HUD.
+        if (!m_brandColor.isValid()) return;
+        p.fillRect(rect(), m_brandColor);
+        p.setPen(QColor(255, 255, 255, 30));
+        p.drawLine(0, height() - 1, width(), height() - 1);
+    }
     void mousePressEvent(QMouseEvent *e) override {
         if (e->button() == Qt::LeftButton) {
             if (QWindow *wh = window()->windowHandle()) {
@@ -1983,6 +2038,8 @@ protected:
 private:
     bool m_dragging = false;
     QPoint m_dragOffset;
+    QColor m_brandColor;
+    bool m_hovered = false;
 };
 
 class ControlCenter : public QWidget {
