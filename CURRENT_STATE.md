@@ -11,7 +11,7 @@ list, `CUSTOMISATION_VISION.md` for the long-term plan.
 ## Repo
 
 `github.com/lytone-lab/APOKOLIPS-OS` — main branch, HEAD at
-`1dbacc3` (Now Playing widget) + a docs-sync commit on top.
+`d3aaee5` (ApoNotify service + Glyph wiring + flash card style fix).
 
 Ubuntu VM via SSH (host = Windows 11, port 2222). sway/Wayland +
 Qt6. `apokolips-shell.service` user unit. Debug build (`-j1`),
@@ -36,6 +36,8 @@ Qt6. `apokolips-shell.service` user unit. Debug build (`-j1`),
 
 ## Rules
 
+- V1 only, by default. P2/P3 and V2/V3+ parked unless named.
+  See TEAM_PROTOCOL.md Rule #2.
 - Diagnostic before every feature — not just bugs.
 - Read the whole function before patching.
 - Verify every helper exists.

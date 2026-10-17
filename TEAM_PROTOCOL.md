@@ -13,6 +13,18 @@ If the user wants to stop, they will say so. If they keep going,
 the AI keeps going at the same pace. Full effort until the user
 says stop.
 
+## Rule #2 — V1 only, by default
+
+Default state is V1. All P2 / P3 items in CUSTOMISATION_VISION.md and
+all V2 / V3+ items in PROJECT_STATE.txt are parked. They are not
+mentioned, not diagnosed, not built — unless the user names one
+explicitly. Naming one unparks it for that session only. The default
+snaps back to V1 next session.
+
+Why: the bottleneck is shipping one coherent version, not breadth of
+features. V2/V3 items are logged so they aren't lost. They are not a
+queue to work through.
+
 ## The user
 
 Solo builder. Not a programmer. Runs everything from a terminal over
@@ -138,41 +150,6 @@ project next has a quiet session.
 
 ----
 
-## Adding a new app - the seven places
-
-Every shell app touches seven code locations. Missing any one
-means the app works from some entry points and silently breaks
-from others - usually by spawning a bare `apokolips-shell`
-process, which sway tiles next to the real shell and splits the
-screen.
-
-1. registry.h - three edits: drawXxx renderer, dispatch line in
-   Icons::drawFor, entry in appRegistry.
-
-2. registry.h - desktopLaunchArgs(id) if the app can live on
-   the desktop. Do not rely on the --demo fallback; it is gone.
-
-3. main.cpp - --appname dispatch block. Copy an existing one
-   (Calc, Notes, or Mail) exactly.
-
-4. main.cpp - dockNameForAppId() if the app can be minimized.
-
-5. chrome.h - dock matchId line.
-
-6. chrome.h - dock launch program.
-
-7. chrome.h - launcher tile click handler.
-
-Never use --demo as a fallback. A bare shell spawn inherits
-app_id=apokolips-shell, which sway's for_window rule forces
-into tiling mode.
-
-The refactor that ends this class of bug: replace all seven
-call sites with one appLaunchSpec(id) function. Do that when
-the project next has a quiet session.
-
-----
-
 ## What the AI vetoes
 
 - Starting the main.cpp split while any bug is open. Two-day job,
@@ -288,6 +265,20 @@ guess. If the diagnostic is unclear, ask for more output.
 If the code is in a broken state that a diagnostic can't resolve,
 roll back everything since the last green build and start over
 from a smaller step.
+
+## Retired files — do not resurrect
+
+### MANUS_GENIE_HANDOFF.md — deleted 2026-10-17
+
+It was a one-time brief to an external AI (Manus) for the Genie
+option A band rewrite. Not a state doc. Genie Bugs A and B closed
+2026-10-13 (`236a7b3`, `72d420a`, `0e01149`). Genie family G1a-G7
+shipped by 2026-10-16.
+
+The only surviving item it referenced is the Genie option A band
+rewrite, still queued in PROJECT_STATE.txt. Do not resurrect this
+file for any other purpose. If genie work resumes, start a fresh
+handoff.
 
 ## The one commitment both sides make
 

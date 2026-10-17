@@ -6,6 +6,10 @@
 **Then read PROJECT_STATE.txt for the bug list.**
 **Then `git log --oneline -20` for the recent commit trail.**
 
+> **V1 ONLY.** Default state is V1. All P2/P3 and V2/V3+ items are
+> parked — not mentioned, not diagnosed, not built — unless the user
+> names one explicitly. See TEAM_PROTOCOL.md Rule #2.
+
 ---
 
 ## 1. The user and the workflow
@@ -62,8 +66,9 @@ Every code change is **one bash command** that:
 ## 2. Project overview
 
 **APOKOLIPS-OS** is a custom desktop environment — macOS UI + Windows
-compatibility hybrid — built on sway/Wayland + Qt6. One big `main.cpp`
-(no split yet) plus `system/` sway config and assets.
+compatibility hybrid — built on sway/Wayland + Qt6. `main.cpp` is
+~3.5k lines after the 2026-10-11 split (22k → 21 headers). Plus
+`system/` sway config and assets.
 
 **Stack:**
 
@@ -135,8 +140,8 @@ Rollback:
   spotlight, control center, notification center
 - Traffic lights on every app: red = close with genie, yellow =
   minimize with genie, green = zoom toggle
-- Minimize animation: genie / scale / suck, selectable in
-  Settings -> Appearance
+- Minimize animation: genie / scale / suck / thanos / mesh,
+  selectable in Settings -> Appearance
 - Reverse restore: dock click on a minimized app plays reverse
   animation back to original position (state file + scratchpad)
 - Dock position changes are live and don't freeze
@@ -192,6 +197,12 @@ Rollback:
 ---
 
 ## 5. The genie family
+
+> **GENIE IS RETIRED (2026-10-17).** G1a-G7, thanos, mesh all
+> shipped. Manus collaboration retired; MANUS_GENIE_HANDOFF.md
+> deleted. Do not propose genie or launcher work without the user
+> naming it (TEAM_PROTOCOL.md Rule #2). Genie option A band rewrite
+> is the only queued item — do not start it unless the user asks.
 
 1. Shell captures focused window via `grim -g "<x,y> <w> <h>"`.
 2. Shell finds the dock tile for the app, computes its center.
@@ -290,24 +301,6 @@ guessed anchor.
 A bug in PROJECT_STATE.txt or CURRENT_STATE.md is **not** proof
 it still exists. Those files drift behind reality. A listed bug
 is a *claim*, not a *fact*.
-
-Before writing a patch for any listed bug:
-
-1. Read the code. Does the fix already exist?
-2. If yes, reproduce the bug in the running shell.
-3. If it does not reproduce, the bug is closed. Remove it from
-   the list. Do NOT patch.
-4. Only patch when the bug reproduces. Diagnostic first, always.
-
-Trust the code and the running system. Never trust the docs.
-When in doubt, ask the user "is this still broken?" and run a
-read-only diagnostic before assuming it is.
-
-### Before touching any listed bug
-
-A bug in PROJECT_STATE.txt or CURRENT_STATE.md is **not** proof
-it still exists. Those files are updated by hand and they drift
-behind reality. A listed bug is a *claim*, not a *fact*.
 
 Before writing a patch for any listed bug:
 

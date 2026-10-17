@@ -1,9 +1,15 @@
 ========================================================================
 APOKOLIPS OS — PROJECT STATE
-Last updated: 2026-10-16
+Last updated: 2026-10-17
 Maintained by: user (Lytone) + AI collaborators
 Read this file FIRST if you are a new AI joining the project.
 ========================================================================
+
+> **V1 ONLY.** Default state is V1. All P2/P3 and V2/V3+ items in
+> this file and in CUSTOMISATION_VISION.md are parked — not
+> mentioned, not diagnosed, not built — unless the user names one
+> explicitly. Naming one unparks it for that session only. See
+> TEAM_PROTOCOL.md Rule #2.
 
 ------------------------------------------------------------------------
 SESSION LOG — 2026-10-17
@@ -12,10 +18,6 @@ SESSION LOG — 2026-10-17
       Any app calls ApoNotify::send(); shell gates per focus mode.
   [x] Glyph sends "Screenshot saved" via ApoNotify.
   [x] Flash card styling fixed (scoped stylesheet to #notifCard).
-
-SESSION LOG — 2026-10-17
-------------------------------------------------------------------------
-Shipped today:
   [x] Dynamic Top Bar HUD: Focus poller morphs the bar to match the
       active app (Finder slate-blue, Notes amber, Aperture indigo,
       etc.). Replaces File/Edit/View menus with app-specific actions
@@ -1222,9 +1224,6 @@ exceptions. This applies to AI #1, Manus, and any future AI.
 If any of these is missing, the app is bug-listed, not shipped.
 
 ------------------------------------------------------------------------
-MANDATORY APP CHECKLIST
-
-------------------------------------------------------------------------
 BUG LIST (open)
 
   [ ] QString::arg missing argument warnings in journal on startup.
@@ -1310,13 +1309,15 @@ AI WORKING RULES (very important)
 ------------------------------------------------------------------------
 AI OWNERSHIP / HANDOFF NOTES
 ------------------------------------------------------------------------
-- Manus AI: owns genie effect + launcher polish + the "genie
-  generation" pipeline (the swing / reverse genie / scale / suck
-  family). Currently genie is DELIVERED (strip-based combined
-  version — see DONE). Manus is OUT until the next handoff.
-- AI #1 (this session): owns everything else in main.cpp.
-- Handoff to Manus when genie / launcher work resumes:
-  send message with the "AI WORKING RULES" summary above.
+- Manus collaboration retired 2026-10-17. The genie family
+  (G1a-G7), swing, reverse genie, scale, suck, thanos, mesh, and
+  launcher polish are all shipped. Do not propose genie or launcher
+  work without the user naming it (see TEAM_PROTOCOL.md Rule #2 —
+  V1 only). MANUS_GENIE_HANDOFF.md deleted.
+- AI #1 role (ongoing): owns everything in main.cpp and all
+  headers.
+- Handoff to a new AI: send TEAM_PROTOCOL.md, PROJECT_STATE.txt,
+  AI_HANDOFF.md, ARCHITECTURE_NOTES.md, CURRENT_STATE.md first.
 
 ------------------------------------------------------------------------
 KEY FILES
@@ -1332,6 +1333,15 @@ KEY FILES
   /tmp/genie-<conId>-<timestamp>.png          genie temp capture
   ~/Pictures/Screenshots/Glyph-*.png          Glyph output
   main.cpp.pre-<feature>.<timestamp>          backups
+
+------------------------------------------------------------------------
+RETIRED FILES
+------------------------------------------------------------------------
+  MANUS_GENIE_HANDOFF.md — deleted 2026-10-17. One-time brief to an
+  external AI (Manus) for the Genie option A band rewrite. Not a
+  state doc. Genie Bugs A/B closed 2026-10-13; genie family G1a-G7
+  shipped 2026-10-16. Only surviving item: Genie option A band
+  rewrite, still queued in ANIMATION QUEUE above. Do not resurrect.
 
 ------------------------------------------------------------------------
 HOW TO UPDATE THIS FILE

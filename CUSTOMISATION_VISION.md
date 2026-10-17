@@ -31,6 +31,14 @@ can turn, every automation they can build, every mod they can
 install and share. Nothing hidden behind config files. Every
 customisation goes through Settings, is live, and reverts cleanly.
 
+> **V1 ONLY.** Default state is V1. All P2/P3 items below are
+> parked — not mentioned, not diagnosed, not built — unless the user
+> names one explicitly. See TEAM_PROTOCOL.md Rule #2.
+
+> **DEFERRED INDEFINITELY (2026-10-16):** Auto-themes from
+> wallpapers (Elaboration 3, P3). Reason logged in PROJECT_STATE.txt
+> under "SUGGESTION — Auto-themes from wallpapers". Do not propose.
+
 Real Windhawk = community-shared Windows UI mods. This is that
 concept, native to our own OS, with a visual rules engine and
 theme marketplace on top.
