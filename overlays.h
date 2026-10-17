@@ -103,7 +103,8 @@ public:
         const int requestedMs = durationOverrideMs > 0
             ? durationOverrideMs : cfg.genieDurationMs;
         const int durationMs = qBound(128, requestedMs, 5000);
-        m_frames = qBound(8, (durationMs + 15) / 16, 313);
+        m_durationMs = qBound(128, durationMs, 5000);
+            m_frames = qBound(8, (durationMs + 15) / 16, 313);
 
         qDebug() << "[suck] durationMs=" << durationMs
                  << "frames=" << m_frames;
@@ -184,18 +185,27 @@ protected:
 private:
     void tick()
     {
-        if (m_frame < m_frames - 1) {
-            ++m_frame;
-            update();
-            return;
-        }
+        if (!m_elapsed.isValid()) m_elapsed.start();
+        qint64 ms = m_elapsed.elapsed();
+        if (ms >= m_durationMs) ms = m_durationMs;
+        m_t = double(ms) / double(m_durationMs);
+        int new_frame = int(m_t * (m_frames - 1));
+        bool changed = (new_frame != m_frame);
+        m_frame = new_frame;
 
-        m_timer->stop();
-        update();
-        // Close the widget, not the app — the daemon must survive
-        // between animations. quitOnLastWindowClosed still exits
-        // the standalone-spawned overlay process automatically.
-        QTimer::singleShot(80, this, [this]() { close(); });
+        if (m_t >= 1.0) {
+            if (!m_doneFired) {
+                m_doneFired = true;
+                m_timer->stop();
+                update();
+                QTimer::singleShot(150, this, [this]() {
+                    if (!m_readySock.isEmpty()) genieHandshakeDone(m_readySock);
+                    QTimer::singleShot(80, this, [this]() { close(); });
+                });
+            }
+        } else {
+            if (changed) update();
+        }
     }
 
     QPixmap m_pix;
@@ -203,6 +213,10 @@ private:
     QPoint m_dock;
     QPoint m_origin;
     QTimer *m_timer = nullptr;
+    QElapsedTimer m_elapsed;
+    qreal m_t = 0.0;
+    int m_durationMs = 1140;
+    bool m_doneFired = false;
     int m_frame = 0;
     int m_frames = 30;
     bool m_reverse = false;
@@ -252,7 +266,8 @@ public:
             ? durationOverrideMs
             : int(cfg.genieDurationMs * 6.0);
         const int durationMs = qBound(1500, requestedMs, 5000);
-        m_frames = qBound(20, (durationMs + 15) / 16, 200);
+        m_durationMs = qBound(128, durationMs, 5000);
+            m_frames = qBound(20, (durationMs + 15) / 16, 200);
 
         qInfo() << "[thanos] durationMs=" << durationMs
                 << "frames=" << m_frames
@@ -379,17 +394,37 @@ private:
 
     void tick()
     {
-        if (++m_frame >= m_frames) {
-            m_timer->stop();
-            close();
+        if (!m_elapsed.isValid()) m_elapsed.start();
+        qint64 ms = m_elapsed.elapsed();
+        if (ms >= m_durationMs) ms = m_durationMs;
+        m_t = double(ms) / double(m_durationMs);
+        int new_frame = int(m_t * (m_frames - 1));
+        bool changed = (new_frame != m_frame);
+        m_frame = new_frame;
+
+        if (m_t >= 1.0) {
+            if (!m_doneFired) {
+                m_doneFired = true;
+                m_timer->stop();
+                update();
+                QTimer::singleShot(150, this, [this]() {
+                    if (!m_readySock.isEmpty()) genieHandshakeDone(m_readySock);
+                    QTimer::singleShot(80, this, [this]() { close(); });
+                });
+            }
+        } else {
+            if (changed) update();
         }
-        update();
     }
 
     QPixmap         m_pix;
     QRect           m_start;
     QPoint          m_origin;
     QPoint          m_dock;
+    QElapsedTimer   m_elapsed;
+    qreal           m_t = 0.0;
+    int             m_durationMs = 1140;
+    bool            m_doneFired = false;
     QList<Particle> m_particles;
     int             m_frame = 0;
     int             m_frames = 60;
@@ -435,7 +470,8 @@ public:
         const int requestedMs = durationOverrideMs > 0
             ? durationOverrideMs : cfg.genieDurationMs;
         const int durationMs = qBound(128, requestedMs, 5000);
-        m_frames = qBound(8, (durationMs + 15) / 16, 313);
+        m_durationMs = qBound(128, durationMs, 5000);
+            m_frames = qBound(8, (durationMs + 15) / 16, 313);
 
         qDebug() << "[scale] durationMs=" << durationMs
                  << "frames=" << m_frames;
@@ -498,18 +534,27 @@ protected:
 private:
     void tick()
     {
-        if (m_frame < m_frames - 1) {
-            ++m_frame;
-            update();
-            return;
-        }
+        if (!m_elapsed.isValid()) m_elapsed.start();
+        qint64 ms = m_elapsed.elapsed();
+        if (ms >= m_durationMs) ms = m_durationMs;
+        m_t = double(ms) / double(m_durationMs);
+        int new_frame = int(m_t * (m_frames - 1));
+        bool changed = (new_frame != m_frame);
+        m_frame = new_frame;
 
-        m_timer->stop();
-        update();
-        // Close the widget, not the app — the daemon must survive
-        // between animations. quitOnLastWindowClosed still exits
-        // the standalone-spawned overlay process automatically.
-        QTimer::singleShot(80, this, [this]() { close(); });
+        if (m_t >= 1.0) {
+            if (!m_doneFired) {
+                m_doneFired = true;
+                m_timer->stop();
+                update();
+                QTimer::singleShot(150, this, [this]() {
+                    if (!m_readySock.isEmpty()) genieHandshakeDone(m_readySock);
+                    QTimer::singleShot(80, this, [this]() { close(); });
+                });
+            }
+        } else {
+            if (changed) update();
+        }
     }
 
     QPixmap m_pix;
@@ -517,6 +562,10 @@ private:
     QPoint m_dock;
     QPoint m_origin;
     QTimer *m_timer = nullptr;
+    QElapsedTimer m_elapsed;
+    qreal m_t = 0.0;
+    int m_durationMs = 1140;
+    bool m_doneFired = false;
     int m_frame = 0;
     int m_frames = 30;
     bool m_reverse = false;
@@ -567,7 +616,8 @@ public:
         const int requestedMs = durationOverrideMs > 0
             ? durationOverrideMs : cfg.genieDurationMs;
         const int durationMs = qBound(128, requestedMs, 5000);
-        m_frames = qBound(8, (durationMs + 15) / 16, 313);
+        m_durationMs = qBound(128, durationMs, 5000);
+            m_frames = qBound(8, (durationMs + 15) / 16, 313);
 
         qDebug() << "[genie] reverse=" << m_reverse
                  << "durationMs=" << durationMs
@@ -718,19 +768,27 @@ protected:
 private:
     void tick()
     {
-        if (m_frame < m_frames - 1) { ++m_frame; update(); return; }
-        m_timer->stop();
-        // Ping the shell that the animation is finished.
-        // genieHandshakeDone writes "done" — the restore path in
-        // main.cpp waits for that string specifically.
-        if (!m_readySock.isEmpty())
-            genieHandshakeDone(m_readySock);
+        if (!m_elapsed.isValid()) m_elapsed.start();
+        qint64 ms = m_elapsed.elapsed();
+        if (ms >= m_durationMs) ms = m_durationMs;
+        m_t = double(ms) / double(m_durationMs);
+        int new_frame = int(m_t * (m_frames - 1));
+        bool changed = (new_frame != m_frame);
+        m_frame = new_frame;
 
-        update();
-        // Close the widget, not the app — the daemon must survive
-        // between animations. quitOnLastWindowClosed still exits
-        // the standalone-spawned overlay process automatically.
-        QTimer::singleShot(80, this, [this]() { close(); });
+        if (m_t >= 1.0) {
+            if (!m_doneFired) {
+                m_doneFired = true;
+                m_timer->stop();
+                update();
+                QTimer::singleShot(150, this, [this]() {
+                    if (!m_readySock.isEmpty()) genieHandshakeDone(m_readySock);
+                    QTimer::singleShot(80, this, [this]() { close(); });
+                });
+            }
+        } else {
+            if (changed) update();
+        }
     }
 
     QPixmap m_pix;
@@ -738,6 +796,10 @@ private:
     QPoint m_dock;
     QPoint m_origin;
     QTimer *m_timer = nullptr;
+    QElapsedTimer m_elapsed;
+    qreal m_t = 0.0;
+    int m_durationMs = 1140;
+    bool m_doneFired = false;
     int m_frame = 0;
     int m_frames = 30;
     int m_strips = 140;

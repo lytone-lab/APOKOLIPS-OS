@@ -6840,34 +6840,6 @@ private:
                 VisualConfigManager::instance().setAndSave(
                     [x](VisualConfig &c) { c.genieDurationMs = x; });
             });
-            addSlider("Strips",
-                      "Higher = smoother warp, more CPU",
-                      vc.genieStrips, 40, 320, "",
-                      [](int x) {
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.genieStrips = x; });
-            });
-            addSlider("Stagger",
-                      "Per-strip delay — higher makes the pour more dramatic",
-                      int(vc.genieStagger * 100), 0, 80, "%",
-                      [](int x) {
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.genieStagger = x / 100.0; });
-            });
-            addSlider("Curve",
-                      "How aggressively the funnel narrows (×10)",
-                      int(vc.genieCurve * 10), 3, 20, "",
-                      [](int x) {
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.genieCurve = x / 10.0; });
-            });
-            addSlider("Fade start",
-                      "When opacity begins dropping (×100)",
-                      int(vc.genieFadeStart * 100), 50, 100, "%",
-                      [](int x) {
-                VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.genieFadeStart = x / 100.0; });
-            });
 
             v->addWidget(c);
         }
