@@ -230,7 +230,8 @@ Apokolips Shell (C++/Qt6):
   [x] SnapPicker (Win11-style snap layout)
       - Super+Z popup, 3x3 grid, oxblood hover
       - fires swaymsg resize set + move position
-  [x] Clipboard panel (Win+V) — WORKING but IPC unreliable. See bug list.
+  [x] Clipboard panel (Win+V) — WORKING. IPC verified 2026-10-17
+      (five $mod+v toggles cleanly).
   [x] Launcher (Launchpad) — 10 apps incl. Glyph, iron-man reactor
       tile drawing not yet (queued)
   [x] Settings: Bluetooth page (real code, honest empty state)
@@ -822,7 +823,11 @@ DEFERRED / FUTURE
       - core glow dims/brightens with battery
       - Iron Man style
   [ ] Windhawk / Compiz-style full skinning system (V2)
-  [ ] Clipboard IPC fix (parked — see bug list)
+  [x] Clipboard IPC fix — verified working 2026-10-17. User confirmed
+      five $mod+v presses toggle the panel cleanly. Server
+      (main.cpp ~2905) and client (main.cpp ~4339) both correct and
+      resolving the same $TMPDIR path. No code change was needed;
+      the doc claim was stale.
   [x] Node (was SigilTerm) — terminal emulator shipped.
   (old) [ ] SigilTerm — shell-owned terminal emulator with macOS traffic
       lights. Replaces foot. Links to PTY (openpty/forkpty) + a
@@ -1062,7 +1067,7 @@ WIRING BACKLOG (saved but not yet acting)
               target MIME, launches via Exec=. Replaces the old
               hardcoded 5-item Finder menu.
         - [ ] Rich clipboard panel all apps share — still open.
-              Clipboard IPC is fixed (was parked). The shared
+              Clipboard IPC is verified working (2026-10-17). The shared
               *history panel* is the remaining piece.
 
 
@@ -1225,6 +1230,10 @@ If any of these is missing, the app is bug-listed, not shipped.
 
 ------------------------------------------------------------------------
 BUG LIST (open)
+Phase B audit in progress 2026-10-17: each item is verified against
+code before touching it. Items confirmed closed are marked
+[CLOSED <date>] in place; a cleanup commit at the end of Phase B will
+remove them and renumber. New bugs append at the bottom.
 
   [ ] QString::arg missing argument warnings in journal on startup.
       Non-fatal but noisy. Find the style strings with placeholders
@@ -1238,14 +1247,17 @@ BUG LIST (open)
       BEFORE animating in restoreGenieForDock.
 
 ------------------------------------------------------------------------
-  1. Clipboard IPC unreliable
-     QLocalServer/Socket starts, but second-instance toggle sometimes
-     doesn't reach the running shell. Panel is built and works when
-     toggled in-process. Parked.
-  2. Finder opacity not real-time
-     Settings writes visual.json but FileExplorer (separate process)
-     doesn't poll it. Needs QTimer in FileExplorer to watch mtime
-     and repaint. ~15 lines.
+  1. [CLOSED 2026-10-17 — verified working] Clipboard IPC
+     User confirmed: five $mod+v presses toggle the panel cleanly.
+     Server (main.cpp ~2905, QLocalServer on /tmp/apokolips-clipboard.sock)
+     and client (main.cpp ~4339, --toggle-clipboard) both correct, same
+     $TMPDIR resolution. No code change was made; the doc claim was stale.
+  2. [CLOSED 2026-10-17 — verified live] Finder opacity
+     QFileSystemWatcher on visual.json already present in finder.h
+     (~lines 69-100), with directory fallback for missing file and
+     re-add after atomic replacement. User confirmed Finder body
+     changes live as the slider moves. No code change was needed;
+     the doc claim was stale.
   3. Sway reload keybind Super+Shift+R doesn't fire
      Only Ctrl+Shift+R works for shell. Check sway config bindsym.
   4. Terminal (foot) decorations — no title bar / traffic lights

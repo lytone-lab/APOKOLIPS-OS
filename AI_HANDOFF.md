@@ -94,7 +94,7 @@ compatibility hybrid — built on sway/Wayland + Qt6. `main.cpp` is
 | `--genie <png> x y w h dx dy` | Genie minimize overlay |
 | `--scale <png> x y w h dx dy` | Scale minimize overlay |
 | `--suck <png> x y w h dx dy` | Suck minimize overlay |
-| `--glyph`/`--snap`/`--screensaver`/`--clipboard` | misc overlays |
+| `--glyph`/`--snap`/`--screensaver`/`--toggle-clipboard` | misc overlays |
 
 **Config** in `~/.config/apokolips/`:
 
