@@ -1583,6 +1583,22 @@ protected:
             args = { "--demo", m_name, QString::number(m_index) };
         }
 
+        // Double-click debounce (2026-10-17). If we spawned for
+        // this icon <500ms ago, assume the user double-clicked
+        // while the first window was still booting, and skip the
+        // second spawn. Focus above already tried and failed (no
+        // window yet), so returning here is the correct no-op.
+        {
+            qint64 now = QDateTime::currentMSecsSinceEpoch();
+            if (m_lastSpawnMs > 0 && now - m_lastSpawnMs < 500) {
+                qDebug() << "[dock] suppressing rapid re-spawn for"
+                         << m_name << "(+" << (now - m_lastSpawnMs)
+                         << "ms)";
+                return;
+            }
+            m_lastSpawnMs = now;
+        }
+
         qDebug() << "[dock] startDetached" << program << args;
         // (--from-dock removed: fresh launches no longer animate,
         //  minimised windows are restored via the reverse-genie path)
@@ -1824,6 +1840,12 @@ private:
     Theme   m_theme;
     bool    m_running = false;
     qint64  m_pid = 0;
+    // 2026-10-17: debounce double-click spawn. Under Model A there
+    // is no IPC probe to silence a second launch, so a double-click
+    // while the app is still booting would spawn two windows. Track
+    // the last spawn time; if a second click lands within 500ms,
+    // suppress. Per-icon, so clicking myMach then Notes still works.
+    qint64  m_lastSpawnMs = 0;
 
     // Bounce animation
     QTimer *m_bounceTimer = nullptr;
@@ -3508,7 +3530,18 @@ protected:
 
     void mouseReleaseEvent(QMouseEvent *e) override {
         if (e->button() != Qt::LeftButton) return;
-        if (!m_dragging && m_onActivate) m_onActivate();
+        if (!m_dragging && m_onActivate) {
+            qint64 now = QDateTime::currentMSecsSinceEpoch();
+            if (m_lastActivateMs > 0
+                && now - m_lastActivateMs < 500) {
+                qDebug() << "[pool] suppressing rapid re-activate"
+                         << m_id << "(+" << (now - m_lastActivateMs)
+                         << "ms)";
+            } else {
+                m_lastActivateMs = now;
+                m_onActivate();
+            }
+        }
         m_dragging = false;
         // Phase 2: settle at current pixel position. Phase 3 will
         // replace this with "nearest free grid cell away from any
@@ -3529,6 +3562,10 @@ private:
     bool m_dragging = false;
     QPoint m_pressPos;
     QPoint m_dragStart;
+    // 2026-10-17: debounce double-click activate on desktop icons.
+    // Same reason as DockIcon — no IPC probe in Model A, so a
+    // double-click while the app is booting would spawn twice.
+    qint64 m_lastActivateMs = 0;
     QPoint  m_targetPos;       // The Pool — settle target
     QPoint  m_homeCell;        // The Pool — original grid slot
     QPointF m_vel{0, 0};       // velocity (px per tick)
