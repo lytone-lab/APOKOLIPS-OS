@@ -1235,16 +1235,14 @@ code before touching it. Items confirmed closed are marked
 [CLOSED <date>] in place; a cleanup commit at the end of Phase B will
 remove them and renumber. New bugs append at the bottom.
 
-  [ ] QString::arg missing argument warnings in journal on startup.
-      Non-fatal but noisy. Find the style strings with placeholders
-      that have no .arg() chain and fix.
+Batch 1 complete 2026-10-17 (bugs #1-#4 closed, #5 diagnosed, #6
+narrowed, #7/#9/#10 closed, #8 confirmed open, 2 unnumbered stale
+entries removed, 1 new genie-timing bug added as #11).
 
-  [ ] Stale genie-state entry blocks re-launch within ~5 s of red-
-      light close. Open app -> close via red light -> reopen within
-      5 s: animation plays, app never launches. Cause: pruneStale
-      runs every 5 s; in between, dead conId in state file short-
-      circuits launchApp. Fix: validate conId against sway tree
-      BEFORE animating in restoreGenieForDock.
+(Unnumbered stale entries removed 2026-10-17:)
+  [x] QString::arg warning entry — duplicate of numbered #8 below.
+  [x] Stale genie-state entry — fix present in code at main.cpp:2847
+      (QFile::remove("/tmp/apokolips-genie-state.json") on startup).
 
 ------------------------------------------------------------------------
   1. [CLOSED 2026-10-17 — verified working] Clipboard IPC
@@ -1344,35 +1342,78 @@ remove them and renumber. New bugs append at the bottom.
      5b/5c can be retested visually, they may each graduate to their
      own entry — or close, if the symptom was entirely caused by 5a
      blocking access to the buttons.
-  5. Real per-app menus — needs our own protocol
-  6. App icons — remaining line-art needs replacing
-  7. Glyph tweak list (parked):
-     - toolbar Save/Copy/Cancel still slightly spread
-     - Enter key should save, Ctrl+C copy, Esc cancel
-     - dimension label inside selection, top-left
-     - rule-of-thirds guide lines while dragging
-     - save notification toast
-     - save path configurable
-     - snap-to-window (single click selects a whole sway window)
-     - delay timer (Super+Shift+D → 5s delay)
-     - filename pattern configurable
-     - Settings → Glyph page
-  8. QString::arg missing argument warnings (harmless, in logs)
-  9. Launcher Arc Reactor tile doesn't use reactor mark yet
- 10. Shell windows — black fringe on rounded corners
-     Wallpaper shows through at the outer antialiased edge as a dark
-     band. Tried and FAILED:
-       - Source composition clear + direct fillPath
-       - setMask(QRegion(rounded path))
-       - AA saturation strokes (3 clipped stroke passes with opaque
-         section colors)
-     Root cause: client-side rounded corners + WA_TranslucentBackground
-     under sway. Antialiased edge pixels render over black instead of
-     wallpaper.
-     REAL FIX (V2): migrate shell windows to zwlr-layer-shell protocol
-     so the compositor handles the surface. Major rewrite. Deferred.
 
-     STATUS: accepted as a known V1 cosmetic limitation.
+     (Former short entry "5. Real per-app menus — needs our own
+     protocol" removed 2026-10-17 — superseded by the detailed
+     diagnosis above.)
+
+  6. [OPEN — narrowed 2026-10-17] App icons — remaining line-art
+     User confirmed 2026-10-17: only the Glyph launcher tile still
+     shows bare line-art. All other tiles look properly branded.
+     Remaining work: replace the Glyph tile icon with a proper
+     branded mark (same treatment as other apps). One small patch.
+  7. [CLOSED 2026-10-17 — verified by user] Glyph tweak list
+     User confirmed 2026-10-17: Enter saves, Ctrl+C copies, Esc
+     cancels, toolbar buttons are grouped tightly, and rule-of-thirds
+     guide lines appear while dragging. Save notification toast is
+     already wired via ApoNotify (2026-10-17 commit d3aaee5).
+     Remaining items — save path configurable, snap-to-window,
+     delay timer, filename pattern configurable, Settings→Glyph page —
+     are V2 scope if ever wanted. No code change needed; the doc
+     claim was stale (parked list written before the 2026-10-17 ship).
+  8. QString::arg missing argument warnings (harmless, in logs)
+  9. [CLOSED 2026-10-17 — verified by user] Launcher Arc Reactor tile
+     User confirmed 2026-10-17: the tile shows the Iron Man reactor
+     mark correctly. Shipped in commit 51abb37 ("Arc Reactor: real
+     Iron Man emblem from SVG, squircle bevel, battery dimming").
+     No code change needed; the doc claim was stale.
+ 10. [CLOSED 2026-10-17 — not visible] Shell windows: black fringe
+     User confirmed 2026-10-17: looking at Finder's rounded corners
+     against the wallpaper, no dark halo is visible. The "accepted V1
+     cosmetic limitation" framing was overly pessimistic — the 16 px
+     bottom-margin fix (AI_HANDOFF §7, ShellApp root layout) likely
+     resolved it, or the fringe was never visible under the current
+     sway + Qt combination.
+     Historic attempts retained for context in case it ever resurfaces:
+     source composition + direct fillPath, setMask(QRegion), AA
+     saturation strokes — all failed. Root cause: client-side rounded
+     corners + WA_TranslucentBackground under sway. If it reappears the
+     real fix is zwlr-layer-shell (V2 scope, major rewrite). Until then:
+     closed.
+
+ 11. [OPEN — new 2026-10-17, not fixed] Genie timing races
+     User report 2026-10-17 (verbatim): "sometimes the animation
+     finishes when window already opened, sometimes window first
+     flashes before animation plays."
+
+     Two symptoms, likely related to the minimize/restore handshake:
+       (a) Restore (reverse genie): animation completes AFTER the
+           real window has already appeared — the overlay plays over
+           the real window or trails behind it.
+       (b) Minimize (forward genie): the real window is briefly
+           visible for a frame or more BEFORE the overlay covers it.
+
+     AI_HANDOFF.md §5 documents the intended sequence: the shell must
+     hide the real window ONLY on the overlay's ready-sock ping (which
+     fires from overlay's first paintEvent + 25 ms). If the ping ever
+     fires early or is missed, symptom (b) appears. Reverse direction
+     is the mirror problem.
+
+     Root cause NOT yet diagnosed. This is intermittent — user reports
+     "sometimes," so it is a race, not a systematic bug. Candidates
+     when scheduled:
+       - ready-sock timing relative to overlay's actual first paint
+         (overlay boot ~200 ms in VM, variable under load)
+       - scratchpad show/restore sequence for reverse (does the real
+         window get shown before the overlay's final frame?)
+       - daemon vs fresh-process spawn for the two directions
+         (minimize goes through daemon, restore spawns fresh — ~200 ms
+         difference documented in AI_HANDOFF §4)
+
+     Do NOT attempt a fix without a fresh diagnostic. Reproducing a
+     race requires a stress test (minimize/restore N times, count
+     failures) or timing instrumentation in the overlay. V1 ship is
+     not blocked by this — it is intermittent and cosmetic.
 
 ------------------------------------------------------------------------
 AI WORKING RULES (very important)
