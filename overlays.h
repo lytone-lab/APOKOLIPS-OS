@@ -3,6 +3,7 @@
 
 // Animator daemon + Genie/Scale/Suck overlays (Step 5)
 
+#include "notifications.h"
 #include "shell.h"
 #include "theme.h"
 #include "visualconfig.h"
@@ -1098,6 +1099,8 @@ private:
                 + QDateTime::currentDateTime()
                     .toString("yyyyMMdd-HHmmss") + ".png";
             if (m_frozen.copy(m_sel).save(path)) {
+                ApoNotify::send("Glyph", "Screenshot saved",
+                                QFileInfo(path).fileName());
                 QByteArray png;
                 QBuffer buf(&png);
                 buf.open(QIODevice::WriteOnly);
