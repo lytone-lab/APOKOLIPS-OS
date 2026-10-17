@@ -32,6 +32,12 @@ struct VisualConfig {
     bool   widgetSnapToGrid   = false;  // snap drag to grid
     int    widgetGridSize     = 40;     // px grid unit
     QVariantMap widgetVisibility;       // id -> bool (visible?)
+    // Menu styling (Category 7, added 2026-10-17)
+    int    menuRadius      = 12;     // 0..24 px
+    int    menuOpacity     = 92;     // 60..100, alpha of dark bg
+    int    menuPadding     = 6;      // 2..16 px
+    int    menuItemHeight  = 28;     // 20..44 px
+    bool   menuBlurEnabled = true;   // ApoMenu pre-blur on/off
     // Per-app chrome overrides. Key = "apokolips-<name>";
     // value = { chromeStyle: "system|flat|glass|solid",
     //           trafficSide: "left|right",
@@ -509,6 +515,16 @@ public:
         if (o.contains("cursorGlowFade"))
             m_cfg.cursorGlowFade =
                 o["cursorGlowFade"].toInt(50);
+        if (o.contains("menuRadius"))
+            m_cfg.menuRadius = o["menuRadius"].toInt(12);
+        if (o.contains("menuOpacity"))
+            m_cfg.menuOpacity = o["menuOpacity"].toInt(95);
+        if (o.contains("menuPadding"))
+            m_cfg.menuPadding = o["menuPadding"].toInt(6);
+        if (o.contains("menuItemHeight"))
+            m_cfg.menuItemHeight = o["menuItemHeight"].toInt(28);
+        if (o.contains("menuBlurEnabled"))
+            m_cfg.menuBlurEnabled = o["menuBlurEnabled"].toBool(true);
         if (o.contains("wallpaperParallax"))
             m_cfg.wallpaperParallax = o["wallpaperParallax"].toBool(true);
         if (o.contains("sigilAccent"))
@@ -770,6 +786,11 @@ public:
         o["cursorGlowRadius"]     = m_cfg.cursorGlowRadius;
         o["cursorGlowTrail"]      = m_cfg.cursorGlowTrail;
         o["cursorGlowStyle"]      = m_cfg.cursorGlowStyle;
+        o["menuRadius"]           = m_cfg.menuRadius;
+        o["menuOpacity"]          = m_cfg.menuOpacity;
+        o["menuPadding"]          = m_cfg.menuPadding;
+        o["menuItemHeight"]       = m_cfg.menuItemHeight;
+        o["menuBlurEnabled"]      = m_cfg.menuBlurEnabled;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
         o["clock24Hour"]         = m_cfg.clock24Hour;
