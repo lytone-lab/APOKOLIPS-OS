@@ -1270,6 +1270,80 @@ remove them and renumber. New bugs append at the bottom.
      Sigil chrome. User confirmed foot is never used in normal work.
      No code change. Stale "foot + sudo apt upgrade" line above also
      corrected to "opens Node".
+
+  5. [OPEN — diagnosed 2026-10-17, not fixed] Per-app HUD: three bugs
+
+     Reported as one. Verified as three. User: "the per-app menu reverts
+     back when tried to hover on it, yet window still open. All buttons
+     don't work." Priority: fix 5a first — until the HUD is stable under
+     the mouse, 5b/5c can't be tested reliably.
+
+     5a — HUD reverts to "Apokolips" on hover (BLOCKER)
+       Repro: focus Finder/Notes/etc → HUD shows app-specific colour +
+       buttons → move pointer onto the top bar → HUD snaps back to
+       "Apokolips" while the app window is still open and focused.
+
+       Root cause hypothesis (NOT yet verified in the running shell —
+       verify before patching):
+         Hovering the top bar makes sway report the SHELL as focused
+         (top bar is a shell-owned surface). The focus poller in
+         main.cpp (~2011-2290) sees id == "apokolips-shell" with no
+         "Settings" title, so it falls into the hover-guard branch
+         (~line 2158):
+             bool overTopBar = topBar->isMouseOver();
+             if (overTopBar && !g_trackedAppId.isEmpty())
+                 effectiveId = g_trackedAppId;
+             else { g_trackedAppId.clear(); effectiveId.clear(); }
+         topBar->isMouseOver() reads m_hovered on the TopBar widget.
+         The HUD is a SIBLING widget (main.cpp ~1998, added to
+         topLayout separately), not a child of TopBar. When the pointer
+         moves onto the HUD it leaves the TopBar's rect → m_hovered
+         flips false → guard fails → g_trackedAppId is cleared →
+         effectiveId empties → falls through to the "else" branch that
+         calls topBar->setBrandColor(QColor()) and hud->setVisible(false).
+
+       Fix shape (when scheduled):
+         Extend the guard so it stays true over the whole top strip,
+         not just the TopBar child. Options:
+           (i)  also check `hud->underMouse()` in the guard
+           (ii) compare QCursor::pos().y() against the top strip's
+                global rect (top bar + HUD share one horizontal band)
+         Either is ~3 lines. Pick one variant when scheduled per
+         TEAM_PROTOCOL "propose 3 variants" (or state why one correct
+         path is right — this is a bug fix, not a feature).
+
+     5b — Window cycling buttons (< / >) inconsistent
+       Report: "most apps have 1 instance, moving from different windows
+       may not work." cycleApp (main.cpp ~2190) walks sway's get_tree
+       for con_ids matching app_id and focuses the next one. With 1
+       window the cycle is a no-op (expected). Open question: does it
+       actually move between two windows of the same app, or does it
+       get stuck? Cannot test until 5a is fixed (HUD disappears before
+       the button can be clicked).
+
+     5c — HUD action buttons have zero click wiring
+       Verified by grep 2026-10-17: no `hudClicked`, `onHud`,
+       `makeHudButton`, or `QPushButton::clicked` connection to the
+       HUD exists anywhere in chrome.h or main.cpp. `setHud(...)`
+       receives a `QList<QPair<QString, std::function<void()>>>` of
+       action lambdas, but the HUD widget (chrome.h:2005 HUDWidget,
+       paintEvent only) draws labels and never emits a click signal.
+       The visible `menuButtons` are hidden (`b->setVisible(false)`)
+       whenever setHud fires. So the lambdas are captured and never
+       invoked.
+       Fix shape: either (i) give HUDWidget real QPushButtons laid
+       out inside it, wired to the action lambdas, or (ii) add hit-
+       testing to HUDWidget::mousePressEvent that maps the click
+       position to an action index and invokes the lambda. Option (i)
+       is the simpler/cleaner route and matches the top-bar menu style
+       already used elsewhere.
+
+     Do NOT split this into three separate bug-list entries until 5a
+     is fixed. Keeping them together preserves the causal chain
+     (5a blocks testing 5b, 5c is independent). Once 5a is fixed and
+     5b/5c can be retested visually, they may each graduate to their
+     own entry — or close, if the symptom was entirely caused by 5a
+     blocking access to the buttons.
   5. Real per-app menus — needs our own protocol
   6. App icons — remaining line-art needs replacing
   7. Glyph tweak list (parked):
