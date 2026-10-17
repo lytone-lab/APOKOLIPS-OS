@@ -1596,7 +1596,14 @@ public:
     // supportsMultiWindow gates the "New Window" / "Close Window"
     // menu items — extended per session as each app goes multi-window.
     static bool supportsMultiWindow(const QString &name) {
-        return name == "Notes";
+        return name == "Notes"
+            || name == "Calculator"
+            || name == "Aperture"
+            || name == "BoomTube"
+            || name == "myMach"
+            || name == "Node"
+            || name == "Mosaic"
+            || name == "Mail";
     }
 
     static QStringList launchArgsFor(const QString &name) {
@@ -1609,6 +1616,12 @@ public:
         if (name == "Settings")   return {"--settings"};
         if (name == "Mosaic")     return {"--mosaic"};
         if (name == "Mail")       return {"--mail"};
+        if (name == "Aperture") {
+            QString sample = QDir::homePath() + "/Pictures/test-gradient.png";
+            if (QFile::exists(sample))
+                return {"--image", sample};
+            return {"--image", QDir::homePath() + "/Pictures"};
+        }
         return {};
     }
 
@@ -1892,6 +1905,12 @@ public:
         if (name == "BoomTube")   return "apokolips-boombube";
         if (name == "myMach")     return "apokolips-mymach";
         if (name == "Node")       return "apokolips-node";
+        // Added 2026-10-17 (Session 2b fix): these were missing,
+        // so pollRunning() never set m_running for them. Symptom:
+        // right-click always showed "Open X" even when the app was
+        // running, so the New/Close/Quit-all items never appeared.
+        if (name == "Mosaic")     return "apokolips-mosaic";
+        if (name == "Mail")       return "apokolips-mail";
         return QString();
     }
 
