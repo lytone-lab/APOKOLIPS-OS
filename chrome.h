@@ -1592,6 +1592,63 @@ protected:
     }
 
 public:
+    // Model A multi-window helpers (Session 1b, 2026-10-17).
+    // supportsMultiWindow gates the "New Window" / "Close Window"
+    // menu items — extended per session as each app goes multi-window.
+    static bool supportsMultiWindow(const QString &name) {
+        return name == "Notes";
+    }
+
+    static QStringList launchArgsFor(const QString &name) {
+        if (name == "Notes")      return {"--notes"};
+        if (name == "Calculator") return {"--calc"};
+        if (name == "Finder")     return {"--files"};
+        if (name == "BoomTube")   return {"--boomtube"};
+        if (name == "myMach")     return {"--mymach"};
+        if (name == "Node")       return {"--node"};
+        if (name == "Settings")   return {"--settings"};
+        if (name == "Mosaic")     return {"--mosaic"};
+        if (name == "Mail")       return {"--mail"};
+        return {};
+    }
+
+    QString appIdForThis() const {
+        if (m_name == "Notes")      return "apokolips-notes";
+        if (m_name == "Calculator") return "apokolips-calculator";
+        if (m_name == "BoomTube")   return "apokolips-boombube";
+        if (m_name == "Aperture")   return "apokolips-aperture";
+        if (m_name == "Node")       return "apokolips-node";
+        if (m_name == "myMach")     return "apokolips-mymach";
+        if (m_name == "Mosaic")     return "apokolips-mosaic";
+        if (m_name == "Mail")       return "apokolips-mail";
+        return QString();
+    }
+
+    void swayRun(const QStringList &args) {
+        QProcess p;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        const QString sock = discoverSwaySock();
+        if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+        p.setProcessEnvironment(env);
+        p.start("swaymsg", args);
+        p.waitForFinished(500);
+    }
+
+    // swaymsg [app_id=X] kill only kills the FIRST match, not all.
+    // Loop until no more matches (exit != 0).
+    void swayKillAll(const QString &appId) {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        const QString sock = discoverSwaySock();
+        if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+        for (int i = 0; i < 30; ++i) {
+            QProcess p;
+            p.setProcessEnvironment(env);
+            p.start("swaymsg", {QString("[app_id=%1]").arg(appId), "kill"});
+            p.waitForFinished(300);
+            if (p.exitCode() != 0) break;
+        }
+    }
+
     void handleClick(Qt::MouseButton btn, QPoint globalPos) {
         qDebug() << "[dockicon] handleClick" << m_name << "btn=" << btn;
         if (btn == Qt::LeftButton) {
@@ -1610,8 +1667,38 @@ public:
                      t.textPrimary.name(), rgba(t.accentSoft)));
 
             if (m_running) {
-                QAction *quitAct = m.addAction(QString("Quit %1").arg(m_name));
-                QObject::connect(quitAct, &QAction::triggered, [this]() {
+                const bool multiWin = supportsMultiWindow(m_name);
+                const QString appId = multiWin ? appIdForThis() : QString();
+
+                if (multiWin && !appId.isEmpty()) {
+                    QAction *newAct = m.addAction(
+                        QString("New %1 Window").arg(m_name));
+                    QObject::connect(newAct, &QAction::triggered,
+                                     [name = m_name]() {
+                        QProcess::startDetached(
+                            QCoreApplication::applicationFilePath(),
+                            launchArgsFor(name));
+                    });
+
+                    QAction *closeAct = m.addAction(
+                        QString("Close %1 Window").arg(m_name));
+                    QObject::connect(closeAct, &QAction::triggered,
+                                     [this, appId]() {
+                        swayRun({QString("[app_id=%1]").arg(appId),
+                                 "focus"});
+                        swayRun({"kill"});
+                    });
+                    m.addSeparator();
+                }
+
+                const QString quitLabel = multiWin
+                    ? QString("Quit %1 (all windows)").arg(m_name)
+                    : QString("Quit %1").arg(m_name);
+                QAction *quitAct = m.addAction(quitLabel);
+                QObject::connect(quitAct, &QAction::triggered,
+                                 [this, multiWin, appId]() {
+                    if (multiWin && !appId.isEmpty())
+                        swayKillAll(appId);
                     if (m_pid > 0)
                         QProcess::execute("kill",
                             {"-TERM", QString::number(m_pid)});
