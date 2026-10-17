@@ -1230,53 +1230,25 @@ If any of these is missing, the app is bug-listed, not shipped.
 
 ------------------------------------------------------------------------
 BUG LIST (open)
-Phase B audit in progress 2026-10-17: each item is verified against
-code before touching it. Items confirmed closed are marked
-[CLOSED <date>] in place; a cleanup commit at the end of Phase B will
-remove them and renumber. New bugs append at the bottom.
+Phase B + C complete 2026-10-17. Every numbered entry below has been
+verified against the code and, where visual, against the running
+shell. Four remain open. The seven verified-closed bugs (plus their
+unnumbered duplicates) are archived at the bottom of the list under
+"RECENTLY CLOSED (2026-10-17)" — kept for context so a future AI
+doesn't re-litigate settled items or retry dead-end approaches.
 
-Batch 1 complete 2026-10-17 (bugs #1-#4 closed, #5 diagnosed, #6
-narrowed, #7/#9/#10 closed, #8 confirmed open, 2 unnumbered stale
-entries removed, 1 new genie-timing bug added as #11).
+Next Phase B batch (if scheduled) verifies new claims by the same
+rule: a `[ ]` in this file is a claim, not a fact; diagnose before
+patching.
 
-(Unnumbered stale entries removed 2026-10-17:)
-  [x] QString::arg warning entry — duplicate of numbered #8 below.
-  [x] Stale genie-state entry — fix present in code at main.cpp:2847
-      (QFile::remove("/tmp/apokolips-genie-state.json") on startup).
-
-------------------------------------------------------------------------
-  1. [CLOSED 2026-10-17 — verified working] Clipboard IPC
-     User confirmed: five $mod+v presses toggle the panel cleanly.
-     Server (main.cpp ~2905, QLocalServer on /tmp/apokolips-clipboard.sock)
-     and client (main.cpp ~4339, --toggle-clipboard) both correct, same
-     $TMPDIR resolution. No code change was made; the doc claim was stale.
-  2. [CLOSED 2026-10-17 — verified live] Finder opacity
-     QFileSystemWatcher on visual.json already present in finder.h
-     (~lines 69-100), with directory fallback for missing file and
-     re-add after atomic replacement. User confirmed Finder body
-     changes live as the slider moves. No code change was needed;
-     the doc claim was stale.
-  3. [CLOSED 2026-10-17 — reversed] Sway reload keybind
-     Report said Super+Shift+R doesn't fire; verified it does — reloads
-     the shell from anywhere, any focus. Reality is the opposite of the
-     claim: Ctrl+Shift+R fires from the desktop but NOT from inside a
-     shell app window (Finder, Settings). AI_HANDOFF §6 corrected.
-     No code change — Super+Shift+R covers the V1 reload use case;
-     a second in-window shortcut is redundant (Option A, user-chosen).
-  4. [CLOSED 2026-10-17 — moot] Terminal (foot) decorations
-     foot is not in the loop. Software Update opens Node, which has full
-     Sigil chrome. User confirmed foot is never used in normal work.
-     No code change. Stale "foot + sudo apt upgrade" line above also
-     corrected to "opens Node".
-
-  5. [OPEN — diagnosed 2026-10-17, not fixed] Per-app HUD: three bugs
+  1. [OPEN — diagnosed 2026-10-17, not fixed] Per-app HUD: three bugs
 
      Reported as one. Verified as three. User: "the per-app menu reverts
      back when tried to hover on it, yet window still open. All buttons
-     don't work." Priority: fix 5a first — until the HUD is stable under
-     the mouse, 5b/5c can't be tested reliably.
+     don't work." Priority: fix 1a first — until the HUD is stable under
+     the mouse, 1b/1c can't be tested reliably.
 
-     5a — HUD reverts to "Apokolips" on hover (BLOCKER)
+     1a — HUD reverts to "Apokolips" on hover (BLOCKER)
        Repro: focus Finder/Notes/etc → HUD shows app-specific colour +
        buttons → move pointer onto the top bar → HUD snaps back to
        "Apokolips" while the app window is still open and focused.
@@ -1310,7 +1282,7 @@ entries removed, 1 new genie-timing bug added as #11).
          TEAM_PROTOCOL "propose 3 variants" (or state why one correct
          path is right — this is a bug fix, not a feature).
 
-     5b — Window cycling buttons (< / >) inconsistent
+     1b — Window cycling buttons (< / >) inconsistent
        Report: "most apps have 1 instance, moving from different windows
        may not work." cycleApp (main.cpp ~2190) walks sway's get_tree
        for con_ids matching app_id and focuses the next one. With 1
@@ -1319,7 +1291,7 @@ entries removed, 1 new genie-timing bug added as #11).
        get stuck? Cannot test until 5a is fixed (HUD disappears before
        the button can be clicked).
 
-     5c — HUD action buttons have zero click wiring
+     1c — HUD action buttons have zero click wiring
        Verified by grep 2026-10-17: no `hudClicked`, `onHud`,
        `makeHudButton`, or `QPushButton::clicked` connection to the
        HUD exists anywhere in chrome.h or main.cpp. `setHud(...)`
@@ -1336,52 +1308,30 @@ entries removed, 1 new genie-timing bug added as #11).
        is the simpler/cleaner route and matches the top-bar menu style
        already used elsewhere.
 
-     Do NOT split this into three separate bug-list entries until 5a
+     Do NOT split this into three separate bug-list entries until 1a
      is fixed. Keeping them together preserves the causal chain
-     (5a blocks testing 5b, 5c is independent). Once 5a is fixed and
-     5b/5c can be retested visually, they may each graduate to their
-     own entry — or close, if the symptom was entirely caused by 5a
+     (1a blocks testing 1b, 1c is independent). Once 1a is fixed and
+     1b/1c can be retested visually, they may each graduate to their
+     own entry — or close, if the symptom was entirely caused by 1a
      blocking access to the buttons.
 
-     (Former short entry "5. Real per-app menus — needs our own
-     protocol" removed 2026-10-17 — superseded by the detailed
-     diagnosis above.)
-
-  6. [OPEN — narrowed 2026-10-17] App icons — remaining line-art
+  2. [OPEN — narrowed 2026-10-17] App icons — remaining line-art
      User confirmed 2026-10-17: only the Glyph launcher tile still
      shows bare line-art. All other tiles look properly branded.
      Remaining work: replace the Glyph tile icon with a proper
      branded mark (same treatment as other apps). One small patch.
-  7. [CLOSED 2026-10-17 — verified by user] Glyph tweak list
-     User confirmed 2026-10-17: Enter saves, Ctrl+C copies, Esc
-     cancels, toolbar buttons are grouped tightly, and rule-of-thirds
-     guide lines appear while dragging. Save notification toast is
-     already wired via ApoNotify (2026-10-17 commit d3aaee5).
-     Remaining items — save path configurable, snap-to-window,
-     delay timer, filename pattern configurable, Settings→Glyph page —
-     are V2 scope if ever wanted. No code change needed; the doc
-     claim was stale (parked list written before the 2026-10-17 ship).
-  8. QString::arg missing argument warnings (harmless, in logs)
-  9. [CLOSED 2026-10-17 — verified by user] Launcher Arc Reactor tile
-     User confirmed 2026-10-17: the tile shows the Iron Man reactor
-     mark correctly. Shipped in commit 51abb37 ("Arc Reactor: real
-     Iron Man emblem from SVG, squircle bevel, battery dimming").
-     No code change needed; the doc claim was stale.
- 10. [CLOSED 2026-10-17 — not visible] Shell windows: black fringe
-     User confirmed 2026-10-17: looking at Finder's rounded corners
-     against the wallpaper, no dark halo is visible. The "accepted V1
-     cosmetic limitation" framing was overly pessimistic — the 16 px
-     bottom-margin fix (AI_HANDOFF §7, ShellApp root layout) likely
-     resolved it, or the fringe was never visible under the current
-     sway + Qt combination.
-     Historic attempts retained for context in case it ever resurfaces:
-     source composition + direct fillPath, setMask(QRegion), AA
-     saturation strokes — all failed. Root cause: client-side rounded
-     corners + WA_TranslucentBackground under sway. If it reappears the
-     real fix is zwlr-layer-shell (V2 scope, major rewrite). Until then:
-     closed.
+  3. [OPEN — confirmed in log 2026-10-17] QString::arg missing arg warnings
+     Six warnings in the last 500 journal lines at 2026-10-17 15:35.
+     All are stylesheet strings with colour placeholders but no .arg()
+     chain — the runtime prints the raw template plus the unused
+     argument. Non-fatal but noisy; blocks clean log reading.
+     Fix shape: grep the codebase for the exact stylesheet strings the
+     log prints (they appear verbatim), add the missing .arg() chain.
+     Look at Sigil::makeToggleRow, Sigil::Card paint paths, and the
+     button stylesheet helpers in chrome.h / style.h. Small patch,
+     mechanical.
 
- 11. [OPEN — new 2026-10-17, not fixed] Genie timing races
+  4. [OPEN — new 2026-10-17, not fixed] Genie timing races
      User report 2026-10-17 (verbatim): "sometimes the animation
      finishes when window already opened, sometimes window first
      flashes before animation plays."
@@ -1414,6 +1364,60 @@ entries removed, 1 new genie-timing bug added as #11).
      race requires a stress test (minimize/restore N times, count
      failures) or timing instrumentation in the overlay. V1 ship is
      not blocked by this — it is intermittent and cosmetic.
+
+------------------------------------------------------------------------
+RECENTLY CLOSED (2026-10-17)
+------------------------------------------------------------------------
+Historical numbering preserved below. Full detail in the commit trail
+(7a3512e, 5640ad8, f3d8aa2, 1586e02). Kept here so a future AI doesn't
+re-litigate settled items or retry dead-end approaches.
+
+Old #1 — Clipboard IPC
+  Verified working: five $mod+v presses toggle the panel cleanly.
+  Server (main.cpp ~2905) and client (~4339) both correct, same
+  $TMPDIR path. No code change; the doc claim was stale.
+
+Old #2 — Finder opacity
+  Verified live via QFileSystemWatcher in finder.h (~69-100). User
+  confirmed body updates as the slider moves. No code change.
+
+Old #3 — Sway reload keybind
+  Report was reversed. Super+Shift+R fires from anywhere (works);
+  Ctrl+Shift+R fires only when no shell app window is focused.
+  No code change; AI_HANDOFF §6 corrected.
+
+Old #4 — Foot decorations
+  Moot. Software Update opens Node, which has full Sigil chrome.
+  foot is not in the loop. No code change.
+
+Old #7 — Glyph tweak list
+  Verified working: Enter saves, Ctrl+C copies, Esc cancels, toolbar
+  grouped, rule-of-thirds guides visible, save toast wired via
+  ApoNotify. Remaining V2 items if ever wanted: save path
+  configurable, snap-to-window, delay timer, filename pattern
+  configurable, Settings→Glyph page. Not V1.
+
+Old #9 — Launcher Arc Reactor tile
+  Shows Iron Man emblem correctly (commit 51abb37). No code change.
+
+Old #10 — Black fringe on rounded corners
+  Not visible under current sway + Qt combination. 16 px bottom-
+  margin fix (AI_HANDOFF §7) likely resolved it.
+  HISTORIC FAILED APPROACHES — do not retry these:
+    - source composition + direct fillPath
+    - setMask(QRegion(rounded path))
+    - AA saturation strokes (3 clipped passes)
+  Real fix if ever needed: zwlr-layer-shell (V2, major rewrite).
+  Until then: closed.
+
+Unnumbered — QString::arg duplicate entry
+  Folded into new #3 above. Old unnumbered entry was the same claim.
+
+Unnumbered — Stale genie-state re-launch
+  Fix present in code at main.cpp:2847
+  (QFile::remove("/tmp/apokolips-genie-state.json") on startup).
+  Original claim closed; a different genie-timing issue lives on as
+  new #4.
 
 ------------------------------------------------------------------------
 AI WORKING RULES (very important)
