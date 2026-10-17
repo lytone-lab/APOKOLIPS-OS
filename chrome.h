@@ -1495,16 +1495,31 @@ protected:
         else if (m_name == "Files")     matchId = "org.gnome.Nautilus";
 
         if (!matchId.isEmpty()) {
+            // SWAYSOCK is NOT inherited by the systemd-launched shell
+            // (verified 2026-10-17: /proc/<pid>/environ has no SWAYSOCK).
+            // pollRunning() works because it injects SWAYSOCK explicitly;
+            // do the same here. Without this, `swaymsg focus` errors out
+            // (exit != 0) and every dock click falls through to spawn —
+            // which is why "dock click on running app" produced duplicates
+            // before 2026-10-17, masked by the (now removed) IPC probe.
+            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+            const QString sock = discoverSwaySock();
+            if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+
             // Bring a scratchpad-hidden window back first — "focus" alone
             // on a scratchpad window can report success without actually
             // surfacing it, which looked like "nothing happens" on click.
-            QProcess::execute("swaymsg",
+            QProcess scratch;
+            scratch.setProcessEnvironment(env);
+            scratch.start("swaymsg",
                 { QString("[app_id=%1]").arg(matchId), "scratchpad", "show" });
+            scratch.waitForFinished(500);
 
             QProcess sway;
+            sway.setProcessEnvironment(env);
             sway.start("swaymsg",
                 { QString("[app_id=%1]").arg(matchId), "focus" });
-            sway.waitForFinished(300);
+            sway.waitForFinished(500);
             // If it exited 0, a window was focused — bail out
             if (sway.exitStatus() == QProcess::NormalExit
                 && sway.exitCode() == 0) {

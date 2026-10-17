@@ -4093,37 +4093,16 @@ int main(int argc, char *argv[])
         app.setApplicationName("Notes");
         app.setDesktopFileName("apokolips-notes");
 
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-notes");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
+        // Model A multi-window (2026-10-17): every invocation opens
+        // a fresh window. No single-instance probe, no listener.
+        // Two Notes processes = two independent windows. Dock-click
+        // "focus existing" still works via launchApp() -> swaymsg
+        // focus (not via IPC). HUD "+ Note" and (future) right-click
+        // "New Notes Window" both route here and now spawn fresh.
 
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         NotesApp w(nullptr, notePath);
-
-        QLocalServer::removeServer("apokolips-notes");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-notes")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    if (wptr)
-                        shellRestoreWindow(wptr, "Notes",
-                                           QSize(720, 520));
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
