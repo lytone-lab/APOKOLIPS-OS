@@ -10,7 +10,8 @@ Status of the tagged items in this file:
   [NOW]  "What's new / Take the tour" panel — still open.
   [SOON] Restore path via animator daemon — still open; user
          reports no felt delay on un-minimize, so low priority.
-  [SOON] Terminal (foot) decorations — still open.
+  [SOON] Terminal (foot) decorations — CLOSED 2026-10-17 (moot; foot
+         not in loop, Software Update opens Node with full chrome).
   [SOON] Monetization — deferred (waiting on the project
          being more presentable).
   [EVENTUAL] Split main.cpp — DONE (22k → ~3.5k lines across
@@ -79,13 +80,14 @@ follow-up.
 
 ---
 
-## [SOON] Terminal (foot) decorations
+## [CLOSED 2026-10-17] Terminal (foot) decorations
 
-foot windows have no title bar. Every other app has Sigil
-chrome. This is the one place the OS looks inconsistent on
-first launch. Sway-side: `for_window [app_id="foot"]` rules
-or launch foot with `--app-id` + sway's `client_decoration`.
-No Qt code needed.
+Closed as moot. `foot` was never the primary terminal — Node (was
+SigilTerm) was built specifically to replace it, and the one
+remaining invocation path (Software Update → Install All) opens
+**Node**, not foot. User confirmed foot is never seen in normal
+work. Do not re-open. If a future sudo task ever spawns foot bare,
+fix it *there* rather than adding chrome to a terminal nobody sees.
 
 ---
 

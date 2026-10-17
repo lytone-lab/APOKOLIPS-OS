@@ -1157,7 +1157,7 @@ Time Machine:
 
 Software Update:
   Check for Updates real (pkexec apt update). Install All real
-  (foot + sudo apt upgrade -y). Auto-update toggle real (writes
+  (opens Node, runs sudo apt upgrade -y). Auto-update toggle real (writes
   /etc/apt/apt.conf.d/20auto-upgrades via pkexec).
   [ ] Update page doesn't poll for progress — user must click Refresh
       after install finishes.
@@ -1265,7 +1265,11 @@ remove them and renumber. New bugs append at the bottom.
      shell app window (Finder, Settings). AI_HANDOFF §6 corrected.
      No code change — Super+Shift+R covers the V1 reload use case;
      a second in-window shortcut is redundant (Option A, user-chosen).
-  4. Terminal (foot) decorations — no title bar / traffic lights
+  4. [CLOSED 2026-10-17 — moot] Terminal (foot) decorations
+     foot is not in the loop. Software Update opens Node, which has full
+     Sigil chrome. User confirmed foot is never used in normal work.
+     No code change. Stale "foot + sudo apt upgrade" line above also
+     corrected to "opens Node".
   5. Real per-app menus — needs our own protocol
   6. App icons — remaining line-art needs replacing
   7. Glyph tweak list (parked):
