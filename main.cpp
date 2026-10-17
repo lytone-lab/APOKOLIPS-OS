@@ -734,6 +734,29 @@ static bool removeGenieWindow(int conId)
     return writeGenieWindows(updated);
 }
 
+// Sway tree probe — returns true if conId exists in the current
+// tree. Used to reject stale genie-state entries BEFORE playing
+// the reverse animation: a dead conId would otherwise animate and
+// then silently fail scratchpad show, blocking fresh launch.
+static bool swayTreeHasConId(int conId)
+{
+    if (conId <= 0) return false;
+    const QString sock = discoverSwaySock();
+    if (sock.isEmpty()) return false;
+    QProcess p;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert("SWAYSOCK", sock);
+    p.setProcessEnvironment(env);
+    p.start("swaymsg", { "-t", "get_tree", "-r" });
+    if (!p.waitForFinished(800)) {
+        p.kill();
+        return false;
+    }
+    const QString out = QString::fromUtf8(p.readAllStandardOutput());
+    return out.contains(QString("\"id\": %1").arg(conId))
+        || out.contains(QString("\"id\":%1").arg(conId));
+}
+
 static bool restoreGenieForDock(const QString &dockName)
 {
     if (dockName.isEmpty()) {
@@ -771,6 +794,21 @@ static bool restoreGenieForDock(const QString &dockName)
         qWarning() << "[genie-restore][why] bad conId" << conId;
         return false;
     }
+
+    // Reject stale entries BEFORE the animation plays. If the
+    // window is gone (red-light close), the reverse animation
+    // would run against a dead conId, then scratchpad show would
+    // fail silently and the caller would never fall through to a
+    // fresh launch. Drop the entry and return false so the caller
+    // launches the app instead.
+    if (!swayTreeHasConId(conId)) {
+        qInfo() << "[genie-restore] stale conId" << conId
+                << "— dropping, will launch fresh";
+        removeGenieWindow(conId);
+        QFile::remove(savedPng);
+        return false;
+    }
+
     if (!QFile::exists(savedPng)) {
         qWarning() << "[genie-restore][why] pixmap missing"
                    << savedPng << " — dropping entry";
@@ -1625,6 +1663,7 @@ static int runShell(int argc, char *argv[])
                         (chosenStyle == "scale") ? "--scale"
                         : (chosenStyle == "suck") ? "--suck"
                         : (chosenStyle == "thanos") ? "--thanos"
+                        : (chosenStyle == "mesh") ? "--mesh"
                                                   : "--genie";
                     qDebug() << "[minimize] style=" << styleFlag;
 

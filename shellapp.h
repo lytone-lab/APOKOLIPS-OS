@@ -157,10 +157,16 @@ protected:
 
         QObject::connect(closeBtn, &QPushButton::clicked, [this]() {
             // Red light: minimize animation, then exit the process.
-            // Without the quit, the app stays alive as a hidden
-            // QWidget and the dock's running dot stays lit forever.
+            // The quit timer MUST match the animation's actual
+            // wall-clock duration, not a hardcoded 900ms — on
+            // llvmpipe the animation runs at ~20fps, so a 1140ms
+            // "duration" takes 2-3x longer visually. 900ms fires
+            // mid-animation and the window disappears early.
             shellCloseViaGenie(this);
-            QTimer::singleShot(900, this, []() {
+            const int animMs = qBound(128,
+                VisualConfigManager::instance().cfg().genieDurationMs,
+                5000);
+            QTimer::singleShot(animMs * 3 + 1500, this, []() {
                 QCoreApplication::quit();
             });
         });

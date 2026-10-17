@@ -31,6 +31,7 @@
 #include <QButtonGroup>
 #include <QLineEdit>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QDateTime>
 #include <QPainter>
 #include <QPainterPath>

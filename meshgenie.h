@@ -61,12 +61,10 @@ public:
         const auto &cfg = VisualConfigManager::instance().cfg();
         const int requestedMs = durationOverrideMs > 0
             ? durationOverrideMs : cfg.genieDurationMs;
-        const int durationMs = qBound(128, requestedMs, 5000);
-        m_frames = qBound(8, (durationMs + 15) / 16, 313);
+        m_durationMs = qBound(128, requestedMs, 5000);
 
         qDebug() << "[meshgenie] reverse=" << m_reverse
-                 << "durationMs=" << durationMs
-                 << "frames=" << m_frames;
+                 << "durationMs=" << m_durationMs;
 
         m_timer = new QTimer(this);
         m_timer->setInterval(16);
@@ -102,8 +100,11 @@ protected:
             "void main() {\n"
             "  highp float d = distance(a_src, u_tipSrc);\n"
             "  highp float dn = clamp(d / u_diag, 0.0, 1.0);\n"
-            "  highp float rate = u_rateBase"
-                              " - (u_rateBase - u_rateMin) * dn;\n"
+            // Geyser curve — exponential falloff in rate by distance
+            // from the tip. Tip (dn=0) moves VERY fast; far side
+            // (dn=1) barely budges until the very end, then snaps
+            // in. This is what makes the tight neck + wide top.
+            "  highp float rate = 8.0 * exp(-5.0 * dn) + 0.3;\n"
             "  highp float base = u_t * (2.0 - u_t);\n"
             "  highp float progress = 1.0 - pow(1.0 - base, rate);\n"
             "  highp vec2 dst ="
@@ -183,8 +184,9 @@ protected:
         glClear(GL_COLOR_BUFFER_BIT);
         if (!m_prog || !m_prog->isLinked() || !m_tex) return;
 
-        const qreal t = qBound<qreal>(
-            0.0, genieTimelineProgress(m_frame, m_frames, m_reverse), 1.0);
+        const qreal t = m_reverse
+            ? qBound<qreal>(0.0, 1.0 - m_t, 1.0)
+            : qBound<qreal>(0.0, m_t, 1.0);
 
         m_prog->bind();
         m_tex->bind(0);
@@ -200,7 +202,7 @@ protected:
         // Variant B — softer rate range than the strip version's
         // 5.5 / 0.5. Tip still leads, but no hard neck.
         m_prog->setUniformValue("u_rateBase", 3.5f);
-        m_prog->setUniformValue("u_rateMin",  0.65f);
+        m_prog->setUniformValue("u_rateMin",  0.40f);
 
         m_vbo->bind();
         const int aSrc = m_prog->attributeLocation("a_src");
@@ -218,10 +220,24 @@ protected:
         m_vbo->release();
         m_tex->release();
         m_prog->release();
+
+        // Fire "done" AFTER the final frame has actually painted —
+        // not from the timer, which on slow hardware runs ahead of
+        // the visual. This is the fix for the "window reveals before
+        // the animation finishes" bug on both directions.
+        if (m_t >= 1.0 && !m_doneFired) {
+            m_doneFired = true;
+            if (m_timer) m_timer->stop();
+            QTimer::singleShot(30, this, [this]() {
+                if (!m_readySock.isEmpty())
+                    genieHandshakeDone(m_readySock);
+                QTimer::singleShot(80, this, [this]() { close(); });
+            });
+        }
     }
 
 private:
-    static constexpr int MESH_N = 32;   // 32x32 vertex grid
+    static constexpr int MESH_N = 48;   // 48x48 vertex grid
 
     void buildMesh() {
         const qreal x0 = m_start.left();
@@ -265,16 +281,14 @@ private:
     }
 
     void tick() {
-        if (m_frame < m_frames - 1) {
-            ++m_frame;
-            update();
-            return;
+        if (!m_elapsed.isValid()) m_elapsed.start();
+        const qint64 ms = m_elapsed.elapsed();
+        if (ms >= m_durationMs) {
+            m_t = 1.0;   // paintGL will fire "done" after painting
+        } else {
+            m_t = double(ms) / double(m_durationMs);
         }
-        m_timer->stop();
-        if (!m_readySock.isEmpty())
-            genieHandshakeDone(m_readySock);
         update();
-        QTimer::singleShot(80, this, [this]() { close(); });
     }
 
     QPixmap m_pix;
@@ -284,10 +298,12 @@ private:
     QPointF m_tipSrc;
     qreal   m_diag = 1.0;
 
-    QTimer *m_timer = nullptr;
-    int     m_frame = 0;
-    int     m_frames = 30;
-    bool    m_reverse = false;
+    QTimer        *m_timer = nullptr;
+    QElapsedTimer  m_elapsed;
+    qreal          m_t = 0.0;
+    int            m_durationMs = 1140;
+    bool           m_reverse = false;
+    bool           m_doneFired = false;
 
     QString m_readySock;
     bool    m_readyPinged = false;
