@@ -1753,6 +1753,24 @@ public:
             }
 
             m.exec(globalPos);
+        } else if (btn == Qt::MiddleButton) {
+            // Model A middle-click (2026-10-17): quit ALL windows
+            // of this app. Uses swayKillAll() (Session 1b) which
+            // loops swaymsg [app_id=X] kill until no match remains.
+            // Fallback to kill -TERM m_pid for apps without a
+            // mapped app_id (e.g. if Mail ever lands in dock).
+            if (m_running) {
+                const QString appId = appIdForThis();
+                if (!appId.isEmpty()) {
+                    swayKillAll(appId);
+                } else if (m_pid > 0) {
+                    QProcess::execute("kill",
+                        {"-TERM", QString::number(m_pid)});
+                }
+                m_running = false;
+                m_pid = 0;
+                update();
+            }
         }
     }
 
