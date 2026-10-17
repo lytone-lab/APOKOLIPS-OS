@@ -139,6 +139,7 @@ inline void installMenuFade() {
 #include "recents.h"
 #include "openwith.h"
 #include "dragdrop.h"
+#include "notifications.h"
 #include "mail.h"
 #include "mosaic.h"
 #include "mesh.h"

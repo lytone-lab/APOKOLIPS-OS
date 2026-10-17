@@ -27,16 +27,61 @@ public:
         ThemeManager::instance().subscribe([this](const Theme &t) {
             m_theme = t;
             repaint();
-            // Clear history on theme change (simplest)
             for (QWidget *c : m_history) c->deleteLater();
             m_history.clear();
             if (m_historyHeader) m_historyHeader->setVisible(false);
-            // Rebuild cards with new theme colors
             for (QWidget *c : m_cards) c->deleteLater();
             m_cards.clear();
             buildCards();
             updateThemeOnHeader();
         });
+
+        // Poll /tmp/apokolips-notify/ for files dropped by any app
+        // via ApoNotify::send(). Each is a JSON object with
+        // {app, title, body}. Focus mode gates display.
+        QDir().mkpath(QDir::tempPath() + "/apokolips-notify");
+        m_notifyTimer = new QTimer(this);
+        m_notifyTimer->setInterval(400);
+        QObject::connect(m_notifyTimer, &QTimer::timeout, this, [this]() {
+            QDir d(QDir::tempPath() + "/apokolips-notify");
+            if (!d.exists()) return;
+            const QStringList files = d.entryList(
+                {"*.json"}, QDir::Files, QDir::Time);
+            for (const QString &fn : files) {
+                const QString fp = d.filePath(fn);
+                QFile f(fp);
+                if (!f.open(QIODevice::ReadOnly)) { QFile::remove(fp); continue; }
+                QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+                f.close();
+                QFile::remove(fp);
+                if (!doc.isObject()) continue;
+                QJsonObject o = doc.object();
+                const QString app   = o.value("app").toString("Apokolips");
+                const QString title = o.value("title").toString();
+                const QString body  = o.value("body").toString();
+
+                const auto &cfg = VisualConfigManager::instance().cfg();
+                bool allow = true;
+                if (cfg.dndEnabled) {
+                    allow = false;
+                    if (cfg.focusPolicy == "all") allow = true;
+                    else if (cfg.focusPolicy == "priority") {
+                        for (const auto &a : cfg.focusAllowedApps) {
+                            if (a.compare(app, Qt::CaseInsensitive) == 0) {
+                                allow = true; break;
+                            }
+                        }
+                    }
+                    // mute → allow stays false
+                }
+                qInfo() << "[notify] recv" << app << "|" << title
+                        << "| focusGate=" << (cfg.dndEnabled ? "on" : "off")
+                        << " policy=" << cfg.focusPolicy
+                        << " allow=" << allow;
+                if (allow) flash(app, title, body);
+            }
+        });
+        m_notifyTimer->start();
     }
 
     void toggle() { isVisible() ? hideCenter() : showCenter(); }
@@ -137,6 +182,7 @@ private:
                       const QColor &accent)
     {
         QWidget *card = new QWidget;
+        card->setObjectName("notifCard");
         card->setAttribute(Qt::WA_StyledBackground, true);
         card->setAttribute(Qt::WA_Hover, true);
         QColor cardTop = m_theme.chromeBg.lighter(120);
@@ -144,15 +190,19 @@ private:
         QColor hoverBg = m_theme.chromeBg.lighter(135);
         QColor inner   = m_theme.chromeBorder;
         inner.setAlpha(70);
+        // Scope the stylesheet to the card widget itself
+        // (#notifCard), not to every QWidget descendant — that
+        // was causing each QLabel inside the card to draw its
+        // own 1px box.
         card->setStyleSheet(QString(
-            "QWidget {"
+            "QWidget#notifCard {"
             "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
             "    stop:0 %1, stop:1 %2);"
             "  border: 1px solid %3;"
             "  border-left: 3px solid %4;"
             "  border-radius: 14px;"
             "}"
-            "QWidget:hover {"
+            "QWidget#notifCard:hover {"
             "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
             "    stop:0 %5, stop:1 %1);"
             "}").arg(cardTop.name(),
@@ -401,6 +451,7 @@ private:
     Theme m_theme;
     QVBoxLayout *m_cardsLayout = nullptr;
     QList<QWidget *> m_cards;
+    QTimer *m_notifyTimer = nullptr;
 
     QPushButton *m_clearAllBtn = nullptr;
     QLabel      *m_historyHeader = nullptr;
