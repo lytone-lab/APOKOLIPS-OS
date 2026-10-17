@@ -2133,7 +2133,14 @@ static int runShell(int argc, char *argv[])
                 // the platform for the actual widget under the
                 // pointer — works on Wayland where QCursor::pos()
                 // alone often returns (0,0).
-                bool overTopBar = topBar->isMouseOver();
+                // Variant C (2026-10-17): include the HUD sibling in
+                // hover detection. TopBar::isMouseOver() alone returns
+                // false when the pointer is on a HUD button (HUD is
+                // added to topLayout separately, not as a child of
+                // TopBar). Without this, the else branch below clears
+                // g_trackedAppId and the HUD reverts to "Apokolips"
+                // mid-hover. Root cause of the long-standing bug.
+                bool overTopBar = topBar->isMouseOver() || hud->underMouse();
                 if (overTopBar && !g_trackedAppId.isEmpty()) {
                     effectiveId = g_trackedAppId;
                 } else {
@@ -2168,6 +2175,16 @@ static int runShell(int argc, char *argv[])
                  effectiveId != "apokolips-shell")      label = effectiveId;
 
         if (brand->text() != label) brand->setText(label);
+
+        // Variant C cache (2026-10-17): only rebuild the HUD when
+        // the focused app actually changes. Prevents 250ms redundant
+        // rebuilds that were causing flicker even with the guard above.
+        // CycleApp / launchSelf / setHud / closeActive lambdas below
+        // are redefined each tick but only used when the cache misses,
+        // so skipping them here is free.
+        static QString g_lastHudAppId = QStringLiteral("__INIT__");
+        if (effectiveId == g_lastHudAppId) return;
+        g_lastHudAppId = effectiveId;
 
             // --- HUD Morphing Logic ---
             // Cycle through windows of the current app. Queries
