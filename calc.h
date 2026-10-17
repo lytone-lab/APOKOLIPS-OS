@@ -108,6 +108,8 @@ private:
         }
         v->addLayout(g, 1);
 
+        root->addWidget(body, 1);
+
         restyle();
     }
 
@@ -146,8 +148,6 @@ private:
                 "QPushButton:pressed { background: rgba(255,255,255,90); }")
                 .arg(bg, t.textPrimary.name()));
         }
-
-        root->addWidget(body, 1);
     }
 
     QLabel *m_display = nullptr;
