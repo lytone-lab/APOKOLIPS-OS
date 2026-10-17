@@ -91,6 +91,153 @@ Still open (verified 2026-10-17 — Phase B/C reconciliation):
       (always-on-top, V2), 1 unverifiable (night light).
 
 ------------------------------------------------------------------------
+V1 QUEUE (2026-10-17) — finish everything tagged V1 before V2 begins
+------------------------------------------------------------------------
+User directive (2026-10-17): "No matter what, we're finishing all V1
+items. That is the goal." Everything below is now V1 scope. Combined
+with items already shipped (bug #1 HUD, sticky note, corner peek,
+Model A multi-window, middle-click quit), this closes the entire
+V1 chapter.
+
+## P1 catalogue — remaining items (~15)
+Grouped into build features. Each feature = 1 session or less.
+
+  [ ] Menu styling feature (Category 7 — entirely missing)
+      - Menu corner radius
+      - Menu blur / opacity
+      - Menu padding / spacing
+      - Menu item height
+      Where: chrome.h QMenu stylesheets throughout, plus a Menu
+      page in Settings. ~1 session.
+
+  [ ] Sounds feature (Category 9 — entirely missing)
+      - Startup chime
+      - Lock / unlock
+      - Error
+      - Notification
+      - Minimise / maximise
+      Needs: assets/sounds/ (already exists per PROJECT_STATE),
+      a Sounds page in Settings with per-event file pickers.
+      ~1 session.
+
+  [ ] Traffic light customization (Category 1 partial)
+      - Size (currently fixed)
+      - Spacing between lights
+      - Hover glyphs (× / − / +) on/off
+      Where: chrome.h TrafficLights paint + hit test.
+      ~1 session.
+
+  [ ] Window chrome extras (Category 1 partial)
+      - Title bar height (px slider)
+      - Corner radius (0–24 px) — distinct from widgetRadius
+      - Shadow depth (soft → dramatic)
+      Needs: new config fields + ShellApp paint extension.
+      ~2 sessions.
+
+  [ ] Top bar extras (Category 2 partial)
+      - Height (24–40 px) — currently fixed at 30
+      - Per-widget visibility (clock, CPU, RAM, weather, battery,
+        network, seal icon)
+      - Icon size
+      ~1 session.
+
+  [ ] Widget polish (Category 5 partial)
+      - Per-widget visibility (currently one master toggle)
+      - Card style (glass / solid / outline)
+      ~1 session.
+
+  [ ] Notification restyle (Category 8 partial)
+      - Position (top-right / top-left / bottom-right)
+      - Card style (glass / solid)
+      - History depth
+      ~1–2 sessions.
+
+  [ ] Small toggles bundle (Categories 3, 4, 6 partials)
+      - Running-dot style (dot / line / glow)
+      - Launcher featured row on/off
+      - Menu fade duration slider
+      - Window open/close duration (separate from minimize)
+      ~1 session combined.
+
+  [ ] Light / dark / auto mode (Category 10 partial)
+      Bigger than it looks — Sigil currently has no light palette.
+      Needs: light variant of every Sigil::* accessor, tested on
+      every surface. Wallpaper→theme auto-follow stays deferred
+      (fights Sigil by design — see note in this file).
+      ~2–3 sessions.
+
+## Priority-list V1 — remaining items (~5)
+
+  [ ] Volume control per app (Tier 1 #7)
+      PipeWire/PulseAudio streams in Settings → Sound.
+      ~1 session.
+
+  [ ] Window scroll-to-opacity (Tier 2 #16)
+      Scroll wheel on a window body adjusts its opacity.
+      Requires per-window alpha tracking.
+      ~1 session.
+
+  [ ] Wiggle mouse → cursor bigger (Tier 3 #22)
+      Detect rapid pointer jiggle, briefly enlarge cursor glow.
+      ~½ session.
+
+  [ ] Meta+click to move/resize any window (Tier 3 #26)
+      Sway-side binding. Config only, no C++.
+      ~1 session.
+
+  [ ] Custom global shortcuts (Tier 1 #9)
+      Was reverted 2026-10-09 — sway include root cause never found.
+      Do NOT retry without understanding why the include was skipped.
+      ~1–2 sessions.
+
+## P2-promoted to V1 (2026-10-17, Reading B — user-chosen)
+
+  [ ] Dock: auto-hide on/off + delay
+  [ ] Dock: hover preview (window thumbnails)
+  [ ] Launcher: categories on/off
+  [ ] Launcher: search bar on/off
+  [ ] Widget: position drag-to-place (partially exists — widgetPositions map)
+  [ ] Widget: auto-hide when window maximised
+  [ ] Animations: launcher spring strength slider
+  [ ] Menus: highlight sweep on/off
+  [ ] Notifications: auto-dismiss on/off
+  [ ] Theme: custom seal colour picker (replaces 7 presets)
+  [ ] Cursor: pointer style (default / macOS)
+  [ ] Fonts: headline font + letter spacing
+  [ ] Keyboard: import / export (blocked until custom shortcuts work)
+
+## Lock screen — promotes from V2 to V1
+
+  [ ] Own Sigil lock screen (ext-session-lock-v1)
+      Currently uses gtklock (~1.5s cold start). Building our own
+      removes the GTK dependency, drops startup to ~200ms, and
+      brings the lock screen into Sigil visual language.
+      Needs: overlay fullscreen, password field, PAM auth handoff,
+      correct sway session-lock integration so alt-tab can't escape.
+      Security-adjacent — no shortcuts.
+      ~2–3 sessions.
+
+## Open bugs (still in bug list)
+
+  [ ] Bug #2 — Glyph launcher tile line-art (small, ~15 min)
+  [ ] Bug #3 — QString::arg missing-arg warnings (mechanical)
+  [ ] Bug #4 — genie timing races (intermittent, needs stress test)
+
+## Honest total
+
+  ~20 P1 items / 9 features
+  ~5 priority-list V1 items
+  ~13 P2-promoted items
+  ~1 lock screen
+  ~3 open bugs
+
+  Estimated: 25–30 sessions to close V1 chapter completely.
+
+  This is the goal per user directive. Do not promote anything else
+  to V1 without explicit approval. Do not start any V2 item until
+  this list is empty and V1 is marked complete in this file.
+
+------------------------------------------------------------------------
 MULTI-WINDOW MODEL (design 2026-10-17 — build starts next session)
 ------------------------------------------------------------------------
 Decision (user, 2026-10-17): N processes per app, one window each —
