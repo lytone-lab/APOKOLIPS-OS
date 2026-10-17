@@ -1484,12 +1484,11 @@ protected:
         // spawning a duplicate. Use swaymsg to raise the matching app_id.
         QString matchId;
         if (m_name == "Finder")         matchId = "apokolips-files";
-        else if (m_name == "Settings")  matchId = "apokolips-shell";
-        // NOTE: Settings still matches "apokolips-shell" until
-        // Session 3b gives Settings its own setDesktopFileName.
-        // Finder's real id is "apokolips-files" (setDesktopFileName
-        // at main.cpp:4125) — matching "apokolips-shell" was
-        // matching the bar itself. Latent bug exposed by Model A.
+        else if (m_name == "Settings")  matchId = "apokolips-settings";
+        // Both Finder and Settings now have their own app_ids
+        // (setDesktopFileName in their dispatch blocks). Matching
+        // "apokolips-shell" was matching the bar itself — latent
+        // bug fixed across Sessions 3a and 3b.
         else if (m_name == "BoomTube")  matchId = "apokolips-boombube";
         else if (m_name == "Aperture")  matchId = "apokolips-aperture";
         else if (m_name == "Node")      matchId = "apokolips-node";
@@ -1609,7 +1608,8 @@ public:
             || name == "Node"
             || name == "Mosaic"
             || name == "Mail"
-            || name == "Finder";
+            || name == "Finder"
+            || name == "Settings";
     }
 
     static QStringList launchArgsFor(const QString &name) {
@@ -1641,6 +1641,7 @@ public:
         if (m_name == "Mosaic")     return "apokolips-mosaic";
         if (m_name == "Mail")       return "apokolips-mail";
         if (m_name == "Finder")     return "apokolips-files";
+        if (m_name == "Settings")   return "apokolips-settings";
         return QString();
     }
 

@@ -4535,43 +4535,16 @@ int main(int argc, char *argv[])
     if (argc >= 2 && QString(argv[1]) == "--settings") {
         QApplication app(argc, argv);
         app.setApplicationName("Apokolips Settings");
-
-        // Single instance — if another Settings is already listening,
-        // just raise it and exit. Otherwise we become the server.
-        {
-            QLocalSocket probe;
-            probe.connectToServer("apokolips-settings");
-            if (probe.waitForConnected(300)) {
-                probe.write("focus");
-                probe.waitForBytesWritten(300);
-                probe.disconnectFromServer();
-                return 0;
-            }
-        }
-
+        // 2026-10-17 Session 3b: Settings used to inherit the bar's
+        // app_id ("apokolips-shell"), which is why launchApp's match
+        // was matching the bar not Settings, and why Settings windows
+        // shared the bar's tiling rules. Give it a proper id so
+        // Model A multi-window works uniformly.
+        app.setDesktopFileName("apokolips-settings");
+        // Model A multi-window: every invocation opens fresh.
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
         SettingsWindow w;
-
-        QLocalServer::removeServer("apokolips-settings");
-        QLocalServer *srv = new QLocalServer(&w);
-        if (srv->listen("apokolips-settings")) {
-            QObject::connect(srv, &QLocalServer::newConnection,
-                             [srv, wptr = &w]() {
-                QLocalSocket *conn = srv->nextPendingConnection();
-                QObject::connect(conn, &QLocalSocket::readyRead,
-                                 [conn, wptr]() {
-                    QByteArray data = conn->readAll();
-                    if (data.contains("focus") && wptr) {
-                        shellRestoreWindow(wptr,
-                            "Apokolips Settings",
-                            QSize(1100, 700));
-                    }
-                    conn->disconnectFromServer();
-                });
-            });
-        }
-
         w.show();
         return app.exec();
     }
