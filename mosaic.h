@@ -514,16 +514,7 @@ private:
     void showContextMenu(int idx, const QPoint &global) {
         if (idx < 0 || idx >= m_items.size()) return;
         const Item &it = m_items[idx];
-        QMenu m;
-        m.setStyleSheet(
-            "QMenu { background: rgb(24, 22, 30);"
-            "  border: 1px solid rgba(255,255,255,30);"
-            "  border-radius: 10px; padding: 6px;"
-            "  color: rgb(240, 237, 232); font-size: 13px; }"
-            "QMenu::item { padding: 7px 20px 7px 16px;"
-            "  border-radius: 6px; }"
-            "QMenu::item:selected {"
-            "  background: rgba(168, 50, 50, 90); }");
+        ApoMenu m;
         QAction *openAct  = m.addAction("Open in Aperture");
         QAction *reveal   = m.addAction("Reveal in Finder");
         QAction *copyAct  = m.addAction("Copy path");

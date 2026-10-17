@@ -118,17 +118,7 @@ inline void show(QWidget *parent, const QString &path,
     QList<AppEntry> apps = candidates(mime);
     const QString current = currentDefault(mime);
 
-    QMenu m(parent);
-    m.setStyleSheet(
-        "QMenu { background: rgb(24, 22, 30);"
-        "  border: 1px solid rgba(255,255,255,30);"
-        "  border-radius: 12px; padding: 6px;"
-        "  color: rgb(240, 237, 232); font-size: 13px; }"
-        "QMenu::item { padding: 8px 26px 8px 16px;"
-        "  border-radius: 7px; background: transparent; }"
-        "QMenu::item:selected { background: rgba(168,50,50,90); }"
-        "QMenu::separator { height: 1px;"
-        "  background: rgba(255,255,255,25); margin: 6px 10px; }");
+    ApoMenu m(parent);
 
     QLabel *hdr = new QLabel(fi.fileName());
     hdr->setStyleSheet(

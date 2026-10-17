@@ -315,16 +315,7 @@ protected:
     }
 
     void contextMenuEvent(QContextMenuEvent *e) override {
-        QMenu m(this);
-        m.setStyleSheet(
-            "QMenu { background: rgb(24,22,30);"
-            "  border: 1px solid rgba(255,255,255,30);"
-            "  border-radius: 10px; padding: 6px;"
-            "  color: rgb(240,237,232); font-size: 13px; }"
-            "QMenu::item { padding: 7px 20px 7px 16px;"
-            "  border-radius: 6px; }"
-            "QMenu::item:selected {"
-            "  background: rgba(168,50,50,90); }");
+        ApoMenu m(this);
 
         QAction *resetAct = m.addAction("Reset position");
         QAction *hideAct  = m.addAction("Hide widget");

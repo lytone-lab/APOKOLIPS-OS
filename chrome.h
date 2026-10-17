@@ -1329,67 +1329,6 @@ private:
     QTimer            *m_closeTimer = nullptr;
 };
 
-// Menu styling (Category 7, added 2026-10-17).
-// menuStyle() is config-driven — read by every QMenu in the shell.
-// ApoMenu adds the pre-blurred wallpaper background (fake blur,
-// variant A) behind standard QMenu rendering. If WA_TranslucentBackground
-// fails on Wayland/VBox, the menu renders solid — user flips
-// menuBlurEnabled to fall back to opaque (variant B).
-inline QString menuStyle(const Theme &)
-{
-    const auto &vc = VisualConfigManager::instance().cfg();
-    const int bgAlpha = vc.menuOpacity * 255 / 100;
-    return QString(
-        "QMenu {"
-        "  background: rgba(30, 30, 35, %1);"
-        "  border: 1px solid rgba(255, 255, 255, 30);"
-        "  border-radius: %2px;"
-        "  padding: %3px %3px;"
-        "  color: #f0f0f5;"
-        "  font-size: 13px;"
-        "}"
-        "QMenu::item {"
-        "  padding: %4px 22px %4px 16px;"
-        "  border-radius: 7px;"
-        "  background: transparent;"
-        "  color: #f0f0f5;"
-        "}"
-        "QMenu::item:selected {"
-        "  background: rgba(255, 255, 255, 45);"
-        "  color: #ffffff;"
-        "}"
-        "QMenu::item:disabled {"
-        "  color: #6a6a72;"
-        "  background: transparent;"
-        "}"
-        "QMenu::separator {"
-        "  height: 1px;"
-        "  background: rgba(255, 255, 255, 40);"
-        "  margin: 6px 12px;"
-        "}"
-        "QMenu::right-arrow {"
-        "  image: none;"
-        "  width: 0;"
-        "  height: 0;"
-        "  margin: 0;"
-        "}")
-        .arg(bgAlpha)
-        .arg(vc.menuRadius)
-        .arg(vc.menuPadding)
-        .arg(vc.menuItemHeight);
-}
-
-class ApoMenu : public QMenu {
-public:
-    explicit ApoMenu(QWidget *parent = nullptr) : QMenu(parent) {
-        // Frameless + translucent to kill the black triangles
-        // outside the stylesheet's border-radius.
-        setWindowFlags(windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setStyleSheet(menuStyle(ThemeManager::instance().current()));
-    }
-};
-
 class DockIcon : public QWidget {
 public:
     DockIcon(const QString &icon, const QString &name, int index,
@@ -1852,7 +1791,7 @@ public:
             launchApp();
         } else if (e->button() == Qt::RightButton) {
             const Theme &t = ThemeManager::instance().current();
-            QMenu m(this);
+            ApoMenu m(this);
             m.setStyleSheet(QString(
                 "QMenu { background: %1; border: 1px solid %2;"
                 "  border-radius: 8px; padding: 5px; color: %3;"
@@ -3384,7 +3323,7 @@ public:
         setContextMenuPolicy(Qt::CustomContextMenu);
         QObject::connect(this, &QWidget::customContextMenuRequested,
                          this, [this](const QPoint &pos) {
-            QMenu m(this);
+            ApoMenu m(this);
             m.setStyleSheet(
                 "QMenu {"
                 "  background: rgb(24, 22, 30);"
@@ -3696,7 +3635,7 @@ public:
     }
 
     void showCanvasMenu(const QPoint &pos) {
-        QMenu m(this);
+        ApoMenu m(this);
         m.setStyleSheet(
             "QMenu {"
             "  background: rgb(24, 22, 30);"
@@ -4766,7 +4705,7 @@ protected:
 
         if (e->button() == Qt::RightButton) {
             const Theme &t = ThemeManager::instance().current();
-            QMenu menu(this);
+            ApoMenu menu(this);
             menu.setStyleSheet(QString(
                 "QMenu {"
                 "  background: %1;"
@@ -5308,7 +5247,7 @@ protected:
         if (e->button() != Qt::LeftButton) return;
         const Theme &t = ThemeManager::instance().current();
 
-        QMenu menu(this);
+        ApoMenu menu(this);
         menu.setStyleSheet(QString(
             "QMenu { background: rgb(24, 22, 30);"
             "  border: 1px solid rgba(255,255,255,30);"

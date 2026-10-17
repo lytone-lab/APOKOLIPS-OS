@@ -1445,23 +1445,7 @@ private:
                 QString fileName = it->data(Qt::UserRole).toString();
                 if (fileName.isEmpty()) return;
 
-                QMenu m(this);
-                m.setStyleSheet(
-                    "QMenu {"
-                    "  background: rgb(24, 22, 30);"
-                    "  border: 1px solid rgba(255,255,255,30);"
-                    "  border-radius: 10px;"
-                    "  padding: 6px;"
-                    "  color: rgb(240, 237, 232);"
-                    "  font-size: 13px;"
-                    "}"
-                    "QMenu::item {"
-                    "  padding: 7px 24px 7px 16px;"
-                    "  border-radius: 6px;"
-                    "}"
-                    "QMenu::item:selected {"
-                    "  background: rgba(168, 50, 50, 90);"
-                    "}");
+                ApoMenu m(this);
 
                 bool enabled = !fileName.endsWith(".disabled");
                 QAction *toggle = m.addAction(
@@ -4936,23 +4920,7 @@ private:
                 QString name = it->data(Qt::UserRole).toString();
                 if (name.isEmpty()) return;
 
-                QMenu m(this);
-                m.setStyleSheet(
-                    "QMenu {"
-                    "  background: rgb(24, 22, 30);"
-                    "  border: 1px solid rgba(255,255,255,30);"
-                    "  border-radius: 10px;"
-                    "  padding: 6px;"
-                    "  color: rgb(240, 237, 232);"
-                    "  font-size: 13px;"
-                    "}"
-                    "QMenu::item {"
-                    "  padding: 7px 24px 7px 16px;"
-                    "  border-radius: 6px;"
-                    "}"
-                    "QMenu::item:selected {"
-                    "  background: rgba(168, 50, 50, 90);"
-                    "}");
+                ApoMenu m(this);
 
                 QAction *testPage = m.addAction("Print test page");
                 QAction *setDefault = m.addAction("Set as default");
@@ -5715,6 +5683,64 @@ private:
                     VisualConfigManager::instance().setAndSave(
                         [on](VisualConfig &c) { c.ccShowDisplay = on; });
                 });
+
+            v->addWidget(c);
+        }
+
+        // ---- MENUS card (Category 7) ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
+            cv->addWidget(Sigil::groupLabel("MENUS"));
+
+            auto addMenuSlider = [&](const QString &title, const QString &sub,
+                                     int min, int max, int val,
+                                     std::function<void(VisualConfig &, int)> onSave) {
+                QWidget *row = new QWidget;
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(6);
+                QHBoxLayout *top = new QHBoxLayout;
+                QLabel *t = new QLabel(title);
+                t->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+                QLabel *vLbl = new QLabel(QString::number(val));
+                vLbl->setStyleSheet(QString("color: %1; font-size: 12px; background: transparent;").arg(Sigil::textSecondary().name()));
+                vLbl->setMinimumWidth(40);
+                vLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                top->addWidget(t); top->addStretch(); top->addWidget(vLbl);
+                rv->addLayout(top);
+                
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(min, max);
+                sl->setValue(val);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
+                    "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal { background: rgb(168,50,50); border-radius: 2px; }");
+                QObject::connect(sl, &QSlider::valueChanged, [vLbl, onSave](int x) {
+                    vLbl->setText(QString::number(x));
+                    VisualConfigManager::instance().setAndSave([x, onSave](VisualConfig &c) {
+                        onSave(c, x);
+                    });
+                });
+                rv->addWidget(sl);
+                
+                QLabel *s = new QLabel(sub);
+                s->setStyleSheet(QString("color: %1; font-size: 11px; background: transparent;").arg(Sigil::textDim().name()));
+                rv->addWidget(s);
+                cv->addWidget(row);
+            };
+
+            addMenuSlider("Corner radius", "Menu popup corner rounding (px)", 0, 24, vc.menuRadius,
+                          [](VisualConfig &c, int x) { c.menuRadius = x; });
+            addMenuSlider("Opacity", "Menu background transparency (%)", 60, 100, vc.menuOpacity,
+                          [](VisualConfig &c, int x) { c.menuOpacity = x; });
+            addMenuSlider("Padding", "Inner spacing around items (px)", 2, 16, vc.menuPadding,
+                          [](VisualConfig &c, int x) { c.menuPadding = x; });
+            addMenuSlider("Item height", "Vertical space per menu item (px)", 20, 44, vc.menuItemHeight,
+                          [](VisualConfig &c, int x) { c.menuItemHeight = x; });
 
             v->addWidget(c);
         }
@@ -9463,23 +9489,7 @@ private:
                 if (name == "root") return;
                 if (name == qgetenv("USER")) return;
 
-                QMenu m(this);
-                m.setStyleSheet(
-                    "QMenu {"
-                    "  background: rgb(24, 22, 30);"
-                    "  border: 1px solid rgba(255,255,255,30);"
-                    "  border-radius: 10px;"
-                    "  padding: 6px;"
-                    "  color: rgb(240, 237, 232);"
-                    "  font-size: 13px;"
-                    "}"
-                    "QMenu::item {"
-                    "  padding: 7px 24px 7px 16px;"
-                    "  border-radius: 6px;"
-                    "}"
-                    "QMenu::item:selected {"
-                    "  background: rgba(200, 74, 74, 90);"
-                    "}");
+                ApoMenu m(this);
 
                 QAction *del = m.addAction(
                     QString("Delete user \"%1\"…").arg(name));

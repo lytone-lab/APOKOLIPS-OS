@@ -1022,47 +1022,6 @@ static bool restoreGenieForDock(const QString &dockName)
 // =========================================================
 // Top bar
 // =========================================================
-static QString menuStyle(const Theme &)
-{
-    // Fixed neutral dark surface so it's readable on every wallpaper.
-    // Theme colors are deliberately ignored here — menus are small
-    // popups and need a solid background more than they need theming.
-    return QString(
-        "QMenu {"
-        "  background: rgb(24, 22, 30);"
-        "  border: 1px solid rgba(255, 255, 255, 30);"
-        "  border-radius: 12px;"
-        "  padding: 14px 6px;"
-        "  color: #f0f0f5;"
-        "  font-size: 13px;"
-        "}"
-        "QMenu::item {"
-        "  padding: 7px 22px 7px 16px;"
-        "  border-radius: 7px;"
-        "  background: transparent;"
-        "  color: #f0f0f5;"
-        "}"
-        "QMenu::item:selected {"
-        "  background: rgba(255, 255, 255, 45);"
-        "  color: #ffffff;"
-        "}"
-        "QMenu::item:disabled {"
-        "  color: #6a6a72;"
-        "  background: transparent;"
-        "}"
-        "QMenu::separator {"
-        "  height: 1px;"
-        "  background: rgba(255, 255, 255, 40);"
-        "  margin: 6px 12px;"
-        "}"
-        "QMenu::right-arrow {"
-        "  image: none;"
-        "  width: 0;"
-        "  height: 0;"
-        "  margin: 0;"
-        "}");
-}
-
 // =========================================================
 // Control Center — macOS-style dropdown panel
 // =========================================================
@@ -2376,7 +2335,7 @@ static int runShell(int argc, char *argv[])
         QProcess::startDetached("swaymsg", args);
     };
 
-    QMenu *fileMenu = new QMenu;
+    ApoMenu *fileMenu = new ApoMenu;
     {
         QAction *a = fileMenu->addAction("New Window");
         QObject::connect(a, &QAction::triggered, []() {
@@ -2417,7 +2376,7 @@ static int runShell(int argc, char *argv[])
     topLayout->addWidget(makeMenuButton("File", fileMenu));
 
     // ---- Edit menu — real clipboard via wl-clipboard ----
-    QMenu *editMenu = new QMenu;
+    ApoMenu *editMenu = new ApoMenu;
     {
         QAction *a = editMenu->addAction("Cut");
         QObject::connect(a, &QAction::triggered, [run]() {
@@ -2450,7 +2409,7 @@ static int runShell(int argc, char *argv[])
     topLayout->addWidget(makeMenuButton("Edit", editMenu));
 
     // ---- View menu ----
-    QMenu *viewMenu = new QMenu;
+    ApoMenu *viewMenu = new ApoMenu;
     {
         QAction *a = viewMenu->addAction("Toggle Full Screen");
         QObject::connect(a, &QAction::triggered, [sway]() {
@@ -2539,7 +2498,7 @@ static int runShell(int argc, char *argv[])
     }
     topLayout->addWidget(makeMenuButton("View", viewMenu));
 
-    QMenu *windowMenu = new QMenu;
+    ApoMenu *windowMenu = new ApoMenu;
     {
         QAction *a = windowMenu->addAction("Minimize");
         QObject::connect(a, &QAction::triggered, [sway]() {
@@ -2567,7 +2526,7 @@ static int runShell(int argc, char *argv[])
     }
     topLayout->addWidget(makeMenuButton("Window", windowMenu));
 
-    QMenu *helpMenu = new QMenu;
+    ApoMenu *helpMenu = new ApoMenu;
     {
         QAction *a = helpMenu->addAction("Apokolips Help");
         QObject::connect(a, &QAction::triggered, []() {
@@ -2607,7 +2566,7 @@ static int runShell(int argc, char *argv[])
     // Apokolips system menu — the "Apple menu" equivalent
     // Opened by clicking the brand label in the top bar.
     // =========================================================
-    QMenu *apoMenu = new QMenu;
+    ApoMenu *apoMenu = new ApoMenu;
 
     // --- About / Settings
     {
