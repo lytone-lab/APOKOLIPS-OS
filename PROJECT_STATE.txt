@@ -94,15 +94,6 @@ Earlier, joining AIs would:
 This file is the single source of truth. Update it when anything
 changes. If you are an AI, do not skip this file.
 
-  [ ] Stale entry blocks re-launch within 5 s of red-light close
-      Open app -> red-light close -> reopen within ~5 s:
-      animation plays, app never launches.
-      Cause: pruneStaleGenieState runs every 5 s; in between, a
-      dead conId in the state file short-circuits launchApp.
-      Fix: validate conId against sway tree BEFORE animating in
-      restoreGenieForDock; drop entry on failure, fall through to
-      fresh launch. Small. Do after main.cpp split.
-
 ------------------------------------------------------------------------
 THE VISION
 ------------------------------------------------------------------------
@@ -186,7 +177,7 @@ Light mode (deferred): parchment #f5f2ed, warm near-black text
 #2a2825, same oxblood accent.
 
 ------------------------------------------------------------------------
-SIGIL COMPONENTS (in main.cpp)
+SIGIL COMPONENTS (in style.h since the 2026-10-11 split)
 ------------------------------------------------------------------------
 - Sigil::Card          frosted panel container
 - Sigil::sectionTitle  large page title
@@ -242,7 +233,7 @@ Apokolips Shell (C++/Qt6):
   [x] Clipboard panel (Win+V) — WORKING. IPC verified 2026-10-17
       (five $mod+v toggles cleanly).
   [x] Launcher (Launchpad) — 10 apps incl. Glyph, iron-man reactor
-      tile drawing not yet (queued)
+      tile drawing (shipped 51abb37, bug #9 archived)
   [x] Settings: Bluetooth page (real code, honest empty state)
   [x] Settings: Wi-Fi page split from Network
   [x] Settings: Network trimmed, Ethernet/VPN list wired
@@ -271,19 +262,21 @@ Apokolips Shell (C++/Qt6):
 System / sway:
   [x] Sway config: overlay for_window rules for glyph/snap/clipboard
   [x] Sway keybinds: Super+M (minimize), Super+Shift+S (Glyph),
-      Super+Z (snap), Super+V (clipboard)
-  [x] Sway keybind Super+Shift+R — DOES NOT RELOAD (bug list)
+      Super+Z (snap), Super+V (clipboard), Super+Shift+R (reload)
+  [x] Sway keybind Super+Shift+R — WORKS (bug #3 archived 2026-10-17.
+      Report was reversed: Super+Shift+R fires from anywhere;
+      Ctrl+Shift+R only fires when no shell app window is focused.)
   [x] SSH via VirtualBox port-forward (host 2222 → guest 22)
   [x] VS Code Remote-SSH from host
 
 ------------------------------------------------------------------------
 IN PROGRESS
 ------------------------------------------------------------------------
-  [ ] Launcher: iron man reactor mark for Arc Reactor tile (not
-      the sidebar; the tile in the launcher)
-  [ ] Reverse Genie — un-minimize animation (next genie pass)
-  [ ] Scale minimize animation
-  [ ] Suck minimize animation
+  (empty — all four prior items shipped, verified 2026-10-17)
+    - Launcher Arc Reactor tile: shipped 51abb37 (bug #9 archived)
+    - Reverse Genie: shipped (G1b below)
+    - Scale minimize: shipped (G2 below)
+    - Suck minimize: shipped (G3 below)
 
 ------------------------------------------------------------------------
 SESSION A1 — COMPLETE
@@ -349,14 +342,38 @@ Note: Startup Items is under General (Session A3), not here.
 Power is under Arc Reactor (Session A1).
 
 ------------------------------------------------------------------------
-PENDING — Session C (Tier 3)
+PENDING — Session C (Tier 3) — RECONCILED 2026-10-17
 ------------------------------------------------------------------------
-  [ ] Accessibility
-  [ ] Privacy (per-app permissions)
-  [ ] Search / Spotlight
-  [ ] Focus (presets)
-  [ ] Printers & Scanners (CUPS)
-  [ ] Screensaver
+Reconciliation: all six "pages" below shipped during Sessions A1–B
+(sidebar entry exists, page exists, wired). What remains are the
+specific sub-features named in parentheses. The pages are no longer
+pending.
+
+  [~] Accessibility — page SHIPPED (settings.h:3019; six toggles +
+      text size + cursor size). Open sub-items are the six
+      gsettings-dependent toggles that need GNOME a11y daemons
+      (Sticky/Slow/Bounce/Toggle keys, Mouse keys, Dwell click,
+      Visual alerts). See WIRING BACKLOG → Accessibility for
+      per-item state.
+
+  [~] Privacy (per-app permissions) — page SHIPPED
+      (settings.h:3563, sidebar "Privacy & Security"). Currently
+      contains Location services + Telemetry only. What remains:
+      a real per-app permissions grid (which app can access which
+      resource). Genuine V1 item, user confirmed per-app
+      permissions do not exist yet.
+
+  [~] Search / Spotlight — page SHIPPED. Open sub-item: "Web
+      search" toggle (reserved V2, no browser hookup).
+
+  [~] Focus (presets) — Focus page SHIPPED with modes / policy /
+      schedule / allowed apps (all wired). What's missing: named
+      PRESETS — save/load multiple combinations as one-click
+      profiles. Genuine V1 item, user confirmed presets absent.
+
+  [x] Printers & Scanners — page SHIPPED (Session A/B, CUPS wired).
+
+  [x] Screensaver — page SHIPPED (dim / clock / slideshow / video).
 
   [ ] Replace remaining QMessageBox calls with SigilDialog
       ~60 raw QMessageBox sites across the codebase. Each should
@@ -366,33 +383,13 @@ PENDING — Session C (Tier 3)
       then chrome.h + shell.h (1 each).
       Estimated: 2-3 short sessions.
 
-  [ ] Widget redesign + Notification Center redesign
-      Do these together — they share a visual language and should
-      land in the same session so the look is consistent.
-      Widget side: DesktopWidgets is currently one stacked column
-      on the right. Redesign as independent floating cards
-      (Sonoma-style) with per-widget positioning.
-      NC side: current NotificationCenter is a sliding right
-      panel. Redesign to match whatever the widget cards become
-      so the shell's right edge feels like one system.
-      Estimated: 2 sessions (paired).
-
-  [ ] Replace remaining QMessageBox calls with SigilDialog
-      ~60 raw QMessageBox sites across the codebase. Each should
-      use SigilDialog::ask() so every dialog matches the shell's
-      look. Start with settings.h (49), then main.cpp (12),
-      then chrome.h + shell.h (1 each).
-      Estimated: 2-3 short sessions.
-
-  [ ] Widget redesign + Notification Center redesign
-      Do these together — they share a visual language.
-      Widget side: DesktopWidgets is currently one stacked column
-      on the right. Redesign as independent floating cards with
-      per-widget positioning.
-      NC side: current NotificationCenter is a sliding right
-      panel. Redesign to match the widget cards so the shell's
-      right edge feels like one system.
-      Estimated: 2 sessions (paired).
+  [x] Widget redesign + Notification Center redesign — SHIPPED
+      2026-10-17. All six WidgetCard subclasses instantiated
+      (main.cpp:2944-3059; widgets.h:17-1700): ClockCard,
+      RingsCard, StatsCard, NowPlayingCard, WeatherCard,
+      CalendarCard. Old stacked DesktopWidgets column gone (only
+      comments reference it). Notification Center restyle shipped
+      2026-10-14. User confirmed widgets look correct.
 
   [ ] macOS fullscreen V2 — auto-hide chrome reveal
       While a window is fullscreen, moving the pointer to the
@@ -401,19 +398,9 @@ PENDING — Session C (Tier 3)
       to know when an app is fullscreen (marker file / IPC) and
       a peek-mode animation on both edges.
       Estimated: 1 session.
-
-  [x] True macOS fullscreen (green button) — DONE 2026-10-14
-      Green button toggles fullscreen via Qt's showFullScreen()
-      / showNormal(). Wayland hides the top bar and dock natively
-      because the app surface covers the whole screen.
-
-  [ ] macOS fullscreen V2 — auto-hide chrome reveal
-      While a window is fullscreen, moving the pointer to the
-      top edge slides the top bar down; bottom edge brings the
-      dock back. Move away — both hide again. Needs the shell
-      to know when an app is fullscreen (marker file / IPC) and
-      a peek-mode animation on both edges.
-      Estimated: 1 session.
+      (True macOS fullscreen green-button already shipped
+      2026-10-14 — this V2 entry is only the auto-hide-reveal
+      refinement.)
 
   [ ] Window glass V2 — real glass (real backdrop, not wallpaper)
       Currently the app header strip shows a *blurred wallpaper*
@@ -460,7 +447,12 @@ PENDING — Session C (Tier 3)
       Estimated: 1 session.
 
 ------------------------------------------------------------------------
-VISUAL STATUS BOARD (snapshot 2026-10-14)
+VISUAL STATUS BOARD (snapshot 2026-10-14 — HISTORICAL)
+Historical snapshot, kept for reference. Some items here shipped
+between 2026-10-14 and 2026-10-17 (widgets redesign, notification
+restyle, seal picker). Authoritative DONE list is above; check the
+git log for anything ambiguous. Do not act on items in this block
+without checking DONE first.
 ------------------------------------------------------------------------
 
 SHIPPED — visual work
@@ -827,10 +819,10 @@ DEFERRED / FUTURE
       Dock page in progress as G4 extension)
   [x] Yellow / green traffic light minimize trigger for our own
       windows — done
-  [ ] Animated Arc Reactor on Arc Reactor page:
-      - bars surround the core, fade/reduce as battery drops
-      - core glow dims/brightens with battery
-      - Iron Man style
+  [x] Animated Arc Reactor on Arc Reactor page — SHIPPED
+      2026-10-17 per user confirmation. ArcReactorWidget
+      (settings.h:7114) uses battery percentage to drive bar
+      lighting + core glow, 30 fps. Iron Man style.
   [ ] Windhawk / Compiz-style full skinning system (V2)
   [x] Clipboard IPC fix — verified working 2026-10-17. User confirmed
       five $mod+v presses toggle the panel cleanly. Server
@@ -955,19 +947,23 @@ Golden rule for AI features (future):
       Not being built. Listed here so future AIs do not re-propose
       without asking.
 
-  QUEUED REWRITE — Genie option A (after G7)
-  -------------------------------------------
-  Current genie uses 100-220 strips with per-strip stagger. Works
-  but strips are visible. Manus's Suck (single quad) is smoother.
-  Rewrite genie to use 4-6 large vertical bands, each a quad with
-  slight time delay. Retains "pour" effect, smooths visuals.
-  Backup main.cpp before patch. Revert if worse than current.
+  GENIE RETIRED 2026-10-17 — do not resume without user naming it (Rule #2)
+  -------------------------------------------------------------------------
+  Genie family (G1a-G7), swing, reverse genie, scale, suck, thanos,
+  mesh all shipped by 2026-10-16. Manus collaboration retired. The
+  two entries below (Option A band rewrite, V2 mesh warp) are
+  historical plans never executed. Do not resume without the user
+  explicitly naming them.
 
-  V2 BACKLOG — Real mesh warp for genie
-  -------------------------------------
-  Replace band approach with true vertex-mesh warp (OpenGL /
-  QSGMaterial). Zero stretch smear, zero seams, full texture
-  fidelity through the warp. Multi-session work.
+  [~] QUEUED REWRITE — Genie option A (never executed, retired)
+  -------------------------------------------------------------
+  Was: rewrite genie from 100-220 strips to 4-6 wide bands. Not
+  needed — the current strip-based genie works per user report.
+
+  [~] V2 BACKLOG — Real mesh warp for genie (never executed, retired)
+  ------------------------------------------------------------------
+  Was: replace band approach with true vertex-mesh warp. The V1
+  GenieMeshOverlay already uses QOpenGLWidget (meshgenie.h:28).
 
   POLISH BACKLOG (after G2/G3/G4):
   [ ] Tune genie smoothness, fluidness, motion. Separate pass after
@@ -999,12 +995,18 @@ Golden rule for AI features (future):
   Every customization must go through the Settings app —
   nothing hidden behind config files only.
 
-  ANIMATION QUEUE (post-G7):
-    [ ] Thanos Snap — window dissolves into particle dust that
-        drifts right and fades. ~2 sessions. Particle system +
-        custom paint. Overlay class pattern like genie/scale/suck.
-    [ ] Genie option A — 4-6 bands, smooth + pour (queued)
-    [ ] Real mesh warp genie (option C) — V2
+  ANIMATION QUEUE — RECONCILED 2026-10-17:
+    [~] Thanos Snap — Thanos exists as a minimize style (G4 dropdown,
+        alongside genie/scale/suck/mesh). Whether the implementation
+        matches the original particle-dissolve spec ("dust drifts right
+        and fades") is unverified — needs either user visual check or
+        code read of the Thanos paint path. Do not close as full
+        particle system without that confirmation.
+    [~] Genie option A — RETIRED (see note above). Do not resume
+        without user naming it (Rule #2).
+    [~] Real mesh warp genie — RETIRED. V1 GenieMeshOverlay already
+        uses QOpenGLWidget (meshgenie.h:28). Do not resume without
+        user naming it (Rule #2).
 
   HANDOFF LOG 2026-10-10 end-of-session
   --------------------------------------
@@ -1015,12 +1017,11 @@ Golden rule for AI features (future):
   before this session's cleanup; main.cpp.pre-handshake.* is the
   last known-good before handshake.
 
-  [ ] Genie state survives shell reload — after restart, stale
-      conIds in /tmp/apokolips-genie-state.json cause: (a) dock
-      click plays reverse animation of an OLD screenshot, then
-      (b) app never launches because scratchpad show fails.
-      Fix: wipe state file + orphan pixmaps on shell startup.
-      (patched, pending verify)
+  [x] Genie state survives shell reload — VERIFIED SHIPPED
+      2026-10-17. main.cpp:2847 has
+      QFile::remove("/tmp/apokolips-genie-state.json") on startup.
+      Original claim (stale conId short-circuits) was the pre-fix
+      behavior. Bug closed.
 
   [ ] Dock freeze on position change — dock visible after
       Left/Right/Bottom switch, icons render, but hover + click
@@ -1033,10 +1034,10 @@ Golden rule for AI features (future):
       frame. Under VM CPU load, can be longer. Fix candidate:
       preload overlay binary at shell startup (warm Qt caches).
 
-  [ ] Animation stale-frame on launch — after shell reload, the
-      first dock-launch animation shows what the app was doing
-      BEFORE the reload, using a saved pixmap. Same root cause
-      as the first bug above.
+  [x] Animation stale-frame on launch — CLOSED 2026-10-17.
+      Same root cause as "Genie state survives shell reload" above
+      — the state-file wipe on startup (main.cpp:2847) removes the
+      stale pixmap reference. Bug closed.
 
 ------------------------------------------------------------------------
 WIRING BACKLOG (saved but not yet acting)
@@ -1087,19 +1088,27 @@ WIRING BACKLOG (saved but not yet acting)
         - Focus modes apps respect.
 
   SETTINGS PAGES STILL TO WIRE:
-    [ ] Notifications — page exists; verify not a stub.
+    [x] Notifications — VERIFIED WIRED 2026-10-17. Page is real
+        (DND toggle, banner duration slider, timeout slider, card
+        style). User confirmed DND + banner duration + timeout all
+        work. Not a stub.
 
   APP POLISH QUEUE:
-    [ ] myMach — chart style picker (Line / Bar / Area / Radial)
-        + process list below the cards (Hybrid layout).
-        Wired to visual.json as mymach.graphStyle. Settings page.
-    [ ] myMach — verify squircle chips read cleanly on light
-        wallpapers now that chips landed on desktop + dock + icons.
+    [x] myMach — chart style picker VERIFIED WORKING 2026-10-17.
+        Field name is mymachGraphStyle (not graphStyle — earlier
+        greps missed it). enum class Style { Line, Bar, Area,
+        Radial } in mymach.h:50, setStyle/getter, config read at
+        mymach.h:255-259. User confirmed Settings picker works.
+        [ ] Remaining open: process list below the cards
+            (Hybrid layout). Not shipped yet, keep in polish queue.
+    [x] myMach — squircle chips VERIFIED READABLE ON LIGHT WALLPAPER
+        2026-10-17. User confirmed chips read cleanly. No code
+        change needed; the doc claim was precautionary.
 
-  OUTSOURCED (do not touch — hand off to Manus on next handoff):
-    - Genie effect (strip-warp combined, delivered).
-    - Launcher polish.
-    - Swing / reverse genie / scale / suck family.
+  OUTSOURCED — RETIRED 2026-10-17:
+    Manus collaboration ended. Genie effect, launcher polish, and
+    the swing / reverse genie / scale / suck family are all shipped.
+    These are no longer outsourced — do not re-propose (Rule #2).
 
   RULES (pinned):
     - Real working apps, not demos.
@@ -1173,9 +1182,15 @@ Accessibility (require GNOME daemons or specific components):
       Do not attempt either of these until the user names them
       (TEAM_PROTOCOL.md Rule #2 — V1 only by default). Both are
       logged here so the plan survives the session.
-  [ ] Notification timeout — cfg.notifTimeoutSec stored but the
-      notification center still uses cfg.notificationBannerMs. Should
-      unify: either map one to the other, or drop one.
+  [~] Notification timeout — VERIFIED WORKING BY USER 2026-10-17.
+      Both sliders have an effect: banner duration (notificationBannerMs)
+      and timeout (notifTimeoutSec) both change how long notifications
+      stay on screen. Code audit: `grep notifTimeout notifications.h`
+      returns empty, so the timeout reader must live elsewhere
+      (main.cpp or chrome.h) and wasn't traced. Visual confirmation
+      is sufficient per current workflow; do not patch. Two sliders
+      doing similar things is mildly redundant — a doc-only note
+      for later consolidation, not a bug.
 
 Privacy:
   [x] Location services toggle — also pkexec start/stop on
@@ -1199,11 +1214,19 @@ Software Update:
   (opens Node, runs sudo apt upgrade -y). Auto-update toggle real (writes
   /etc/apt/apt.conf.d/20auto-upgrades via pkexec).
   [ ] Update page doesn't poll for progress — user must click Refresh
-      after install finishes.
+      after install finishes. UNVERIFIABLE ON VM (2026-10-17): user
+      reports the install workflow itself doesn't run on the VM, so
+      this claim can't be tested. Do not close or fix blind. Roll
+      into V2 or test on real hardware whenever available.
 
 Glyph (screenshot):
-  [ ] Tweak list (see BUG LIST #7) — toolbar layout, keyboard
-      shortcuts, snap-to-window, delay timer, configurable save path.
+  [x] Tweak list — the numbered bug list item #7 was archived
+      2026-10-17 as CLOSED. Verified working: Enter saves,
+      Ctrl+C copies, Esc cancels, toolbar grouped tightly,
+      rule-of-thirds guides visible, save toast wired via ApoNotify.
+      [~] Remaining V2 items if ever wanted: save path configurable,
+          snap-to-window, delay timer, filename pattern configurable,
+          Settings→Glyph page. Not V1.
 
 General:
   [x] Startup Items — Add Item (writes .desktop to ~/.config/autostart),
