@@ -1637,10 +1637,9 @@ private:
                 "Erase All Content and Settings: removes user data, "
                 "accounts and preferences. Cannot be undone.");
             warn->setWordWrap(true);
-            warn->setStyleSheet(QString(
+            warn->setStyleSheet(
                 "color: rgb(255, 120, 120);"
-                " font-size: 12px; background: transparent;")
-                .arg(Sigil::textPrimary().name()));
+                " font-size: 12px; background: transparent;");
             rv->addWidget(warn);
 
             QPushButton *reset = new QPushButton(
@@ -2225,15 +2224,14 @@ private:
             reset->setCursor(Qt::PointingHandCursor);
             reset->setFixedHeight(30);
             reset->setMinimumWidth(220);
-            reset->setStyleSheet(QString(
+            reset->setStyleSheet(
                 "QPushButton { background: transparent;"
                 "  color: rgb(200, 74, 74);"
                 "  border: 1px solid rgb(200, 74, 74);"
                 "  border-radius: 7px; padding: 4px 14px;"
                 "  font-size: 12px; }"
                 "QPushButton:hover { background: rgba(200,74,74,60);"
-                "  color: #ffffff; }")
-                .arg(Sigil::textPrimary().name()));
+                "  color: #ffffff; }");
             QObject::connect(reset, &QPushButton::clicked, [this]() {
                 QMessageBox box(this);
                 box.setWindowTitle("Reset associations");
@@ -8968,12 +8966,11 @@ private:
             lock->setCursor(Qt::PointingHandCursor);
             lock->setFixedHeight(30);
             lock->setMinimumWidth(80);
-            lock->setStyleSheet(QString(
+            lock->setStyleSheet(
                 "QPushButton { background: rgba(168,50,50,200);"
                 "  color: #ffffff; border: none; border-radius: 7px;"
                 "  font-size: 12px; padding: 4px 14px; }"
-                "QPushButton:hover { background: rgba(200,74,74,220); }")
-                .arg(Sigil::textPrimary().name()));
+                "QPushButton:hover { background: rgba(200,74,74,220); }");
             QObject::connect(lock, &QPushButton::clicked,
                              []() { launchGtklock(); });
             h->addWidget(lock);
@@ -9422,12 +9419,11 @@ private:
             QPushButton *add = new QPushButton("Add user…");
             add->setCursor(Qt::PointingHandCursor);
             add->setFixedHeight(26);
-            add->setStyleSheet(QString(
+            add->setStyleSheet(
                 "QPushButton { background: rgba(168,50,50,200);"
                 "  color: #ffffff; border: none; border-radius: 6px;"
                 "  font-size: 11px; padding: 2px 12px; }"
-                "QPushButton:hover { background: rgba(200,74,74,220); }")
-                .arg(Sigil::textPrimary().name()));
+                "QPushButton:hover { background: rgba(200,74,74,220); }");
             QObject::connect(add, &QPushButton::clicked, [this]() {
                 bool ok = false;
                 QString name = ApokolipsInputDialog::getText(
@@ -9810,10 +9806,9 @@ private:
                     "color: %1; font-size: 13px; background: transparent;")
                     .arg(Sigil::textDim().name()));
                 QLabel *s = new QLabel(sub);
-                s->setStyleSheet(QString(
+                s->setStyleSheet(
                     "color: rgb(90, 88, 84); font-size: 11px;"
-                    " background: transparent;")
-                    .arg(Sigil::textDim().name()));
+                    " background: transparent;");
                 rl->addWidget(t);
                 rl->addWidget(s);
                 cv->addWidget(row);
