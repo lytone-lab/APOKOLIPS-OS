@@ -198,9 +198,15 @@ Apokolips Shell (C++/Qt6):
   [x] Sigil design system: Card, sectionTitle, groupLabel,
       makeToggleRow, Dropdown, textPrimary/Secondary/Dim
   [x] Sidebar with search, icon badges, oxblood stripe on selected row
-  [x] Sidebar sections: Appearance, Wallpaper, Dock, Sound, Display,
-      Arc Reactor, Bluetooth, Wi-Fi, Network, Notifications,
-      Date & Time, About
+  [x] Sidebar sections (~30, verified 2026-10-17 against
+      settings.h:438-525): Appearance, Livery, Control Center,
+      General, OmniStorage, Core Matrix, Software Update,
+      Time Machine, Accessibility, Privacy & Security, Search,
+      Launcher & Spotlight, Focus, Printers & Scanners,
+      Screensaver, Wallpaper, Dock, The Pool, Sound, Display,
+      Arc Reactor, Bluetooth, Wi-Fi, Network, Users & Groups,
+      Lock Screen & Security, Keyboard, Mouse & Trackpad,
+      Notifications, Date & Time, myMach, About
   [x] Content areas: opaque Sigil bg, no wallpaper bleed
   [x] Toggle widget: slide init from initial value (bug fixed)
   [x] Top bar clock respects 24h/seconds config live
@@ -256,8 +262,12 @@ Apokolips Shell (C++/Qt6):
   [x] Sigil Image Viewer class + dock/launcher/Core Matrix wiring
   [x] MANDATORY APP CHECKLIST added (see top of doc)
   [x] swayidle wired to Arc Reactor timeouts
-  [x] Settings: Dock includes Genie card at bottom
-  [x] Genie sidebar icon = Iron Man 2 reactor mark (cyan)
+  [x] Settings: Dock page includes Genie card at bottom
+      (settings.h:6749 v->addWidget(makeGenieCard());
+      makeGenieCard() defined at 6755). The card uses the Iron Man
+      reactor mark in cyan. NOTE: "Genie" is a CARD inside the Dock
+      page, NOT a standalone sidebar section. An earlier doc claim
+      of a "Genie sidebar icon" was stale and is removed.
 
 System / sway:
   [x] Sway config: overlay for_window rules for glyph/snap/clipboard
