@@ -12,7 +12,9 @@
 
 class NotesApp : public ShellApp {
 public:
-    NotesApp(QWidget *parent = nullptr) : ShellApp(parent) {
+    NotesApp(QWidget *parent = nullptr,
+             const QString &initialPath = QString())
+        : ShellApp(parent) {
         setObjectName("notesApp");
         setupShellApp("Notes", QSize(720, 520), parent != nullptr);
 
@@ -25,6 +27,11 @@ public:
 
         buildUi();
         loadNotesList();
+
+        // If Spotlight opened us with a specific note, focus it.
+        if (!initialPath.isEmpty() && QFile::exists(initialPath)) {
+            openNote(initialPath);
+        }
 
         m_theme = ThemeManager::instance().current();
         restyle();

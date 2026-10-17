@@ -3898,6 +3898,8 @@ int main(int argc, char *argv[])
     }
 
     if (argc >= 2 && QString(argv[1]) == "--notes") {
+        const QString notePath = (argc >= 3)
+            ? QString::fromLocal8Bit(argv[2]) : QString();
         QApplication app(argc, argv);
         app.setApplicationName("Notes");
         app.setDesktopFileName("apokolips-notes");
@@ -3915,7 +3917,7 @@ int main(int argc, char *argv[])
 
         ThemeManager::instance().setTheme(
             WallpaperConfig::themeForId(WallpaperConfig::loadId()));
-        NotesApp w;
+        NotesApp w(nullptr, notePath);
 
         QLocalServer::removeServer("apokolips-notes");
         QLocalServer *srv = new QLocalServer(&w);

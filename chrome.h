@@ -3910,6 +3910,39 @@ private:
             }
         }
 
+        // ---- Notes: search note content ----
+        if (spotCfg.spotFilesEnabled && q.length() >= 2) {
+            QDir nd(QDir::homePath()
+                    + "/.local/share/apokolips/notes");
+            if (nd.exists()) {
+                const QStringList notes = nd.entryList(
+                    { "*.txt" }, QDir::Files, QDir::Time);
+                for (const QString &fname : notes) {
+                    QFile f(nd.filePath(fname));
+                    if (!f.open(QIODevice::ReadOnly)) continue;
+                    const QString content =
+                        QString::fromUtf8(f.readAll());
+                    if (!content.contains(q, Qt::CaseInsensitive)
+                        && !fname.contains(q, Qt::CaseInsensitive))
+                        continue;
+                    // Pull a snippet around the match.
+                    QString snippet = content;
+                    snippet.replace("\n", " ");
+                    int at = snippet.indexOf(q, 0, Qt::CaseInsensitive);
+                    if (at > 30) at -= 30;
+                    if (at < 0) at = 0;
+                    snippet = snippet.mid(at, 80).trimmed();
+                    if (snippet.isEmpty())
+                        snippet = fname;
+                    addResult({"Note",
+                               fname,
+                               snippet,
+                               f.fileName()});
+                    f.close();
+                }
+            }
+        }
+
         // ---- Apps: scan every common .desktop directory ----
         QStringList appDirs = {
             "/usr/share/applications",
@@ -3994,6 +4027,16 @@ private:
         QString kind = it->data(Qt::UserRole).toString();
         QString payload = it->data(Qt::UserRole + 1).toString();
 
+        if (kind == "Note") {
+            // payload = filename inside the notes folder.
+            const QString full = QDir::homePath()
+                + "/.local/share/apokolips/notes/" + payload;
+            QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                { "--notes", full });
+            hideNow();
+            return;
+        }
         if (kind == "App") {
             if (payload.startsWith("gtk-launch:")) {
                 QProcess::startDetached("gtk-launch",
