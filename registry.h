@@ -593,6 +593,12 @@ static void drawPower(QPainter &p, const QRectF &r, const QColor &) {
 static void drawGlyph(QPainter &p, const QRectF &r, const QColor &) {
     p.setRenderHint(QPainter::Antialiasing, true);
 
+    // Bug #2 fix (2026-10-17): Glyph had no appTile() background, so
+    // its dashed crop frame + oxblood corners floated bare on the
+    // wallpaper — read as "line-art", not a branded icon like the
+    // other apps. Dark graphite tile makes the oxblood and bone pop.
+    appTile(p, r, QColor(48, 48, 56), QColor(28, 28, 36));
+
     QRectF frame = r.adjusted(r.width() * 0.16,
                               r.height() * 0.16,
                               -r.width() * 0.16,

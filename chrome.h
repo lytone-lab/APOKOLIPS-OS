@@ -845,11 +845,11 @@ private:
                     int adj = int(width() * 0.09);
                     artRect.adjust(adj, adj, -adj, -adj);
                 }
-                if (m_name == "Glyph") {
-                    drawGlyphMark(p, artRect);
-                } else {
-                    Icons::drawFor(m_name, p, artRect, m_color);
-                }
+                // Bug #2 fix (2026-10-17): route ALL icons through
+                // Icons::drawFor uniformly. drawGlyph now has its own
+                // appTile() background, so the launcher tile matches
+                // the dock icon and the rest of the app grid.
+                Icons::drawFor(m_name, p, artRect, m_color);
             }
 
             // Glyph logo: dashed crop frame, 3 oxblood corners,
