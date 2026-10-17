@@ -1258,8 +1258,13 @@ remove them and renumber. New bugs append at the bottom.
      re-add after atomic replacement. User confirmed Finder body
      changes live as the slider moves. No code change was needed;
      the doc claim was stale.
-  3. Sway reload keybind Super+Shift+R doesn't fire
-     Only Ctrl+Shift+R works for shell. Check sway config bindsym.
+  3. [CLOSED 2026-10-17 — reversed] Sway reload keybind
+     Report said Super+Shift+R doesn't fire; verified it does — reloads
+     the shell from anywhere, any focus. Reality is the opposite of the
+     claim: Ctrl+Shift+R fires from the desktop but NOT from inside a
+     shell app window (Finder, Settings). AI_HANDOFF §6 corrected.
+     No code change — Super+Shift+R covers the V1 reload use case;
+     a second in-window shortcut is redundant (Option A, user-chosen).
   4. Terminal (foot) decorations — no title bar / traffic lights
   5. Real per-app menus — needs our own protocol
   6. App icons — remaining line-art needs replacing

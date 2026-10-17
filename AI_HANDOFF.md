@@ -241,8 +241,10 @@ Variants:
   - `$mod+Shift+S` -> Glyph
   - `$mod+Z` -> snap
   - `$mod+V` -> clipboard
-  - `$mod+Shift+R` -> (broken)
-  - `Ctrl+Shift+R` in shell window -> reload (works)
+  - `$mod+Shift+R` -> reload (fires from anywhere; verified 2026-10-17)
+  - `Ctrl+Shift+R` -> reload only when no shell app window is focused
+    (verified 2026-10-17; does NOT fire inside Finder / Settings — use
+    $mod+Shift+R for a guaranteed reload from any focus)
 
 ---
 
