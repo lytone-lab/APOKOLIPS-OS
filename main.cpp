@@ -3061,6 +3061,44 @@ static int runShell(int argc, char *argv[])
     nowPlayingCard->applyVisibility();
     nowPlayingCard->raise();
 
+    // Sticky notes (Variant B, 2026-10-17) — up to 5 floating
+    // sticky cards with numbered oxblood-cycle pins. Persistence
+    // in ~/.config/apokolips/stickies.json, separate from
+    // visual.json (whose setAndSave() race would lose typed text).
+    {
+        QString stickiesPath = QDir::homePath()
+            + "/.config/apokolips/stickies.json";
+        if (!QFile::exists(stickiesPath)) {
+            QJsonObject entry;
+            entry["text"] = "";
+            QJsonObject all;
+            all["0"] = entry;
+            QDir().mkpath(QFileInfo(stickiesPath).absolutePath());
+            QFile f(stickiesPath);
+            if (f.open(QIODevice::WriteOnly)) {
+                f.write(QJsonDocument(all).toJson());
+                f.close();
+            }
+            qInfo() << "[stickies] created" << stickiesPath;
+        }
+        QFile f(stickiesPath);
+        if (f.open(QIODevice::ReadOnly)) {
+            QJsonDocument d = QJsonDocument::fromJson(f.readAll());
+            QJsonObject all = d.object();
+            for (auto it = all.begin(); it != all.end(); ++it) {
+                bool ok;
+                int idx = it.key().toInt(&ok);
+                if (!ok || idx < 0 || idx >= 5) continue;
+                StickyCard *sc = new StickyCard(idx, root);
+                sc->placeAtSavedOr();
+                sc->applyVisibility();
+                sc->raise();
+            }
+            f.close();
+            qInfo() << "[stickies] instantiated" << all.size() << "cards";
+        }
+    }
+
     qInfo() << "[widgets] NowPlayingCard installed"
             << "pos=" << nowPlayingCard->pos()
             << "size=" << nowPlayingCard->size();

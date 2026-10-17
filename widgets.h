@@ -1774,4 +1774,176 @@ private:
     QTimer *m_tick = nullptr;
 };
 
+
+// ============================================================
+// StickyCard — Model A philosophy, 5 independent floating notes.
+// Each note carries its own text, its own position, its own
+// colour pin. Persistence is in stickies.json (NOT visual.json,
+// which has a known setAndSave() save-race that can lose typed
+// content). Key "0".."4" -> {text: QString}.
+// ============================================================
+#include <QPlainTextEdit>
+#include <QPushButton>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QFile>
+#include <QDir>
+#include <QFileInfo>
+
+class StickyCard : public WidgetCard {
+public:
+    explicit StickyCard(int index, QWidget *parent = nullptr)
+        : WidgetCard(QString("sticky%1").arg(index),
+                     QSize(240, 200),
+                     QPoint(40 + index * 20, 60 + index * 220),
+                     parent),
+          m_index(index)
+    {
+        loadNoteText();
+
+        m_body = new QPlainTextEdit(this);
+        m_body->setPlainText(m_cachedText);
+        m_body->setStyleSheet(QString(
+            "QPlainTextEdit {"
+            "  background: rgba(30, 30, 32, 200);"
+            "  color: %1;"
+            "  border: 1px solid rgba(255,255,255,30);"
+            "  border-radius: 8px;"
+            "  padding: 8px;"
+            "  font-size: 12px;"
+            "}")
+            .arg(m_theme.textPrimary.name()));
+
+        m_close = new QPushButton(QString::fromUtf8("\xC3\x97"),
+                                  this);
+        m_close->setFixedSize(22, 22);
+        m_close->setCursor(Qt::PointingHandCursor);
+        m_close->setToolTip("Delete this note");
+        m_close->setStyleSheet(QString(
+            "QPushButton {"
+            "  background: transparent;"
+            "  color: %1;"
+            "  border: none;"
+            "  font-size: 16px;"
+            "  padding: 0;"
+            "}"
+            "QPushButton:hover {"
+            "  color: %2;"
+            "}").arg(m_theme.textSecondary.name(),
+                     m_theme.accent.name()));
+
+        QObject::connect(m_close, &QPushButton::clicked,
+                         this, [this]() {
+            removeNoteFromDisk();
+            hide();
+        });
+
+        m_saveTimer = new QTimer(this);
+        m_saveTimer->setSingleShot(true);
+        m_saveTimer->setInterval(500);
+        QObject::connect(m_saveTimer, &QTimer::timeout,
+                         this, [this]() {
+            m_cachedText = m_body->toPlainText();
+            saveNoteToDisk(m_cachedText);
+        });
+        QObject::connect(m_body, &QPlainTextEdit::textChanged,
+                         this, [this]() { m_saveTimer->start(); });
+    }
+
+protected:
+    void resizeEvent(QResizeEvent *e) override {
+        WidgetCard::resizeEvent(e);
+        int bodyTop = 48;
+        int pad = 12;
+        m_body->setGeometry(pad, bodyTop,
+                            width() - 2 * pad,
+                            height() - bodyTop - pad);
+        m_close->move(width() - 28, 8);
+    }
+
+    void paintContent(QPainter &p, const QRect &r) override {
+        QColor pinCol = cycleColor(m_index);
+        QRect pinRect(r.left() + 12, r.top() + 8, 26, 26);
+        p.setBrush(pinCol);
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(pinRect);
+        p.setPen(QColor(255, 255, 255));
+        QFont f = font();
+        f.setPixelSize(13);
+        f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        p.drawText(pinRect, Qt::AlignCenter,
+                   QString::number(m_index + 1));
+
+        f.setPixelSize(11);
+        f.setWeight(QFont::Normal);
+        p.setFont(f);
+        p.setPen(m_theme.textSecondary);
+        QRect labelRect(r.left() + 48, r.top() + 8,
+                        r.width() - 84, 26);
+        p.drawText(labelRect, Qt::AlignLeft | Qt::AlignVCenter,
+                   "Sticky");
+    }
+
+private:
+    int m_index;
+    QPlainTextEdit *m_body = nullptr;
+    QPushButton *m_close = nullptr;
+    QTimer *m_saveTimer = nullptr;
+    QString m_cachedText;
+
+    static QColor cycleColor(int i) {
+        static const QColor cols[] = {
+            QColor(122, 106, 159),
+            QColor(90, 122, 158),
+            QColor(166, 122, 90),
+            QColor(160, 90, 106),
+            QColor(74, 122, 122),
+        };
+        return cols[i % 5];
+    }
+
+    static QString stickiesPath() {
+        return QDir::homePath()
+            + "/.config/apokolips/stickies.json";
+    }
+
+    static QJsonObject readAll() {
+        QFile f(stickiesPath());
+        if (!f.open(QIODevice::ReadOnly)) return {};
+        QJsonDocument d = QJsonDocument::fromJson(f.readAll());
+        return d.object();
+    }
+
+    void loadNoteText() {
+        QJsonObject all = readAll();
+        QString key = QString::number(m_index);
+        if (all.contains(key)) {
+            QJsonObject entry = all.value(key).toObject();
+            m_cachedText = entry.value("text").toString();
+        }
+    }
+
+    void saveNoteToDisk(const QString &text) {
+        QJsonObject all = readAll();
+        QJsonObject entry;
+        entry["text"] = text;
+        all[QString::number(m_index)] = entry;
+        QFile f(stickiesPath());
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return;
+        f.write(QJsonDocument(all).toJson());
+    }
+
+    void removeNoteFromDisk() {
+        QJsonObject all = readAll();
+        all.remove(QString::number(m_index));
+        QFile f(stickiesPath());
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return;
+        f.write(QJsonDocument(all).toJson());
+    }
+};
+
+
 #endif
