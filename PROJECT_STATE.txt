@@ -1131,9 +1131,39 @@ Accessibility (require GNOME daemons or specific components):
       compositor-side flash handler.
   [ ] Cursor size — writes to gsettings; sway needs
       XCURSOR_SIZE or seat config to honor it.
-  [ ] High contrast / Reduce motion (shell side) — cfg.shellHighContrast
-      and cfg.shellReduceMotion are stored but no animation or palette
-      currently reads them.
+  [~] High contrast / Reduce motion — PARTIAL (2026-10-17).
+      GTK side works today: the two toggles write
+      gsettings org.gnome.desktop.interface high-contrast=true and
+      enable-animations=false, so GTK apps respond. The shell side
+      is unwired — no shell code reads cfg.shellHighContrast or
+      cfg.shellReduceMotion. The subtitles were rewritten 2026-10-17
+      to say "GTK apps today — shell … is V2" so the UI is honest.
+
+      V2 PLAN — shellReduceMotion (1 session):
+        Add shellAnimationsDisabled() reading cfg.shellReduceMotion
+        and gate the dispatch points (none in overlays.h — the genie
+        family stays retired):
+          - minimize dispatch (main.cpp) — skip overlay, hide instantly
+          - restore dispatch (main.cpp) — skip reverse overlay, show
+          - menu fade (chrome.h) — set duration 0
+          - launcher spring (chrome.h) — set spring 0
+          - wallpaper parallax (main.cpp focus poller) — freeze at
+            current offset
+          - cursor glow trail (chrome.h) — static glow or off
+
+      V2 PLAN — shellHighContrast (1-2 sessions):
+        Sigil-safe variant, not pure-white-on-black (which Sigil
+        forbids by design rule). Darker graphite bg, brighter bone
+        text, thicker borders, higher-saturation oxblood. Most
+        widgets inherit automatically because they call Sigil::*
+        accessors. Audit needed for hardcoded colours (#ffffff,
+        rgb(200,74,74), rgb(168,50,50), rgba(255,255,255,25) appear
+        inline in settings.h, chrome.h, style.h). Do NOT do the true
+        WCAG-AAA invert — that needs a second design language.
+
+      Do not attempt either of these until the user names them
+      (TEAM_PROTOCOL.md Rule #2 — V1 only by default). Both are
+      logged here so the plan survives the session.
   [ ] Notification timeout — cfg.notifTimeoutSec stored but the
       notification center still uses cfg.notificationBannerMs. Should
       unify: either map one to the other, or drop one.

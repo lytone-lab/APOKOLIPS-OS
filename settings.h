@@ -3149,10 +3149,14 @@ private:
                 cv->addWidget(row);
             }
 
-            // High contrast toggle
+            // High contrast toggle.
+            // GTK apps respond today (gsettings high-contrast).
+            // Shell palette is graphite+bone by design; a Sigil-safe
+            // HC variant is a V2 feature (see PROJECT_STATE.txt
+            // "WIRING BACKLOG" — high contrast / reduce motion).
             cv->addWidget(Sigil::makeToggleRow(
                 "High contrast",
-                "Increase contrast for GTK and system apps",
+                "GTK apps today — shell palette is V2",
                 vc.shellHighContrast,
                 [](bool on) {
                     VisualConfigManager::instance().setAndSave(
@@ -3163,10 +3167,16 @@ private:
                           on ? "true" : "false" });
                 }));
 
-            // Reduce motion toggle
+            // Reduce motion toggle.
+            // GTK apps respond today (gsettings enable-animations).
+            // Shell animations (genie/scale/suck/thanos/mesh, menu
+            // fades, launcher spring, wallpaper parallax, cursor
+            // trail) are V2 (see PROJECT_STATE.txt "WIRING BACKLOG"
+            // — high contrast / reduce motion, which lists the
+            // exact gate points).
             cv->addWidget(Sigil::makeToggleRow(
                 "Reduce motion",
-                "Minimize animations across the shell and apps",
+                "GTK apps today — shell animations are V2",
                 vc.shellReduceMotion,
                 [](bool on) {
                     VisualConfigManager::instance().setAndSave(
