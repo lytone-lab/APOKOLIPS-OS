@@ -42,6 +42,16 @@ struct VisualConfig {
     int    trafficLightSize = 13;
     int    trafficLightSpacing = 8;
     bool   trafficLightHoverGlyphs = true;
+    // Window Chrome (Category 1)
+    int    windowRadius = 14;
+    int    windowHeaderHeight = 36;
+    int    windowShadowDepth = 20;
+    // Sounds (Category 9)
+    bool   soundEnabled = true;
+    bool   soundMinimize = true;
+    bool   soundNotify = true;
+    bool   soundStartup = true;
+    int    soundVolume = 80;
     // Per-app chrome overrides. Key = "apokolips-<name>";
     // value = { chromeStyle: "system|flat|glass|solid",
     //           trafficSide: "left|right",
@@ -535,6 +545,22 @@ public:
             m_cfg.trafficLightSpacing = o["trafficLightSpacing"].toInt(8);
         if (o.contains("trafficLightHoverGlyphs"))
             m_cfg.trafficLightHoverGlyphs = o["trafficLightHoverGlyphs"].toBool(true);
+        if (o.contains("windowRadius"))
+            m_cfg.windowRadius = o["windowRadius"].toInt(14);
+        if (o.contains("windowHeaderHeight"))
+            m_cfg.windowHeaderHeight = o["windowHeaderHeight"].toInt(36);
+        if (o.contains("windowShadowDepth"))
+            m_cfg.windowShadowDepth = o["windowShadowDepth"].toInt(20);
+        if (o.contains("soundEnabled"))
+            m_cfg.soundEnabled = o["soundEnabled"].toBool(true);
+        if (o.contains("soundMinimize"))
+            m_cfg.soundMinimize = o["soundMinimize"].toBool(true);
+        if (o.contains("soundNotify"))
+            m_cfg.soundNotify = o["soundNotify"].toBool(true);
+        if (o.contains("soundStartup"))
+            m_cfg.soundStartup = o["soundStartup"].toBool(true);
+        if (o.contains("soundVolume"))
+            m_cfg.soundVolume = o["soundVolume"].toInt(80);
         if (o.contains("wallpaperParallax"))
             m_cfg.wallpaperParallax = o["wallpaperParallax"].toBool(true);
         if (o.contains("sigilAccent"))
@@ -804,6 +830,14 @@ public:
         o["trafficLightSize"]     = m_cfg.trafficLightSize;
         o["trafficLightSpacing"]  = m_cfg.trafficLightSpacing;
         o["trafficLightHoverGlyphs"] = m_cfg.trafficLightHoverGlyphs;
+        o["windowRadius"]         = m_cfg.windowRadius;
+        o["windowHeaderHeight"]   = m_cfg.windowHeaderHeight;
+        o["windowShadowDepth"]    = m_cfg.windowShadowDepth;
+        o["soundEnabled"]         = m_cfg.soundEnabled;
+        o["soundMinimize"]        = m_cfg.soundMinimize;
+        o["soundNotify"]          = m_cfg.soundNotify;
+        o["soundStartup"]         = m_cfg.soundStartup;
+        o["soundVolume"]          = m_cfg.soundVolume;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
         o["clock24Hour"]         = m_cfg.clock24Hour;

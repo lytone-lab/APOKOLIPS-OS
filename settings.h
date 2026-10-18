@@ -7040,6 +7040,66 @@ private:
 
         v->addWidget(Sigil::sectionTitle("Sound"));
 
+        // ---- SYSTEM SOUNDS card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
+            cv->addWidget(Sigil::groupLabel("SYSTEM SOUNDS"));
+
+            auto &vc = VisualConfigManager::instance().cfg();
+
+            auto addSoundToggle = [&](const QString &title, const QString &sub, bool val, std::function<void(VisualConfig &, bool)> onSave) {
+                cv->addWidget(Sigil::makeToggleRow(title, sub, val, [onSave](bool on) {
+                    VisualConfigManager::instance().setAndSave([on, onSave](VisualConfig &c) {
+                        onSave(c, on);
+                    });
+                }));
+            };
+
+            addSoundToggle("Enable sounds", "Master toggle for all UI sounds", vc.soundEnabled,
+                           [](VisualConfig &c, bool on) { c.soundEnabled = on; });
+            addSoundToggle("Minimize sound", "Play a pop when a window minimizes", vc.soundMinimize,
+                           [](VisualConfig &c, bool on) { c.soundMinimize = on; });
+            addSoundToggle("Notification sound", "Play a chime for new notifications", vc.soundNotify,
+                           [](VisualConfig &c, bool on) { c.soundNotify = on; });
+            addSoundToggle("Startup sound", "Play a chime when the shell boots", vc.soundStartup,
+                           [](VisualConfig &c, bool on) { c.soundStartup = on; });
+
+            QWidget *row = new QWidget;
+            QVBoxLayout *rv = new QVBoxLayout(row);
+            rv->setContentsMargins(0, 0, 0, 0);
+            rv->setSpacing(6);
+            QHBoxLayout *top = new QHBoxLayout;
+            QLabel *t = new QLabel("Volume");
+            t->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+            QLabel *vLbl = new QLabel(QString::number(vc.soundVolume) + "%");
+            vLbl->setStyleSheet(QString("color: %1; font-size: 12px; background: transparent;").arg(Sigil::textSecondary().name()));
+            vLbl->setMinimumWidth(40);
+            vLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            top->addWidget(t); top->addStretch(); top->addWidget(vLbl);
+            rv->addLayout(top);
+
+            QSlider *sl = new QSlider(Qt::Horizontal);
+            sl->setRange(0, 100);
+            sl->setValue(vc.soundVolume);
+            sl->setStyleSheet(
+                "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
+                "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
+                "QSlider::sub-page:horizontal { background: rgb(160, 90, 106); border-radius: 2px; }");
+            QObject::connect(sl, &QSlider::valueChanged, [vLbl](int x) {
+                vLbl->setText(QString::number(x) + "%");
+                VisualConfigManager::instance().setAndSave([x](VisualConfig &c) {
+                    c.soundVolume = x;
+                });
+            });
+            rv->addWidget(sl);
+            cv->addWidget(row);
+
+            v->addWidget(c);
+        }
+
         // Volume card
         {
             Sigil::Card *c = new Sigil::Card;

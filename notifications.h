@@ -20,6 +20,7 @@ inline void send(const QString &app,
                  const QString &title,
                  const QString &body)
 {
+    SoundManager::playNotification();
     const QString dir = QDir::tempPath() + "/apokolips-notify";
     QDir().mkpath(dir);
     const QString path = dir + "/" +

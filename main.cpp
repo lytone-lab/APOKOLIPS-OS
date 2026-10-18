@@ -566,6 +566,7 @@ static void shellScaleToDock(QWidget *w)
 // its full minimize animation on the currently focused window.
 static void shellMinimizeFocusedWindow()
 {
+    SoundManager::playMinimize();
     QProcess::startDetached("bash", { "-c",
         "pkill -RTMIN -f 'apokolips-shell/build/apokolips-shell$'" });
 }

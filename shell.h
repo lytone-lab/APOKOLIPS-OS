@@ -135,6 +135,7 @@ inline void installMenuFade() {
 
 #include "shellapp.h"
 #include "apomenu.h"
+#include "sound.h"
 #include "widgets.h"
 #include <QSoundEffect>
 #include "recents.h"
