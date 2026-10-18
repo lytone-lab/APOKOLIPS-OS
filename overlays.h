@@ -1,7 +1,7 @@
 #ifndef APOKOLIPS_OVERLAYS_H
 #define APOKOLIPS_OVERLAYS_H
 
-// Animator daemon + Genie/Scale/Suck overlays (Step 5)
+// Animator daemon + Warp/Scale/Suck overlays (Step 5)
 
 #include "notifications.h"
 #include "shell.h"
@@ -19,7 +19,7 @@ struct AnimRequest {
     QString readySock;
 };
 
-static void genieHandshakeReady(const QString &sockName)
+static void warpHandshakeReady(const QString &sockName)
 {
     qInfo() << "[hs] send: entered, name=" << sockName;
     if (sockName.isEmpty()) { qInfo() << "[hs] send: name empty, abort"; return; }
@@ -36,9 +36,9 @@ static void genieHandshakeReady(const QString &sockName)
 }
 
 // Second ping — sent when the overlay has painted its LAST frame.
-// Distinct from genieHandshakeReady (first paint). The restore path
+// Distinct from warpHandshakeReady (first paint). The restore path
 // in main.cpp waits for this one before revealing the real window.
-static void genieHandshakeDone(const QString &sockName)
+static void warpHandshakeDone(const QString &sockName)
 {
     if (sockName.isEmpty()) return;
     QLocalSocket sock;
@@ -51,14 +51,14 @@ static void genieHandshakeDone(const QString &sockName)
 }
 
 
-static QString genieMakeHandshakeName()
+static QString warpMakeHandshakeName()
 {
-    return QString("apokolips-genie-ready-%1-%2")
+    return QString("apokolips-warp-ready-%1-%2")
         .arg(QCoreApplication::applicationPid())
         .arg(QDateTime::currentMSecsSinceEpoch());
 }
 
-static double genieTimelineProgress(int frame, int frameCount, bool reverse)
+static double warpTimelineProgress(int frame, int frameCount, bool reverse)
 {
     const double denominator = frameCount > 1
         ? static_cast<double>(frameCount - 1) : 1.0;
@@ -102,7 +102,7 @@ public:
 
         const auto &cfg = VisualConfigManager::instance().cfg();
         const int requestedMs = durationOverrideMs > 0
-            ? durationOverrideMs : cfg.genieDurationMs;
+            ? durationOverrideMs : cfg.warpDurationMs;
         const int durationMs = qBound(128, requestedMs, 5000);
         m_durationMs = qBound(128, durationMs, 5000);
             m_frames = qBound(8, (durationMs + 15) / 16, 313);
@@ -128,12 +128,23 @@ protected:
             return;
 
         if (!m_readyPinged && !m_readySock.isEmpty()) {
-            m_readyPinged = true;
-            qInfo() << "[hs] overlay: first paint, will ping in 25ms, sock="
-                    << m_readySock;
-            QTimer::singleShot(25, this, [this]() {
-                genieHandshakeReady(m_readySock);
-            });
+            bool shouldPing = false;
+            if (m_reverse) {
+                // Reverse (restore): wait for animation to finish so window doesn't overlap
+                if (m_frame >= m_frames - 2) shouldPing = true;
+            } else {
+                // Forward (minimize): ping on first frame
+                if (m_frame == 0) shouldPing = true;
+            }
+
+            if (shouldPing) {
+                m_readyPinged = true;
+                int delay = m_reverse ? 0 : 50; // 50ms compositor buffer for minimize
+                qInfo() << "[hs] overlay: pinging in" << delay << "ms (reverse=" << m_reverse << ")";
+                QTimer::singleShot(delay, this, [this]() {
+                    warpHandshakeReady(m_readySock);
+                });
+            }
         }
 
         QPainter p(this);
@@ -200,7 +211,7 @@ private:
                 m_timer->stop();
                 update();
                 QTimer::singleShot(150, this, [this]() {
-                    if (!m_readySock.isEmpty()) genieHandshakeDone(m_readySock);
+                    if (!m_readySock.isEmpty()) warpHandshakeDone(m_readySock);
                     QTimer::singleShot(80, this, [this]() { close(); });
                 });
             }
@@ -261,11 +272,11 @@ public:
         buildParticles();
 
         const auto &cfg = VisualConfigManager::instance().cfg();
-        // Thanos reads as a slow dissolve. 4.5x a normal genie
+        // Thanos reads as a slow dissolve. 4.5x a normal warp
         // gives the particles time to be seen individually.
         const int requestedMs = durationOverrideMs > 0
             ? durationOverrideMs
-            : int(cfg.genieDurationMs * 6.0);
+            : int(cfg.warpDurationMs * 6.0);
         const int durationMs = qBound(1500, requestedMs, 5000);
         m_durationMs = qBound(128, durationMs, 5000);
             m_frames = qBound(20, (durationMs + 15) / 16, 200);
@@ -294,7 +305,7 @@ protected:
         if (!m_readyPinged && !m_readySock.isEmpty()) {
             m_readyPinged = true;
             QTimer::singleShot(25, this, [this]() {
-                genieHandshakeReady(m_readySock);
+                warpHandshakeReady(m_readySock);
             });
         }
 
@@ -409,7 +420,7 @@ private:
                 m_timer->stop();
                 update();
                 QTimer::singleShot(150, this, [this]() {
-                    if (!m_readySock.isEmpty()) genieHandshakeDone(m_readySock);
+                    if (!m_readySock.isEmpty()) warpHandshakeDone(m_readySock);
                     QTimer::singleShot(80, this, [this]() { close(); });
                 });
             }
@@ -469,7 +480,7 @@ public:
 
         const auto &cfg = VisualConfigManager::instance().cfg();
         const int requestedMs = durationOverrideMs > 0
-            ? durationOverrideMs : cfg.genieDurationMs;
+            ? durationOverrideMs : cfg.warpDurationMs;
         const int durationMs = qBound(128, requestedMs, 5000);
         m_durationMs = qBound(128, durationMs, 5000);
             m_frames = qBound(8, (durationMs + 15) / 16, 313);
@@ -495,12 +506,23 @@ protected:
             return;
 
         if (!m_readyPinged && !m_readySock.isEmpty()) {
-            m_readyPinged = true;
-            qInfo() << "[hs] overlay: first paint, will ping in 25ms, sock="
-                    << m_readySock;
-            QTimer::singleShot(25, this, [this]() {
-                genieHandshakeReady(m_readySock);
-            });
+            bool shouldPing = false;
+            if (m_reverse) {
+                // Reverse (restore): wait for animation to finish so window doesn't overlap
+                if (m_frame >= m_frames - 2) shouldPing = true;
+            } else {
+                // Forward (minimize): ping on first frame
+                if (m_frame == 0) shouldPing = true;
+            }
+
+            if (shouldPing) {
+                m_readyPinged = true;
+                int delay = m_reverse ? 0 : 50; // 50ms compositor buffer for minimize
+                qInfo() << "[hs] overlay: pinging in" << delay << "ms (reverse=" << m_reverse << ")";
+                QTimer::singleShot(delay, this, [this]() {
+                    warpHandshakeReady(m_readySock);
+                });
+            }
         }
 
         QPainter p(this);
@@ -549,7 +571,7 @@ private:
                 m_timer->stop();
                 update();
                 QTimer::singleShot(150, this, [this]() {
-                    if (!m_readySock.isEmpty()) genieHandshakeDone(m_readySock);
+                    if (!m_readySock.isEmpty()) warpHandshakeDone(m_readySock);
                     QTimer::singleShot(80, this, [this]() { close(); });
                 });
             }
@@ -575,9 +597,9 @@ private:
 
     bool    m_readyPinged = false;};
 
-class GenieOverlay : public QWidget {
+class WarpOverlay : public QWidget {
 public:
-    GenieOverlay(const QString &pngPath, QRect startRect,
+    WarpOverlay(const QString &pngPath, QRect startRect,
                  QPoint dockGlobal, bool reverse = false,
                  int durationOverrideMs = 0,
                  const QString &readySock = QString(),
@@ -591,7 +613,7 @@ public:
         setAttribute(Qt::WA_DeleteOnClose, true);
 
         if (!m_pix.load(pngPath) || startRect.isEmpty()) {
-            qWarning() << "[genie] load failed:" << pngPath;
+            qWarning() << "[warp] load failed:" << pngPath;
             QTimer::singleShot(0, qApp, &QApplication::quit);
             return;
         }
@@ -608,26 +630,26 @@ public:
         m_dock = dockGlobal - m_origin;
 
         const auto &cfg = VisualConfigManager::instance().cfg();
-        m_strips = qBound(40, cfg.genieStrips, 320);
-        m_sCount = qBound(1, cfg.genieSCount, 5);
-        m_stagger = qBound(0.0, cfg.genieStagger, 0.8);
-        m_curve = qBound(0.3, cfg.genieCurve, 2.0);
-        m_fadeFrom = qBound(0.5, cfg.genieFadeStart, 1.0);
+        m_strips = qBound(40, cfg.warpStrips, 320);
+        m_sCount = qBound(1, cfg.warpSCount, 5);
+        m_stagger = qBound(0.0, cfg.warpStagger, 0.8);
+        m_curve = qBound(0.3, cfg.warpCurve, 2.0);
+        m_fadeFrom = qBound(0.5, cfg.warpFadeStart, 1.0);
 
         const int requestedMs = durationOverrideMs > 0
-            ? durationOverrideMs : cfg.genieDurationMs;
+            ? durationOverrideMs : cfg.warpDurationMs;
         const int durationMs = qBound(128, requestedMs, 5000);
         m_durationMs = qBound(128, durationMs, 5000);
             m_frames = qBound(8, (durationMs + 15) / 16, 313);
 
-        qDebug() << "[genie] reverse=" << m_reverse
+        qDebug() << "[warp] reverse=" << m_reverse
                  << "durationMs=" << durationMs
                  << "frames=" << m_frames;
 
         m_timer = new QTimer(this);
         m_timer->setInterval(16);
         QObject::connect(m_timer, &QTimer::timeout,
-                         this, &GenieOverlay::tick);
+                         this, &WarpOverlay::tick);
         m_readySock = readySock;
         QTimer::singleShot(30, this, [this]() {
             if (m_timer) m_timer->start();
@@ -641,12 +663,23 @@ protected:
             || width() <= 0 || height() <= 0) return;
 
         if (!m_readyPinged && !m_readySock.isEmpty()) {
-            m_readyPinged = true;
-            qInfo() << "[hs] overlay: first paint, will ping in 25ms, sock="
-                    << m_readySock;
-            QTimer::singleShot(25, this, [this]() {
-                genieHandshakeReady(m_readySock);
-            });
+            bool shouldPing = false;
+            if (m_reverse) {
+                // Reverse (restore): wait for animation to finish so window doesn't overlap
+                if (m_frame >= m_frames - 2) shouldPing = true;
+            } else {
+                // Forward (minimize): ping on first frame
+                if (m_frame == 0) shouldPing = true;
+            }
+
+            if (shouldPing) {
+                m_readyPinged = true;
+                int delay = m_reverse ? 0 : 50; // 50ms compositor buffer for minimize
+                qInfo() << "[hs] overlay: pinging in" << delay << "ms (reverse=" << m_reverse << ")";
+                QTimer::singleShot(delay, this, [this]() {
+                    warpHandshakeReady(m_readySock);
+                });
+            }
         }
 
         QPainter p(this);
@@ -655,7 +688,7 @@ protected:
         p.setOpacity(1.0);
 
         const qreal t = qBound<qreal>(
-            0.0, genieTimelineProgress(m_frame, m_frames, m_reverse), 1.0);
+            0.0, warpTimelineProgress(m_frame, m_frames, m_reverse), 1.0);
 
         const auto easeWithImmediateMotion = [](qreal x) {
             x = qBound<qreal>(0.0, x, 1.0);
@@ -688,7 +721,7 @@ protected:
         // Once per animation: log the corner that was selected.
         // Lets us verify corner-aware placement without guessing.
         if (m_frame == 0) {
-            qInfo() << "[genie-tip] corner idx=" << tipIdx
+            qInfo() << "[warp-tip] corner idx=" << tipIdx
                     << "(0=TL 1=TR 2=BR 3=BL)"
                     << "tipSrc=" << tipSrc
                     << "dock=" << dock;
@@ -783,7 +816,7 @@ private:
                 m_timer->stop();
                 update();
                 QTimer::singleShot(150, this, [this]() {
-                    if (!m_readySock.isEmpty()) genieHandshakeDone(m_readySock);
+                    if (!m_readySock.isEmpty()) warpHandshakeDone(m_readySock);
                     QTimer::singleShot(80, this, [this]() { close(); });
                 });
             }
@@ -853,7 +886,7 @@ static bool animatorRequest(const AnimRequest &req)
     return true;
 }
 
-#include "meshgenie.h"
+#include "magiccarpet.h"
 
 static int runAnimatorDaemon(int argc, char **argv)
 {
@@ -885,7 +918,7 @@ static int runAnimatorDaemon(int argc, char **argv)
                 if (!doc.isObject()) return;
                 const QJsonObject o = doc.object();
 
-                const QString style = o.value("style").toString("genie");
+                const QString style = o.value("style").toString("warp");
                 const QString png   = o.value("png").toString();
                 const QRect rect(o.value("x").toInt(), o.value("y").toInt(),
                                  o.value("w").toInt(), o.value("h").toInt());
@@ -911,10 +944,10 @@ static int runAnimatorDaemon(int argc, char **argv)
                     w = new ThanosOverlay(png, rect, dock, ms, ready,
                                           reverse);
                 else if (style == "mesh")
-                    w = new GenieMeshOverlay(png, rect, dock, reverse,
+                    w = new MagicCarpetOverlay(png, rect, dock, reverse,
                                              ms, ready);
                 else
-                    w = new GenieOverlay(png, rect, dock, reverse, ms,
+                    w = new WarpOverlay(png, rect, dock, reverse, ms,
                                          ready);
 
                 w->setAttribute(Qt::WA_DeleteOnClose, true);

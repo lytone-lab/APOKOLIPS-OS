@@ -337,11 +337,11 @@ static QString minimizeStyleFlag()
     if (s == "suck")   return "--suck";
     if (s == "thanos") return "--thanos";
     if (s == "mesh")   return "--mesh";
-    return "--genie";
+    return "--warp";
 }
 
 // ---- G6 forward decls ----
-static QString genieMakeHandshakeName();
+static QString warpMakeHandshakeName();
 static QPixmap grabWidget(QWidget *w);
 
 static QPoint extractFromDockArg();
@@ -384,7 +384,7 @@ public:
                         .arg(QDateTime::currentMSecsSinceEpoch());
                 if (pm.save(png, "PNG")) {
                     QWidget *target = m_target;
-                    const QString readyName = genieMakeHandshakeName();
+                    const QString readyName = warpMakeHandshakeName();
                     QLocalServer::removeServer(readyName);
                     QLocalServer *readyServer = new QLocalServer(target);
                     readyServer->listen(readyName);
@@ -461,7 +461,7 @@ static void shellAnimateDockIn(QWidget *w, const QPoint &dockPt)
     // Window stays hidden until the overlay has finished its reverse
     // animation and signals readiness over the handshake socket —
     // no fixed-delay guess, so slow process startup never causes a flash.
-    const QString readyName = genieMakeHandshakeName();
+    const QString readyName = warpMakeHandshakeName();
     QLocalServer::removeServer(readyName);
     QLocalServer *readyServer = new QLocalServer(w);
     readyServer->listen(readyName);
@@ -524,7 +524,7 @@ static void shellScaleToDock(QWidget *w)
             .arg(QDateTime::currentMSecsSinceEpoch());
     if (!pm.save(png, "PNG")) { w->hide(); return; }
 
-    const QString readyName = genieMakeHandshakeName();
+    const QString readyName = warpMakeHandshakeName();
     QLocalServer::removeServer(readyName);
     QLocalServer *readyServer = new QLocalServer(w);
     readyServer->listen(readyName);
@@ -574,7 +574,7 @@ static void shellMinimizeFocusedWindow()
 // Red traffic light: minimize through the shell's pipeline, then
 // close the window ~once the animation has finished. The scratchpad
 // entry disappears when the process exits.
-static void shellCloseViaGenie(QWidget *w)
+static void shellCloseViaWarp(QWidget *w)
 {
     if (!w) return;
     // Only run the minimize animation when this window is the focused
@@ -585,7 +585,7 @@ static void shellCloseViaGenie(QWidget *w)
         // for overlay process startup and handshake roundtrip. The
         // real window must not close until the overlay has finished.
         const int animMs = qBound(128,
-            VisualConfigManager::instance().cfg().genieDurationMs, 5000);
+            VisualConfigManager::instance().cfg().warpDurationMs, 5000);
         const int closeAfter = animMs + 400;
 
         shellMinimizeFocusedWindow();
@@ -599,7 +599,7 @@ static void shellCloseViaGenie(QWidget *w)
 }
 
 
-// ---- Genie family handshake ----
+// ---- Warp family handshake ----
 // Map a sway app_id to the dock label the user clicks to restore.
 static QString dockNameForAppId(const QString &appId)
 {
@@ -619,9 +619,9 @@ static QString dockNameForAppId(const QString &appId)
 }
 
 
-static QString genieStateFilePath()
+static QString warpStateFilePath()
 {
-    return QDir::tempPath() + "/apokolips-genie-state.json";
+    return QDir::tempPath() + "/apokolips-warp-state.json";
 }
 
 
@@ -630,9 +630,9 @@ static QString genieStateFilePath()
 // phantom entry that wastes an animation on the next dock click.
 
 
-static QJsonArray readGenieWindows()
+static QJsonArray readWarpWindows()
 {
-    QFile file(genieStateFilePath());
+    QFile file(warpStateFilePath());
     if (!file.open(QIODevice::ReadOnly))
         return {};
 
@@ -643,9 +643,9 @@ static QJsonArray readGenieWindows()
     return doc.object().value("windows").toArray();
 }
 
-static bool writeGenieWindows(const QJsonArray &windows)
+static bool writeWarpWindows(const QJsonArray &windows)
 {
-    QSaveFile file(genieStateFilePath());
+    QSaveFile file(warpStateFilePath());
     if (!file.open(QIODevice::WriteOnly))
         return false;
 
@@ -660,9 +660,9 @@ static bool writeGenieWindows(const QJsonArray &windows)
     return file.commit();
 }
 
-static void pruneStaleGenieState()
+static void pruneStaleWarpState()
 {
-    const QJsonArray current = readGenieWindows();
+    const QJsonArray current = readWarpWindows();
     if (current.isEmpty()) return;
 
     QProcess sp;
@@ -691,22 +691,22 @@ static void pruneStaleGenieState()
             const QString png = entry.value("png").toString();
             if (!png.isEmpty()) QFile::remove(png);
             changed = true;
-            qInfo() << "[genie-prune] dropped stale conId" << conId;
+            qInfo() << "[warp-prune] dropped stale conId" << conId;
             continue;
         }
         kept.append(entry);
     }
-    if (changed) writeGenieWindows(kept);
+    if (changed) writeWarpWindows(kept);
 }
 
-static bool upsertGenieWindow(const QJsonObject &entry)
+static bool upsertWarpWindow(const QJsonObject &entry)
 {
     const int conId = entry.value("conId").toInt(-1);
     if (conId <= 0)
         return false;
 
     QJsonArray updated;
-    const QJsonArray current = readGenieWindows();
+    const QJsonArray current = readWarpWindows();
 
     for (const QJsonValue &value : current) {
         const QJsonObject old = value.toObject();
@@ -715,16 +715,16 @@ static bool upsertGenieWindow(const QJsonObject &entry)
     }
 
     updated.append(entry);
-    return writeGenieWindows(updated);
+    return writeWarpWindows(updated);
 }
 
-static bool removeGenieWindow(int conId)
+static bool removeWarpWindow(int conId)
 {
-    if (!QFile::exists(genieStateFilePath()))
+    if (!QFile::exists(warpStateFilePath()))
         return true;
 
     QJsonArray updated;
-    const QJsonArray current = readGenieWindows();
+    const QJsonArray current = readWarpWindows();
 
     for (const QJsonValue &value : current) {
         const QJsonObject old = value.toObject();
@@ -732,11 +732,11 @@ static bool removeGenieWindow(int conId)
             updated.append(old);
     }
 
-    return writeGenieWindows(updated);
+    return writeWarpWindows(updated);
 }
 
 // Sway tree probe — returns true if conId exists in the current
-// tree. Used to reject stale genie-state entries BEFORE playing
+// tree. Used to reject stale warp-state entries BEFORE playing
 // the reverse animation: a dead conId would otherwise animate and
 // then silently fail scratchpad show, blocking fresh launch.
 static bool swayTreeHasConId(int conId)
@@ -758,17 +758,17 @@ static bool swayTreeHasConId(int conId)
         || out.contains(QString("\"id\":%1").arg(conId));
 }
 
-static bool restoreGenieForDock(const QString &dockName)
+static bool restoreWarpForDock(const QString &dockName)
 {
     if (dockName.isEmpty()) {
-        qWarning() << "[genie-restore][why] empty dockName";
+        qWarning() << "[warp-restore][why] empty dockName";
         return false;
     }
 
-    const QJsonArray windows = readGenieWindows();
+    const QJsonArray windows = readWarpWindows();
     QJsonObject entry;
 
-    qDebug() << "[genie-restore] lookup dockName=" << dockName
+    qDebug() << "[warp-restore] lookup dockName=" << dockName
              << "entries=" << windows.size();
 
     // Restore the most recently minimized matching window.
@@ -781,7 +781,7 @@ static bool restoreGenieForDock(const QString &dockName)
     }
 
     if (entry.isEmpty()) {
-        qWarning() << "[genie-restore][why] no entry matches"
+        qWarning() << "[warp-restore][why] no entry matches"
                    << dockName;
         return false;
     }
@@ -792,7 +792,7 @@ static bool restoreGenieForDock(const QString &dockName)
     const QJsonArray dock = entry.value("dockPt").toArray();
 
     if (conId <= 0) {
-        qWarning() << "[genie-restore][why] bad conId" << conId;
+        qWarning() << "[warp-restore][why] bad conId" << conId;
         return false;
     }
 
@@ -803,25 +803,25 @@ static bool restoreGenieForDock(const QString &dockName)
     // fresh launch. Drop the entry and return false so the caller
     // launches the app instead.
     if (!swayTreeHasConId(conId)) {
-        qInfo() << "[genie-restore] stale conId" << conId
+        qInfo() << "[warp-restore] stale conId" << conId
                 << "— dropping, will launch fresh";
-        removeGenieWindow(conId);
+        removeWarpWindow(conId);
         QFile::remove(savedPng);
         return false;
     }
 
     if (!QFile::exists(savedPng)) {
-        qWarning() << "[genie-restore][why] pixmap missing"
+        qWarning() << "[warp-restore][why] pixmap missing"
                    << savedPng << " — dropping entry";
-        removeGenieWindow(conId);
+        removeWarpWindow(conId);
         return false;
     }
     if (rect.size() != 4) {
-        qWarning() << "[genie-restore][why] rect size" << rect.size();
+        qWarning() << "[warp-restore][why] rect size" << rect.size();
         return false;
     }
     if (dock.size() != 2) {
-        qWarning() << "[genie-restore][why] dock size" << dock.size();
+        qWarning() << "[warp-restore][why] dock size" << dock.size();
         return false;
     }
 
@@ -833,29 +833,29 @@ static bool restoreGenieForDock(const QString &dockName)
     const int dy = dock.at(1).toInt();
 
     if (w <= 0 || h <= 0) {
-        qWarning() << "[genie-restore][why] zero size" << w << h;
+        qWarning() << "[warp-restore][why] zero size" << w << h;
         return false;
     }
 
     const QString reversePng =
         QDir::tempPath()
-        + QString("/genie-reverse-%1-%2.png")
+        + QString("/warp-reverse-%1-%2.png")
               .arg(conId)
               .arg(QDateTime::currentMSecsSinceEpoch());
 
-    // GenieOverlay deletes the image it loads, so animate a temporary copy.
+    // WarpOverlay deletes the image it loads, so animate a temporary copy.
     if (!QFile::copy(savedPng, reversePng)) {
-        qWarning() << "[genie-restore][why] copy failed:"
+        qWarning() << "[warp-restore][why] copy failed:"
                    << savedPng << "->" << reversePng;
         return false;
     }
 
     const int durationMs = qBound(
-        128, VisualConfigManager::instance().cfg().genieDurationMs, 5000);
+        128, VisualConfigManager::instance().cfg().warpDurationMs, 5000);
 
     // Use the user's selected minimize style for the reverse too.
-    // Previously hardcoded to --genie, which meant Suck/Scale users
-    // saw genie strips on dock-click restore.
+    // Previously hardcoded to --warp, which meant Suck/Scale users
+    // saw warp strips on dock-click restore.
     const QStringList args{
         minimizeStyleFlag(), reversePng,
         QString::number(x), QString::number(y),
@@ -868,7 +868,7 @@ static bool restoreGenieForDock(const QString &dockName)
     // first frame is painted. We start the reveal timer only then —
     // not from a fixed wall-clock guess — so slow overlay starts on
     // wide screen paths (dock left/right) no longer reveal mid-animation.
-    const QString readyName = genieMakeHandshakeName();
+    const QString readyName = warpMakeHandshakeName();
     QLocalServer::removeServer(readyName);
     QLocalServer *readyServer = new QLocalServer(qApp);
     readyServer->listen(readyName);
@@ -892,7 +892,7 @@ static bool restoreGenieForDock(const QString &dockName)
         req.readySock  = readyName;
         if (animatorRequest(req)) {
             started = true;
-            qDebug() << "[genie-reverse] sent to daemon";
+            qDebug() << "[warp-reverse] sent to daemon";
         }
     }
 
@@ -901,16 +901,16 @@ static bool restoreGenieForDock(const QString &dockName)
         started = QProcess::startDetached(
             QCoreApplication::applicationFilePath(),
             argsWithReady, QString(), &overlayPid);
-        qDebug() << "[genie-reverse] spawned fresh pid=" << overlayPid;
+        qDebug() << "[warp-reverse] spawned fresh pid=" << overlayPid;
     }
 
     if (!started) {
         QFile::remove(reversePng);
-        qWarning() << "[genie-reverse] overlay failed to start";
+        qWarning() << "[warp-reverse] overlay failed to start";
         return false;
     }
 
-    qDebug() << "[genie-reverse] started" << dockName
+    qDebug() << "[warp-reverse] started" << dockName
              << "conId=" << conId
              << "durationMs=" << durationMs
              << "pid=" << overlayPid;
@@ -920,7 +920,7 @@ static bool restoreGenieForDock(const QString &dockName)
     auto revealReal = [conId, savedPng]() {
         const QString sock = discoverSwaySock();
         if (sock.isEmpty()) {
-            qWarning() << "[genie-reverse] no SWAYSOCK; state retained";
+            qWarning() << "[warp-reverse] no SWAYSOCK; state retained";
             return;
         }
 
@@ -952,16 +952,16 @@ static bool restoreGenieForDock(const QString &dockName)
                 }
 
                 if (shown) {
-                    removeGenieWindow(conId);
+                    removeWarpWindow(conId);
                     QFile::remove(savedPng);
-                    qDebug() << "[genie-reverse] real window shown:" << conId;
+                    qDebug() << "[warp-reverse] real window shown:" << conId;
                 } else {
                     // Stale conId — window was closed long ago.
                     // Drop the entry + pixmap so the next click falls
                     // through to launching a fresh instance.
-                    removeGenieWindow(conId);
+                    removeWarpWindow(conId);
                     QFile::remove(savedPng);
-                    qWarning() << "[genie-reverse] stale state dropped;"
+                    qWarning() << "[warp-reverse] stale state dropped;"
                                << "conId=" << conId
                                << "stdout=" << output
                                << "stderr=" << error;
@@ -996,7 +996,7 @@ static bool restoreGenieForDock(const QString &dockName)
             QObject::connect(conn, &QLocalSocket::readyRead,
                              [conn, revealOnce, revealed, conId]() {
                 const QByteArray data = conn->readAll();
-                qDebug() << "[genie-reverse] ping:" << data
+                qDebug() << "[warp-reverse] ping:" << data
                          << "conId=" << conId;
                 // "done" = overlay finished its last frame.
                 if (data.contains("done"))
@@ -1011,7 +1011,7 @@ static bool restoreGenieForDock(const QString &dockName)
         // reveal at durationMs + 2500 (animation may drift).
         QTimer::singleShot(durationMs + 1000, qApp,
                            [revealOnce]() {
-            qDebug() << "[genie-reverse] safety reveal";
+            qDebug() << "[warp-reverse] safety reveal";
             revealOnce();
         });
     }
@@ -1114,7 +1114,7 @@ static QString discoverSwaySock() {
 // shellRestoreWindow — shared restore for any shell app.
 // Called from single-instance focus handlers and dock-click
 // paths to bring a window back from any state: hidden, minimized,
-// genie-scratchpad, off-screen. Idempotent and flicker-free.
+// warp-scratchpad, off-screen. Idempotent and flicker-free.
 //
 //   w         — the top-level widget to restore
 //   title     — the window title (used for sway focus criteria)
@@ -1226,7 +1226,7 @@ extern "C" void spotlightSignalHandler(int sig) {
 // Notes app — in-shell overlay + standalone mode
 // =========================================================
 // =========================================================
-// GenieOverlay — window-shrinks-into-dock animation
+// WarpOverlay — window-shrinks-into-dock animation
 // Screenshot-based illusion (sway gives us no live texture)
 // =========================================================
 static int runShell(int argc, char *argv[])
@@ -1425,31 +1425,31 @@ static int runShell(int argc, char *argv[])
         }
         if (g_minimizeToggle) {
             g_minimizeToggle = 0;
-            qDebug() << "[genie] Super+M fired";
+            qDebug() << "[warp] Super+M fired";
 
             QProcess *q = new QProcess;
             QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
             QString sock = discoverSwaySock();
-            qDebug() << "[genie-debug] SWAYSOCK=" << sock;
+            qDebug() << "[warp-debug] SWAYSOCK=" << sock;
             env.insert("SWAYSOCK", sock);
             q->setProcessEnvironment(env);
             QObject::connect(q,
                 QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                 [q, root](int exitCode, QProcess::ExitStatus status) {
-                qDebug() << "[genie-debug] exitCode=" << exitCode
+                qDebug() << "[warp-debug] exitCode=" << exitCode
                          << "status=" << status;
                 QByteArray out = q->readAllStandardOutput();
                 QByteArray err = q->readAllStandardError();
-                qDebug() << "[genie-debug] stdout bytes=" << out.size()
+                qDebug() << "[warp-debug] stdout bytes=" << out.size()
                          << "stderr=" << err;
-                qDebug() << "[genie-debug] contains floating_con="
+                qDebug() << "[warp-debug] contains floating_con="
                          << out.contains("floating_con")
                          << "contains Files="
                          << out.contains("\"Files\"");
                 q->deleteLater();
                 QJsonDocument doc = QJsonDocument::fromJson(out);
                 if (!doc.isObject()) {
-                    qDebug() << "[genie-debug] JSON parse failed, first 200 chars:"
+                    qDebug() << "[warp-debug] JSON parse failed, first 200 chars:"
                              << out.left(200);
                     return;
                 }
@@ -1474,7 +1474,7 @@ static int runShell(int argc, char *argv[])
                         int w = r.value("width").toInt();
                         int h = r.value("height").toInt();
                         const bool internalOverlay =
-                            a == "apokolips-genie" ||
+                            a == "apokolips-warp" ||
                             a == "apokolips-glyph" ||
                             a == "apokolips-snap" ||
                             a == "apokolips-clipboard";
@@ -1521,14 +1521,14 @@ static int runShell(int argc, char *argv[])
                     target.appId = g_trackedAppId;
                     target.title = g_trackedTitle;
                     target.rect = g_trackedRect;
-                    qDebug() << "[genie] using last-focused target"
+                    qDebug() << "[warp] using last-focused target"
                              << target.conId << target.title << target.rect;
                 }
-                qDebug() << "[genie] target conId=" << target.conId
+                qDebug() << "[warp] target conId=" << target.conId
                          << "rect=" << target.rect
                          << "app=" << target.appId;
                 if (target.conId <= 0 || target.rect.isEmpty()) {
-                    qDebug() << "[genie] no valid focused app window; abort";
+                    qDebug() << "[warp] no valid focused app window; abort";
                     return;
                 }
 
@@ -1586,7 +1586,7 @@ static int runShell(int argc, char *argv[])
                     dockName = "myMach";
                 }
 
-                qInfo() << "[genie-trace] target app="
+                qInfo() << "[warp-trace] target app="
                         << target.appId
                         << "title=" << target.title
                         << "→ dockName=" << dockName;
@@ -1603,7 +1603,7 @@ static int runShell(int argc, char *argv[])
                             dockPt = di->mapTo(root,
                                                di->rect().center());
                             tileMatched = true;
-                            qInfo() << "[genie-trace] matched tile:"
+                            qInfo() << "[warp-trace] matched tile:"
                                     << "appName=" << di->appName()
                                     << "local center=" << di->rect().center()
                                     << "mapped dockPt=" << dockPt;
@@ -1612,15 +1612,15 @@ static int runShell(int argc, char *argv[])
                         }
                     }
                 }
-                qInfo() << "[genie-trace] tiles scanned=" << iconsScanned
+                qInfo() << "[warp-trace] tiles scanned=" << iconsScanned
                         << "matched=" << tileMatched
                         << "final dockPt=" << dockPt
                         << "(fallback used=" << !tileMatched << ")";
-                qInfo() << "[genie-trace] root size=" << root->size()
+                qInfo() << "[warp-trace] root size=" << root->size()
                         << "global center=" << root->mapToGlobal(dockPt);
 
                 // Screenshot the window into a temp PNG
-                QString png = QString("/tmp/genie-%1-%2.png")
+                QString png = QString("/tmp/warp-%1-%2.png")
                     .arg(target.conId)
                     .arg(QDateTime::currentMSecsSinceEpoch());
                 QProcess *sh = new QProcess;
@@ -1631,7 +1631,7 @@ static int runShell(int argc, char *argv[])
                 QObject::connect(sh,
                     QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                     [sh, png, target, dockPt, dockName, root](int code, QProcess::ExitStatus) {
-                    qDebug() << "[genie] grim finished code=" << code
+                    qDebug() << "[warp] grim finished code=" << code
                              << "png exists=" << QFile::exists(png);
                     sh->deleteLater();
                     if (!QFile::exists(png)) return;
@@ -1643,11 +1643,11 @@ static int runShell(int argc, char *argv[])
                     // Keep a separate copy: the forward overlay removes its PNG.
                     const QString retainedPixmap =
                         QDir::tempPath()
-                        + QString("/apokolips-genie-%1-%2.png")
+                        + QString("/apokolips-warp-%1-%2.png")
                               .arg(target.conId)
                               .arg(QDateTime::currentMSecsSinceEpoch());
                     if (!QFile::copy(png, retainedPixmap)) {
-                        qWarning() << "[genie] could not retain screenshot";
+                        qWarning() << "[warp] could not retain screenshot";
                         QFile::remove(png);
                         return;
                     }
@@ -1660,10 +1660,10 @@ static int runShell(int argc, char *argv[])
                         : (chosenStyle == "suck") ? "--suck"
                         : (chosenStyle == "thanos") ? "--thanos"
                         : (chosenStyle == "mesh") ? "--mesh"
-                                                  : "--genie";
+                                                  : "--warp";
                     qDebug() << "[minimize] style=" << styleFlag;
 
-                    const QString readyName = genieMakeHandshakeName();
+                    const QString readyName = warpMakeHandshakeName();
                     QLocalServer::removeServer(readyName);
                     QLocalServer *readyServer = new QLocalServer(root);
                     readyServer->listen(readyName);
@@ -1696,7 +1696,7 @@ static int runShell(int argc, char *argv[])
                         req.readySock  = readyName;
                         if (animatorRequest(req)) {
                             overlayStarted = true;
-                            qDebug() << "[genie] sent to daemon";
+                            qDebug() << "[warp] sent to daemon";
                         }
                     }
 
@@ -1705,7 +1705,7 @@ static int runShell(int argc, char *argv[])
                         overlayStarted = QProcess::startDetached(
                             QCoreApplication::applicationFilePath(),
                             overlayArgs, QString(), &overlayPid);
-                        qDebug() << "[genie] spawned fresh process pid="
+                        qDebug() << "[warp] spawned fresh process pid="
                                  << overlayPid;
                     }
 
@@ -1728,7 +1728,7 @@ static int runShell(int argc, char *argv[])
                             QProcessEnvironment::systemEnvironment();
                         const QString sock = discoverSwaySock();
                         if (sock.isEmpty()) {
-                            qDebug() << "[genie] no SWAYSOCK for scratchpad move";
+                            qDebug() << "[warp] no SWAYSOCK for scratchpad move";
                             QFile::remove(retainedPixmap);
                             move->deleteLater();
                             return;
@@ -1745,7 +1745,7 @@ static int runShell(int argc, char *argv[])
                                     move->readAllStandardOutput();
                                 const QByteArray err =
                                     move->readAllStandardError();
-                                qDebug() << "[genie] delayed sway move"
+                                qDebug() << "[warp] delayed sway move"
                                          << code << status
                                          << "stdout=" << out
                                          << "stderr=" << err;
@@ -1789,14 +1789,14 @@ static int runShell(int argc, char *argv[])
                                     };
                                     entry["pixmap"] = retainedPixmap;
 
-                                    if (!upsertGenieWindow(entry)) {
+                                    if (!upsertWarpWindow(entry)) {
                                         qWarning()
-                                            << "[genie] state save failed for"
+                                            << "[warp] state save failed for"
                                             << target.conId;
                                         QFile::remove(retainedPixmap);
                                     } else {
                                         qDebug()
-                                            << "[genie] saved reverse state for"
+                                            << "[warp] saved reverse state for"
                                             << target.conId << dockName;
                                     }
                                 } else {
@@ -1821,7 +1821,7 @@ static int runShell(int argc, char *argv[])
                                           readyServer]() {
                             QByteArray data = conn->readAll();
                             if (data.contains("ready")) {
-                                qDebug() << "[genie] handshake ready";
+                                qDebug() << "[warp] handshake ready";
                                 performScratchpadMove();
                                 if (readyServer->isListening())
                                     readyServer->close();
@@ -1833,7 +1833,7 @@ static int runShell(int argc, char *argv[])
                     QTimer::singleShot(1500, root,
                         [performScratchpadMove, readyServer]() {
                         if (!readyServer->isListening()) return;
-                        qDebug() << "[genie] handshake timeout — moving";
+                        qDebug() << "[warp] handshake timeout — moving";
                         performScratchpadMove();
                         if (readyServer->isListening())
                             readyServer->close();
@@ -1844,7 +1844,7 @@ static int runShell(int argc, char *argv[])
                         .arg(target.rect.y())
                         .arg(target.rect.width())
                         .arg(target.rect.height());
-                qDebug() << "[genie] running grim" << grimArg << "->" << png;
+                qDebug() << "[warp] running grim" << grimArg << "->" << png;
                 sh->start("grim", { "-g", grimArg, png });
             });
             q->start("swaymsg", { "-t", "get_tree", "-r" });
@@ -2064,7 +2064,7 @@ static int runShell(int argc, char *argv[])
             (focusedTitle == "Files" ||
              focusedTitle == "Apokolips Settings");
         const bool internalOverlay =
-            id == "apokolips-genie" ||
+            id == "apokolips-warp" ||
             id == "apokolips-glyph" ||
             id == "apokolips-snap" ||
             id == "apokolips-clipboard";
@@ -2847,20 +2847,20 @@ static int runShell(int argc, char *argv[])
             warm, &QProcess::deleteLater);
     }
 
-    // ---- Clear stale genie state from any previous shell session ----
+    // ---- Clear stale warp state from any previous shell session ----
     // Any conIds saved before this process started are dead — sway
     // assigns new IDs at every boot. Leaving them in caused: dock
     // click plays a stale reverse animation, then fails to restore
     // the (long-gone) window. Wipe on startup.
     {
-        QFile::remove("/tmp/apokolips-genie-state.json");
+        QFile::remove("/tmp/apokolips-warp-state.json");
         QDir tmp(QDir::tempPath());
         for (const QString &f :
-             tmp.entryList({ "apokolips-genie-*.png",
-                             "genie-*.png" },
+             tmp.entryList({ "apokolips-warp-*.png",
+                             "warp-*.png" },
                            QDir::Files))
             QFile::remove(tmp.filePath(f));
-        qInfo() << "[genie] state wiped on startup";
+        qInfo() << "[warp] state wiped on startup";
     }
 
     // ---- Clean-slate reload: kill leftover app processes ----
@@ -2904,7 +2904,7 @@ static int runShell(int argc, char *argv[])
         QTimer *pruneTimer = new QTimer(root);
         pruneTimer->setInterval(5000);
         QObject::connect(pruneTimer, &QTimer::timeout, []() {
-            pruneStaleGenieState();
+            pruneStaleWarpState();
             if (!animatorDaemonRunning()) {
                 QProcess::startDetached(
                     QCoreApplication::applicationFilePath(),
@@ -3962,8 +3962,8 @@ int main(int argc, char *argv[])
 
         // Parse before QApplication so Qt cannot consume custom options.
         QApplication app(argc, argv);
-        // Reuse the existing Genie overlay app_id and its Sway rules.
-        app.setDesktopFileName("apokolips-genie");
+        // Reuse the existing Warp overlay app_id and its Sway rules.
+        app.setDesktopFileName("apokolips-warp");
 
         auto *suck = new SuckOverlay(
             imagePath, QRect(x, y, w, h), QPoint(dx, dy),
@@ -3975,9 +3975,9 @@ int main(int argc, char *argv[])
     if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--thanos") {
         QApplication app(argc, argv);
         // Same sway app_id as the other overlays so the
-        // for_window [app_id="apokolips-genie"] rules match —
+        // for_window [app_id="apokolips-warp"] rules match —
         // floating, border none, full-screen, top of stack.
-        app.setDesktopFileName("apokolips-genie");
+        app.setDesktopFileName("apokolips-warp");
         const QString png = QString::fromLocal8Bit(argv[2]);
         QRect startRect(QString::fromLocal8Bit(argv[3]).toInt(),
                         QString::fromLocal8Bit(argv[4]).toInt(),
@@ -4050,8 +4050,8 @@ int main(int argc, char *argv[])
 
         // Parse before QApplication so Qt cannot consume custom options.
         QApplication app(argc, argv);
-        // Reuse the existing Genie overlay app_id and its Sway rules.
-        app.setDesktopFileName("apokolips-genie");
+        // Reuse the existing Warp overlay app_id and its Sway rules.
+        app.setDesktopFileName("apokolips-warp");
 
         auto *scale = new ScaleOverlay(
             imagePath, QRect(x, y, w, h), QPoint(dx, dy),
@@ -4083,13 +4083,13 @@ int main(int argc, char *argv[])
             else if (arg == "--ready-sock" && i + 1 < argc)
                 readySock = QString::fromLocal8Bit(argv[++i]);
         }
-        GenieMeshOverlay *o = new GenieMeshOverlay(
+        MagicCarpetOverlay *o = new MagicCarpetOverlay(
             imagePath, start, dock, reverse, durationMs, readySock);
         o->show();
         return app.exec();
     }
 
-    if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--genie") {
+    if (argc >= 9 && QString::fromLocal8Bit(argv[1]) == "--warp") {
         const QString imagePath = QString::fromLocal8Bit(argv[2]);
         const QRect start(
             QString::fromLocal8Bit(argv[3]).toInt(),
@@ -4125,9 +4125,9 @@ int main(int argc, char *argv[])
         }
 
         QApplication app(argc, argv);
-        app.setDesktopFileName("apokolips-genie");
+        app.setDesktopFileName("apokolips-warp");
 
-        auto *g = new GenieOverlay(
+        auto *g = new WarpOverlay(
             imagePath, start, dock, reverse, durationMs, readySock);
         g->show();
         return app.exec();
