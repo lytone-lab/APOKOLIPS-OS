@@ -130,31 +130,33 @@ protected:
         }
 
         QRectF ncRect(rect());
-        StyleRenderer::drawPanel(p, ncRect, 0, m_theme,
-                                 int(230 * m_slide));
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        if (cfg.notifStyle == 0) { // Glass
+            StyleRenderer::drawPanel(p, ncRect, 0, m_theme,
+                                     int(230 * m_slide));
 
-        // Glassy vertical gradient — the panel catches light
-        // from above, sits in slight shade at the bottom.
-        QLinearGradient glass(0, 0, 0, height());
-        glass.setColorAt(0.00, QColor(255, 255, 255,
-                                      int(14 * m_slide)));
-        glass.setColorAt(0.55, QColor(255, 255, 255, 0));
-        glass.setColorAt(1.00, QColor(0, 0, 0,
-                                      int(22 * m_slide)));
-        p.fillRect(rect(), glass);
+            QLinearGradient glass(0, 0, 0, height());
+            glass.setColorAt(0.00, QColor(255, 255, 255, int(14 * m_slide)));
+            glass.setColorAt(0.55, QColor(255, 255, 255, 0));
+            glass.setColorAt(1.00, QColor(0, 0, 0, int(22 * m_slide)));
+            p.fillRect(rect(), glass);
 
-        // Bright soft edge on the left — the light coming
-        // through the panel from the desktop behind it.
-        QLinearGradient edgeGrad(0, 0, 6, 0);
-        edgeGrad.setColorAt(0.0, QColor(255, 255, 255,
-                                        int(90 * m_slide)));
-        edgeGrad.setColorAt(1.0, QColor(255, 255, 255, 0));
-        p.fillRect(QRect(0, 0, 6, height()), edgeGrad);
+            QLinearGradient edgeGrad(0, 0, 6, 0);
+            edgeGrad.setColorAt(0.0, QColor(255, 255, 255, int(90 * m_slide)));
+            edgeGrad.setColorAt(1.0, QColor(255, 255, 255, 0));
+            p.fillRect(QRect(0, 0, 6, height()), edgeGrad);
 
-        QColor edge = m_theme.chromeBorder;
-        edge.setAlpha(int(230 * m_slide));
-        p.setPen(QPen(edge, 1));
-        p.drawLine(0, 0, 0, height());
+            QColor edge = m_theme.chromeBorder;
+            edge.setAlpha(int(230 * m_slide));
+            p.setPen(QPen(edge, 1));
+            p.drawLine(0, 0, 0, height());
+        } else { // Solid
+            p.fillRect(rect(), m_theme.chromeBg);
+            QColor edge = m_theme.chromeBorder;
+            edge.setAlpha(int(230 * m_slide));
+            p.setPen(QPen(edge, 1));
+            p.drawRect(rect().adjusted(0, 0, -1, -1));
+        }
     }
 
 private:
@@ -171,7 +173,10 @@ private:
         }
         int offX = int(width() * (1.0 - m_slide));
         if (QWidget *par = parentWidget()) {
-            move(par->width() - width() + offX, 0);
+            const auto &cfg = VisualConfigManager::instance().cfg();
+            bool isLeft = (cfg.notifPosition == 1);
+            int x = isLeft ? -offX : par->width() - width() + offX;
+            move(x, 0);
             setFixedHeight(par->height());
         }
         update();
@@ -185,9 +190,15 @@ private:
         card->setObjectName("notifCard");
         card->setAttribute(Qt::WA_StyledBackground, true);
         card->setAttribute(Qt::WA_Hover, true);
+        const auto &cfg = VisualConfigManager::instance().cfg();
         QColor cardTop = m_theme.chromeBg.lighter(120);
         QColor cardBot = m_theme.chromeBg.lighter(105);
         QColor hoverBg = m_theme.chromeBg.lighter(135);
+        if (cfg.notifStyle == 1) { // Solid
+            cardTop = m_theme.chromeBg;
+            cardBot = m_theme.chromeBg;
+            hoverBg = m_theme.chromeBg.lighter(115);
+        }
         QColor inner   = m_theme.chromeBorder;
         inner.setAlpha(70);
         // Scope the stylesheet to the card widget itself
@@ -371,6 +382,8 @@ private:
         m_cardsLayout->setContentsMargins(0, 0, 0, 0);
         m_cardsLayout->setSpacing(14);
         outer->addWidget(holder);
+        outer->addStretch(1);
+        outer->addStretch(1); // Always stack from top
 
         // Empty state
         m_emptyLabel = new QLabel("No new notifications");

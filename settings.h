@@ -9923,6 +9923,75 @@ private:
 
         v->addWidget(Sigil::sectionTitle("Notifications"));
 
+        // ---- POSITION & STYLE card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
+            cv->addWidget(Sigil::groupLabel("POSITION & STYLE"));
+            
+            auto &vc = VisualConfigManager::instance().cfg();
+            
+            // Position buttons
+            QWidget *posRow = new QWidget;
+            QHBoxLayout *ph = new QHBoxLayout(posRow);
+            ph->setContentsMargins(0, 0, 0, 0);
+            ph->setSpacing(8);
+            
+            QButtonGroup *posGrp = new QButtonGroup(posRow);
+            posGrp->setExclusive(true);
+            const QStringList posNames = {"Right Side", "Left Side"};
+            for (int i = 0; i < 2; ++i) {
+                QPushButton *b = new QPushButton(posNames[i]);
+                b->setCheckable(true);
+                b->setChecked(vc.notifPosition == i);
+                b->setCursor(Qt::PointingHandCursor);
+                b->setMinimumHeight(32);
+                b->setStyleSheet(
+                    "QPushButton { background: rgba(255,255,255,20); border: 1px solid rgba(255,255,255,40); border-radius: 8px; color: rgb(240,237,232); font-size: 12px; padding: 0 10px; }"
+                    "QPushButton:checked { background: rgba(168,50,50,220); border: 1px solid rgba(168,50,50,255); }");
+                posGrp->addButton(b, i);
+                ph->addWidget(b);
+            }
+            ph->addStretch();
+            cv->addWidget(posRow);
+            
+            // Style buttons
+            QWidget *styleRow = new QWidget;
+            QHBoxLayout *sh = new QHBoxLayout(styleRow);
+            sh->setContentsMargins(0, 0, 0, 0);
+            sh->setSpacing(8);
+            
+            QButtonGroup *styleGrp = new QButtonGroup(styleRow);
+            styleGrp->setExclusive(true);
+            const QStringList styleNames = {"Glass", "Solid"};
+            for (int i = 0; i < 2; ++i) {
+                QPushButton *b = new QPushButton(styleNames[i]);
+                b->setCheckable(true);
+                b->setChecked(vc.notifStyle == i);
+                b->setCursor(Qt::PointingHandCursor);
+                b->setMinimumHeight(32);
+                b->setStyleSheet(
+                    "QPushButton { background: rgba(255,255,255,20); border: 1px solid rgba(255,255,255,40); border-radius: 8px; color: rgb(240,237,232); font-size: 12px; padding: 0 10px; }"
+                    "QPushButton:checked { background: rgba(168,50,50,220); border: 1px solid rgba(168,50,50,255); }");
+                styleGrp->addButton(b, i);
+                sh->addWidget(b);
+            }
+            sh->addStretch();
+            cv->addWidget(styleRow);
+            
+            // Connections
+            QObject::connect(posGrp, &QButtonGroup::idClicked, [](int id) {
+                VisualConfigManager::instance().setAndSave([id](VisualConfig &c) { c.notifPosition = id; });
+            });
+            QObject::connect(styleGrp, &QButtonGroup::idClicked, [](int id) {
+                VisualConfigManager::instance().setAndSave([id](VisualConfig &c) { c.notifStyle = id; });
+            });
+            
+            v->addWidget(c);
+        }
+
         auto &vc = VisualConfigManager::instance().cfg();
 
         // ---- Notifications card ----

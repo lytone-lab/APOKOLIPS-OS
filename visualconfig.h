@@ -52,6 +52,9 @@ struct VisualConfig {
     bool   soundNotify = true;
     bool   soundStartup = true;
     int    soundVolume = 80;
+    // Notifications (Category 8)
+    int    notifPosition = 0; // 0=Right, 1=Left
+    int    notifStyle = 0;    // 0=glass, 1=solid
     // Per-app chrome overrides. Key = "apokolips-<name>";
     // value = { chromeStyle: "system|flat|glass|solid",
     //           trafficSide: "left|right",
@@ -561,6 +564,10 @@ public:
             m_cfg.soundStartup = o["soundStartup"].toBool(true);
         if (o.contains("soundVolume"))
             m_cfg.soundVolume = o["soundVolume"].toInt(80);
+        if (o.contains("notifPosition"))
+            m_cfg.notifPosition = o["notifPosition"].toInt(0);
+        if (o.contains("notifStyle"))
+            m_cfg.notifStyle = o["notifStyle"].toInt(0);
         if (o.contains("wallpaperParallax"))
             m_cfg.wallpaperParallax = o["wallpaperParallax"].toBool(true);
         if (o.contains("sigilAccent"))
@@ -838,6 +845,8 @@ public:
         o["soundNotify"]          = m_cfg.soundNotify;
         o["soundStartup"]         = m_cfg.soundStartup;
         o["soundVolume"]          = m_cfg.soundVolume;
+        o["notifPosition"]        = m_cfg.notifPosition;
+        o["notifStyle"]           = m_cfg.notifStyle;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
         o["clock24Hour"]         = m_cfg.clock24Hour;
