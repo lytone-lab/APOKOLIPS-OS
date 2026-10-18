@@ -218,9 +218,10 @@ protected:
 
         // Draw the rounded body directly (not via clip) so the outer
         // antialiased edge blends to the wallpaper, not to black.
+        const auto &vc = VisualConfigManager::instance().cfg();
         QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
         QPainterPath full;
-        full.addRoundedRect(body, 14, 14);
+        full.addRoundedRect(body, vc.windowRadius, vc.windowRadius);
 
         p.fillPath(full, Sigil::contentBg());
 
@@ -236,14 +237,14 @@ protected:
         // Header strip — clipped to rounded corners
         p.save();
         p.setClipPath(full);
-        p.fillRect(QRect(0, 0, width(), 42), Sigil::headerBg());
+        p.fillRect(QRect(0, 0, width(), vc.windowHeaderHeight), Sigil::headerBg());
         p.restore();
 
         // Separators
         p.setPen(QPen(Sigil::border(), 1));
-        p.drawLine(0, 42, width(), 42);
+        p.drawLine(0, vc.windowHeaderHeight, width(), vc.windowHeaderHeight);
         if (m_sidebar)
-            p.drawLine(m_sidebar->width(), 42,
+            p.drawLine(m_sidebar->width(), vc.windowHeaderHeight,
                        m_sidebar->width(), height() - 1);
 
         // --- AA saturation: stroke the rounded outline with opaque
@@ -810,6 +811,63 @@ private:
             cv->addLayout(row);
 
             v->addWidget(c);
+
+        // ---- WINDOW CHROME card (Category 1) ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
+            cv->addWidget(Sigil::groupLabel("WINDOW CHROME"));
+
+            auto addChromeSlider = [&](const QString &title, const QString &sub,
+                                     int min, int max, int val,
+                                     std::function<void(VisualConfig &, int)> onSave) {
+                QWidget *row = new QWidget;
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(6);
+                QHBoxLayout *top = new QHBoxLayout;
+                QLabel *t = new QLabel(title);
+                t->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+                QLabel *vLbl = new QLabel(QString::number(val));
+                vLbl->setStyleSheet(QString("color: %1; font-size: 12px; background: transparent;").arg(Sigil::textSecondary().name()));
+                vLbl->setMinimumWidth(40);
+                vLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                top->addWidget(t); top->addStretch(); top->addWidget(vLbl);
+                rv->addLayout(top);
+
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(min, max);
+                sl->setValue(val);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
+                    "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal { background: rgb(168,50,50); border-radius: 2px; }");
+                QObject::connect(sl, &QSlider::valueChanged, [this, vLbl, onSave](int x) {
+                    vLbl->setText(QString::number(x));
+                    VisualConfigManager::instance().setAndSave([x, onSave](VisualConfig &c) {
+                        onSave(c, x);
+                    });
+                    this->updateWindowChrome();
+                });
+                rv->addWidget(sl);
+
+                QLabel *s = new QLabel(sub);
+                s->setStyleSheet(QString("color: %1; font-size: 11px; background: transparent;").arg(Sigil::textDim().name()));
+                rv->addWidget(s);
+                cv->addWidget(row);
+            };
+
+            addChromeSlider("Corner radius", "Window rounding (px)", 0, 24, vc.windowRadius,
+                          [](VisualConfig &c, int x) { c.windowRadius = x; });
+            addChromeSlider("Header height", "Title bar height (px)", 24, 50, vc.windowHeaderHeight,
+                          [](VisualConfig &c, int x) { c.windowHeaderHeight = x; });
+            addChromeSlider("Shadow depth", "Window drop shadow (px)", 0, 40, vc.windowShadowDepth,
+                          [](VisualConfig &c, int x) { c.windowShadowDepth = x; });
+
+            v->addWidget(c);
+        }
 
         // ---- TRAFFIC LIGHTS card (Category 1) ----
         {
@@ -10132,6 +10190,34 @@ private:
             b->style()->polish(b);
             b->update();
         }
+    }
+
+    void updateWindowChrome() {
+        const auto &vc = VisualConfigManager::instance().cfg();
+        if (m_header) {
+            m_header->setFixedHeight(vc.windowHeaderHeight);
+            if (m_header->layout()) m_header->layout()->activate();
+        }
+        if (layout()) {
+            layout()->setContentsMargins(0, 0, 0, vc.windowRadius);
+        }
+        // Shadow
+        if (auto *shadow = qobject_cast<QGraphicsDropShadowEffect*>(graphicsEffect())) {
+            if (vc.windowShadowDepth > 0) {
+                shadow->setBlurRadius(vc.windowShadowDepth);
+                shadow->setOffset(0, vc.windowShadowDepth / 4.0);
+            } else {
+                setGraphicsEffect(nullptr);
+            }
+        } else if (vc.windowShadowDepth > 0) {
+            QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(this);
+            shadow->setBlurRadius(vc.windowShadowDepth);
+            shadow->setColor(QColor(0, 0, 0, 180));
+            shadow->setOffset(0, vc.windowShadowDepth / 4.0);
+            setGraphicsEffect(shadow);
+        }
+        updateGeometry();
+        update();
     }
 
     void updateTrafficLights() {
