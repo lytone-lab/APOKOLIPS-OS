@@ -38,6 +38,10 @@ struct VisualConfig {
     int    menuPadding     = 6;      // 2..16 px
     int    menuItemHeight  = 28;     // 20..44 px
     bool   menuBlurEnabled = true;   // ApoMenu pre-blur on/off
+    // Traffic Lights (Category 1)
+    int    trafficLightSize = 13;
+    int    trafficLightSpacing = 8;
+    bool   trafficLightHoverGlyphs = true;
     // Per-app chrome overrides. Key = "apokolips-<name>";
     // value = { chromeStyle: "system|flat|glass|solid",
     //           trafficSide: "left|right",
@@ -525,6 +529,12 @@ public:
             m_cfg.menuItemHeight = o["menuItemHeight"].toInt(28);
         if (o.contains("menuBlurEnabled"))
             m_cfg.menuBlurEnabled = o["menuBlurEnabled"].toBool(true);
+        if (o.contains("trafficLightSize"))
+            m_cfg.trafficLightSize = o["trafficLightSize"].toInt(13);
+        if (o.contains("trafficLightSpacing"))
+            m_cfg.trafficLightSpacing = o["trafficLightSpacing"].toInt(8);
+        if (o.contains("trafficLightHoverGlyphs"))
+            m_cfg.trafficLightHoverGlyphs = o["trafficLightHoverGlyphs"].toBool(true);
         if (o.contains("wallpaperParallax"))
             m_cfg.wallpaperParallax = o["wallpaperParallax"].toBool(true);
         if (o.contains("sigilAccent"))
@@ -791,6 +801,9 @@ public:
         o["menuPadding"]          = m_cfg.menuPadding;
         o["menuItemHeight"]       = m_cfg.menuItemHeight;
         o["menuBlurEnabled"]      = m_cfg.menuBlurEnabled;
+        o["trafficLightSize"]     = m_cfg.trafficLightSize;
+        o["trafficLightSpacing"]  = m_cfg.trafficLightSpacing;
+        o["trafficLightHoverGlyphs"] = m_cfg.trafficLightHoverGlyphs;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
         o["clock24Hour"]         = m_cfg.clock24Hour;

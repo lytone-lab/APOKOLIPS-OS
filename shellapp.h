@@ -127,13 +127,17 @@ protected:
                                      QPushButton  **maxBtnOut = nullptr)
     {
         QHBoxLayout *hdr = new QHBoxLayout;
+        const auto &vc = VisualConfigManager::instance().cfg();
+        hdr->setSpacing(vc.trafficLightSpacing);
+        
         // macOS-style hover glyphs: × − + appear on hover.
-        QPushButton *closeBtn = makeTrafficLight("#7a2b25", "#ff5f57",
-                                                 QString::fromUtf8("\xC3\x97"));
-        QPushButton *minBtn   = makeTrafficLight("#7a5b18", "#febc2e",
-                                                 QString::fromUtf8("\xE2\x88\x92"));
-        QPushButton *maxBtn   = makeTrafficLight("#155c1e", "#28c840",
-                                                 "+");
+        QString closeGlyph = vc.trafficLightHoverGlyphs ? QString::fromUtf8("\xC3\x97") : "";
+        QString minGlyph   = vc.trafficLightHoverGlyphs ? QString::fromUtf8("\xE2\x88\x92") : "";
+        QString maxGlyph   = vc.trafficLightHoverGlyphs ? "+" : "";
+        
+        QPushButton *closeBtn = makeTrafficLight("#7a2b25", "#ff5f57", closeGlyph, vc.trafficLightSize);
+        QPushButton *minBtn   = makeTrafficLight("#7a5b18", "#febc2e", minGlyph, vc.trafficLightSize);
+        QPushButton *maxBtn   = makeTrafficLight("#155c1e", "#28c840", maxGlyph, vc.trafficLightSize);
         QLabel *titleLabel = new QLabel(title);
         titleLabel->setStyleSheet(QString(
             "color: %1; font-size: 13px; font-weight: 600;"
@@ -185,7 +189,10 @@ protected:
                 // preferred size on the next event-loop tick so
                 // the window lands where the shell expects.
                 showNormal();
-                QTimer::singleShot(0, this, [this, preferred]() {
+                // 50ms delay lets Sway finish its Wayland resize
+                // before we request our custom geometry, preventing
+                // the flickering/glitching loop.
+                QTimer::singleShot(50, this, [this, preferred]() {
                     snapShellResize(this,
                         shellWindowRect(preferred, QPoint(), true));
                 });

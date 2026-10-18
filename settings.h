@@ -326,32 +326,50 @@ private:
         hh->addStretch();
 
         // macOS traffic lights: close / minimize / zoom
-        auto makeLight = [](const QString &idle, const QString &hover) {
-            QPushButton *b = new QPushButton;
-            b->setFixedSize(13, 13);
+        auto makeLight = [](const QString &idle, const QString &hover, const QString &glyph = "") {
+            QPushButton *b = new QPushButton(glyph);
+            const auto &vc = VisualConfigManager::instance().cfg();
+            b->setFixedSize(vc.trafficLightSize, vc.trafficLightSize);
             b->setCursor(Qt::PointingHandCursor);
             b->setStyleSheet(QString(
                 "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60); border-radius: 6px; }"
-                "QPushButton:hover { background: %2; }")
-                .arg(idle, hover));
+                "  border: 1px solid rgba(0,0,0,60);"
+                "  border-radius: %2px;"
+                "  color: transparent;"
+                "  font-size: %3px;"
+                "  font-weight: bold;"
+                "  padding: 0; }"
+                "QPushButton:hover { background: %4;"
+                "  color: rgba(0,0,0,180); }")
+                .arg(idle,
+                     QString::number(vc.trafficLightSize / 2),
+                     QString::number(qMax(9, vc.trafficLightSize - 3)),
+                     hover));
             return b;
         };
-        m_closeBtn = makeLight("#7a2b25", "#ff5f57");
-        QPushButton *minBtn = makeLight("#7a5b18", "#febc2e");
-        QPushButton *maxBtn = makeLight("#155c1e", "#28c840");
+        const auto &vc = VisualConfigManager::instance().cfg();
+        QString closeGlyph = vc.trafficLightHoverGlyphs ? QString::fromUtf8("\xC3\x97") : "";
+        QString minGlyph   = vc.trafficLightHoverGlyphs ? QString::fromUtf8("\xE2\x88\x92") : "";
+        QString maxGlyph   = vc.trafficLightHoverGlyphs ? "+" : "";
+
+        m_closeBtn = makeLight("#7a2b25", "#ff5f57", closeGlyph);
+        QPushButton *minBtn = makeLight("#7a5b18", "#febc2e", minGlyph);
+        QPushButton *maxBtn = makeLight("#155c1e", "#28c840", maxGlyph);
 
         QObject::connect(m_closeBtn, &QPushButton::clicked,
                          [this]() { shellCloseViaGenie(this); });
         QObject::connect(minBtn, &QPushButton::clicked,
                          []() { shellMinimizeFocusedWindow(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
-            // Cage supports client-side resize; use that for zoom.
+            // Use a static state tracker to avoid isFullScreen() desync on Wayland
             static bool zoomed = false;
-            if (zoomed)
-                setShellWindowGeometry(this, QSize(920, 620));
-            else
-                setGeometry(shellSafeArea());
+            if (zoomed) {
+                showNormal();
+                // Let Sway restore the floating geometry. Do NOT manually resize here,
+                // as fighting the compositor's restore causes a glitching loop.
+            } else {
+                showFullScreen();
+            }
             zoomed = !zoomed;
         });
 
@@ -359,7 +377,7 @@ private:
         hh->insertWidget(0, m_closeBtn);
         hh->insertWidget(1, minBtn);
         hh->insertWidget(2, maxBtn);
-        hh->insertSpacing(3, 8);
+        hh->insertSpacing(3, vc.trafficLightSpacing);
 
         // Right side: keep it clean, no close button
         m_minBtn = minBtn;
@@ -792,6 +810,138 @@ private:
             cv->addLayout(row);
 
             v->addWidget(c);
+
+        // ---- TRAFFIC LIGHTS card (Category 1) ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
+            cv->addWidget(Sigil::groupLabel("TRAFFIC LIGHTS"));
+
+            auto addTrafficSlider = [&](const QString &title, const QString &sub,
+                                     int min, int max, int val,
+                                     std::function<void(VisualConfig &, int)> onSave) {
+                QWidget *row = new QWidget;
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(6);
+                QHBoxLayout *top = new QHBoxLayout;
+                QLabel *t = new QLabel(title);
+                t->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+                QLabel *vLbl = new QLabel(QString::number(val));
+                vLbl->setStyleSheet(QString("color: %1; font-size: 12px; background: transparent;").arg(Sigil::textSecondary().name()));
+                vLbl->setMinimumWidth(40);
+                vLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                top->addWidget(t); top->addStretch(); top->addWidget(vLbl);
+                rv->addLayout(top);
+                
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(min, max);
+                sl->setValue(val);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
+                    "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal { background: rgb(168,50,50); border-radius: 2px; }");
+                QObject::connect(sl, &QSlider::valueChanged, [this, vLbl, onSave](int x) {
+                    vLbl->setText(QString::number(x));
+                    VisualConfigManager::instance().setAndSave([x, onSave](VisualConfig &c) {
+                        onSave(c, x);
+                    });
+                    this->updateTrafficLights();
+                });
+                rv->addWidget(sl);
+                
+                QLabel *s = new QLabel(sub);
+                s->setStyleSheet(QString("color: %1; font-size: 11px; background: transparent;").arg(Sigil::textDim().name()));
+                rv->addWidget(s);
+                cv->addWidget(row);
+            };
+
+            addTrafficSlider("Size", "Diameter of the buttons (px)", 10, 20, vc.trafficLightSize,
+                          [](VisualConfig &c, int x) { c.trafficLightSize = x; });
+            addTrafficSlider("Spacing", "Gap between buttons (px)", 0, 16, vc.trafficLightSpacing,
+                          [](VisualConfig &c, int x) { c.trafficLightSpacing = x; });
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Hover glyphs",
+                "Show × / − / + symbols when hovering",
+                vc.trafficLightHoverGlyphs,
+                [this](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.trafficLightHoverGlyphs = on; });
+                    this->updateTrafficLights();
+                }));
+
+            v->addWidget(c);
+        }
+
+
+        // ---- TRAFFIC LIGHTS card (Category 1) ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
+            cv->addWidget(Sigil::groupLabel("TRAFFIC LIGHTS"));
+
+            auto addTrafficSlider = [&](const QString &title, const QString &sub,
+                                     int min, int max, int val,
+                                     std::function<void(VisualConfig &, int)> onSave) {
+                QWidget *row = new QWidget;
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(6);
+                QHBoxLayout *top = new QHBoxLayout;
+                QLabel *t = new QLabel(title);
+                t->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+                QLabel *vLbl = new QLabel(QString::number(val));
+                vLbl->setStyleSheet(QString("color: %1; font-size: 12px; background: transparent;").arg(Sigil::textSecondary().name()));
+                vLbl->setMinimumWidth(40);
+                vLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                top->addWidget(t); top->addStretch(); top->addWidget(vLbl);
+                rv->addLayout(top);
+                
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(min, max);
+                sl->setValue(val);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
+                    "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal { background: rgb(168,50,50); border-radius: 2px; }");
+                QObject::connect(sl, &QSlider::valueChanged, [this, vLbl, onSave](int x) {
+                    vLbl->setText(QString::number(x));
+                    VisualConfigManager::instance().setAndSave([x, onSave](VisualConfig &c) {
+                        onSave(c, x);
+                    });
+                    this->updateTrafficLights();
+                });
+                rv->addWidget(sl);
+                
+                QLabel *s = new QLabel(sub);
+                s->setStyleSheet(QString("color: %1; font-size: 11px; background: transparent;").arg(Sigil::textDim().name()));
+                rv->addWidget(s);
+                cv->addWidget(row);
+            };
+
+            addTrafficSlider("Size", "Diameter of the buttons (px)", 10, 20, vc.trafficLightSize,
+                          [](VisualConfig &c, int x) { c.trafficLightSize = x; });
+            addTrafficSlider("Spacing", "Gap between buttons (px)", 0, 16, vc.trafficLightSpacing,
+                          [](VisualConfig &c, int x) { c.trafficLightSpacing = x; });
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Hover glyphs",
+                "Show × / − / + symbols when hovering",
+                vc.trafficLightHoverGlyphs,
+                [this](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.trafficLightHoverGlyphs = on; });
+                    this->updateTrafficLights();
+                }));
+
+            v->addWidget(c);
+        }
+
         }
 
         // ---- Transparency card ----
@@ -9915,6 +10065,42 @@ private:
             b->style()->unpolish(b);
             b->style()->polish(b);
             b->update();
+        }
+    }
+
+    void updateTrafficLights() {
+        const auto &vc = VisualConfigManager::instance().cfg();
+        auto updateBtn = [&](QPushButton *b, const QString &hover) {
+            if (!b) return;
+            b->setFixedSize(vc.trafficLightSize, vc.trafficLightSize);
+            b->setStyleSheet(QString(
+                "QPushButton { background: %1;"
+                "  border: 1px solid rgba(0,0,0,60);"
+                "  border-radius: %2px;"
+                "  color: transparent;"
+                "  font-size: %3px;"
+                "  font-weight: bold;"
+                "  padding: 0; }"
+                "QPushButton:hover { background: %4;"
+                "  color: rgba(0,0,0,180); }")
+                .arg(hover,
+                     QString::number(vc.trafficLightSize / 2),
+                     QString::number(qMax(9, vc.trafficLightSize - 3)),
+                     hover));
+            if (vc.trafficLightHoverGlyphs) {
+                if (hover == "#ff5f57") b->setText(QString::fromUtf8("\xC3\x97"));
+                else if (hover == "#febc2e") b->setText(QString::fromUtf8("\xE2\x88\x92"));
+                else if (hover == "#28c840") b->setText("+");
+            } else {
+                b->setText("");
+            }
+        };
+        updateBtn(m_closeBtn, "#ff5f57");
+        updateBtn(m_minBtn, "#febc2e");
+        updateBtn(m_maxBtn, "#28c840");
+        // Update spacing
+        if (auto *h = qobject_cast<QHBoxLayout*>(m_header->layout())) {
+            h->setSpacing(vc.trafficLightSpacing);
         }
     }
 
