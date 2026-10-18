@@ -877,70 +877,7 @@ private:
         }
 
 
-        // ---- TRAFFIC LIGHTS card (Category 1) ----
-        {
-            Sigil::Card *c = new Sigil::Card;
-            QVBoxLayout *cv = new QVBoxLayout(c);
-            cv->setContentsMargins(20, 18, 20, 18);
-            cv->setSpacing(18);
-            cv->addWidget(Sigil::groupLabel("TRAFFIC LIGHTS"));
-
-            auto addTrafficSlider = [&](const QString &title, const QString &sub,
-                                     int min, int max, int val,
-                                     std::function<void(VisualConfig &, int)> onSave) {
-                QWidget *row = new QWidget;
-                QVBoxLayout *rv = new QVBoxLayout(row);
-                rv->setContentsMargins(0, 0, 0, 0);
-                rv->setSpacing(6);
-                QHBoxLayout *top = new QHBoxLayout;
-                QLabel *t = new QLabel(title);
-                t->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
-                QLabel *vLbl = new QLabel(QString::number(val));
-                vLbl->setStyleSheet(QString("color: %1; font-size: 12px; background: transparent;").arg(Sigil::textSecondary().name()));
-                vLbl->setMinimumWidth(40);
-                vLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-                top->addWidget(t); top->addStretch(); top->addWidget(vLbl);
-                rv->addLayout(top);
-                
-                QSlider *sl = new QSlider(Qt::Horizontal);
-                sl->setRange(min, max);
-                sl->setValue(val);
-                sl->setStyleSheet(
-                    "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
-                    "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
-                    "QSlider::sub-page:horizontal { background: rgb(168,50,50); border-radius: 2px; }");
-                QObject::connect(sl, &QSlider::valueChanged, [this, vLbl, onSave](int x) {
-                    vLbl->setText(QString::number(x));
-                    VisualConfigManager::instance().setAndSave([x, onSave](VisualConfig &c) {
-                        onSave(c, x);
-                    });
-                    this->updateTrafficLights();
-                });
-                rv->addWidget(sl);
-                
-                QLabel *s = new QLabel(sub);
-                s->setStyleSheet(QString("color: %1; font-size: 11px; background: transparent;").arg(Sigil::textDim().name()));
-                rv->addWidget(s);
-                cv->addWidget(row);
-            };
-
-            addTrafficSlider("Size", "Diameter of the buttons (px)", 10, 20, vc.trafficLightSize,
-                          [](VisualConfig &c, int x) { c.trafficLightSize = x; });
-            addTrafficSlider("Spacing", "Gap between buttons (px)", 0, 16, vc.trafficLightSpacing,
-                          [](VisualConfig &c, int x) { c.trafficLightSpacing = x; });
-
-            cv->addWidget(Sigil::makeToggleRow(
-                "Hover glyphs",
-                "Show × / − / + symbols when hovering",
-                vc.trafficLightHoverGlyphs,
-                [this](bool on) {
-                    VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.trafficLightHoverGlyphs = on; });
-                    this->updateTrafficLights();
-                }));
-
-            v->addWidget(c);
-        }
+        
 
         }
 
