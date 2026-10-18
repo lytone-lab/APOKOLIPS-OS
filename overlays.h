@@ -943,9 +943,42 @@ public:
         setFocusPolicy(Qt::StrongFocus);
 
         QProcess p;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        QString sock = qEnvironmentVariable("SWAYSOCK");
+        if (sock.isEmpty() || !QFile::exists(sock)) {
+            QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
+            if (runtime.isEmpty()) runtime = "/run/user/1000";
+            QDir dir(runtime);
+            for (const QString &f : dir.entryList({"sway-ipc.*.sock"}, QDir::Files)) {
+                sock = dir.filePath(f);
+                break;
+            }
+        }
+        if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+        
+        // Ensure WAYLAND_DISPLAY is set so grim can connect
+        if (env.value("WAYLAND_DISPLAY").isEmpty()) {
+            env.insert("WAYLAND_DISPLAY", "wayland-1");
+        }
+        
+        p.setProcessEnvironment(env);
         p.start("grim", { "-" });
         p.waitForFinished(2000);
-        m_frozen.loadFromData(p.readAllStandardOutput());
+        QByteArray out = p.readAllStandardOutput();
+        QByteArray err = p.readAllStandardError();
+        m_frozen.loadFromData(out);
+        
+        QFile log("/tmp/glyph-debug.log");
+        if (log.open(QIODevice::WriteOnly)) {
+            QTextStream ts(&log);
+            ts << "WAYLAND_DISPLAY=" << env.value("WAYLAND_DISPLAY") << "\n";
+            ts << "SWAYSOCK=" << env.value("SWAYSOCK") << "\n";
+            ts << "grim exit=" << p.exitCode() << "\n";
+            ts << "grim stderr=" << QString::fromUtf8(err) << "\n";
+            ts << "stdout size=" << out.size() << "\n";
+            ts << "m_frozen null=" << m_frozen.isNull() << "\n";
+            ts << "m_frozen size=" << m_frozen.width() << "x" << m_frozen.height() << "\n";
+        }
 
         if (QScreen *s = QGuiApplication::primaryScreen())
             setGeometry(s->geometry());
@@ -1035,7 +1068,7 @@ private:
 
         m_toolbar = new QWidget(nullptr,
             Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint
-            | Qt::Tool);
+            | Qt::Tool | Qt::BypassWindowManagerHint);
         m_toolbar->setAttribute(Qt::WA_DeleteOnClose);
         m_toolbar->setAttribute(Qt::WA_TranslucentBackground, true);
         m_toolbar->setAttribute(Qt::WA_StyledBackground, true);
@@ -1053,8 +1086,8 @@ private:
             "  background: transparent;"
             "  color: rgb(240, 237, 232);"
             "  border: none;"
-            "  border-radius: 7px;"
-            "  padding: 6px 16px;"
+            "  border-radius: 6px;"
+            "  padding: 4px 12px;"
             "  font-size: 12px;"
             "}"
             "QPushButton:hover { background: rgba(255, 255, 255, 40); }"
@@ -1068,6 +1101,7 @@ private:
         outerWrap->setContentsMargins(0, 0, 0, 0);
         outerWrap->setSpacing(0);
         outerWrap->addWidget(inner);
+        outerWrap->setSizeConstraint(QLayout::SetFixedSize); // Prevent full-screen stretching
 
         QHBoxLayout *h = new QHBoxLayout(inner);
         h->setContentsMargins(6, 6, 6, 6);
@@ -1077,16 +1111,16 @@ private:
         QPushButton *save = new QPushButton("Save");
         save->setObjectName("save");
         save->setCursor(Qt::PointingHandCursor);
-        save->setMinimumWidth(72);
-        save->setFixedHeight(28);
+        save->setMinimumWidth(64);
+        save->setFixedHeight(24);
         QPushButton *copy = new QPushButton("Copy");
         copy->setCursor(Qt::PointingHandCursor);
-        copy->setMinimumWidth(72);
-        copy->setFixedHeight(28);
+        copy->setMinimumWidth(64);
+        copy->setFixedHeight(24);
         QPushButton *cancel = new QPushButton("Cancel");
         cancel->setCursor(Qt::PointingHandCursor);
-        cancel->setMinimumWidth(72);
-        cancel->setFixedHeight(28);
+        cancel->setMinimumWidth(64);
+        cancel->setFixedHeight(24);
 
         h->addWidget(save);
         h->addWidget(copy);
@@ -1152,6 +1186,7 @@ private:
 
         QPoint g = mapToGlobal(QPoint(tx, ty));
         m_toolbar->move(g);
+        m_toolbar->adjustSize();
         m_toolbar->show();
         m_toolbar->resize(want);
         m_toolbar->raise();
