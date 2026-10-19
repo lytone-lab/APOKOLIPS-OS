@@ -4257,35 +4257,19 @@ int main(int argc, char *argv[])
     }
 
     if (argc >= 2 && QString(argv[1]) == "--lock") {
-        QCoreApplication app(argc, argv);
-        Q_UNUSED(app);
+        // Native Sigil lock screen (Session 1 — visual only).
+        // Replaces gtklock. Esc dismisses; auth in Session 2.
+        QApplication app(argc, argv);
+        app.setApplicationName("Apokolips Lock");
+        app.setDesktopFileName("apokolips-lock");
 
         VisualConfigManager::instance().load();
-        auto &cfg = VisualConfigManager::instance().cfg();
+        ThemeManager::instance().setTheme(
+            WallpaperConfig::themeForId(WallpaperConfig::loadId()));
 
-        QStringList args;
-        args << "-g" << "Adwaita";
-        QString cssPath = QDir::homePath() + "/.config/gtklock/style.css";
-        if (QFile::exists(cssPath))
-            args << "-s" << cssPath;
-
-        if (cfg.lockShowClock)
-            args << "-t" << (cfg.clock24Hour ? "%H:%M" : "%I:%M %p");
-        else
-            args << "-t" << " ";
-        if (cfg.lockShowDate)
-            args << "-D" << "%A, %d %B";
-        else
-            args << "-D" << " ";
-
-        if (!cfg.lockWallpaper.isEmpty()
-            && QFile::exists(cfg.lockWallpaper))
-            args << "-b" << cfg.lockWallpaper;
-
-        args << "-H" << "-T" << "4";
-
-        QProcess::startDetached("gtklock", args);
-        return 0;
+        LockScreen w;
+        w.show();
+        return app.exec();
     }
 
     // ---- Mesh warp proof of concept (temporary) ----
