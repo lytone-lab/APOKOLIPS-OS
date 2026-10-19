@@ -2464,23 +2464,29 @@ static int runShell(int argc, char *argv[])
         QAction *a = viewMenu->addAction("Toggle Desktop Widgets");
         QObject::connect(a, &QAction::triggered, [root]() {
             // Master switch for every floating widget card.
-            //
-            // NOTE: we do NOT call save() here. VisualConfigManager's
-            // save() re-reads the config from disk before writing,
-            // which would overwrite our in-memory change with the
-            // stale on-disk value. The config watcher then fires on
-            // mtime change and re-shows the cards — the "flash"
-            // bug. Keeping it in-memory only, the watcher never
-            // fires, so nothing fights the toggle.
-            auto &cfg = VisualConfigManager::instance().cfg();
-            bool nowVisible = !cfg.widgetsVisible;
-            cfg.widgetsVisible = nowVisible;
+            // Persists via setAndSave so the state survives reload
+            // and stays in sync with the Settings master toggle.
+            bool nowVisible = !VisualConfigManager::instance()
+                                   .cfg().widgetsVisible;
+            VisualConfigManager::instance().setAndSave(
+                [nowVisible](VisualConfig &c) {
+                    c.widgetsVisible = nowVisible;
+                    // Master ON also clears any per-widget "hidden"
+                    // entries — otherwise widgets hidden individually
+                    // (right-click "Hide widget") can never be
+                    // restored through this toggle, only via Settings.
+                    if (nowVisible) c.widgetVisibility.clear();
+                });
+
+            // applyVisibility respects per-widget widgetVisibility
+            // — a card hidden individually stays hidden even when
+            // the master toggle is turned back on.
             int shown = 0, hidden = 0;
             for (QWidget *w : root->findChildren<QWidget *>()) {
                 if (auto *card = dynamic_cast<WidgetCard *>(w)) {
-                    card->setVisible(nowVisible);
-                    if (nowVisible) card->raise();
-                    if (nowVisible) ++shown; else ++hidden;
+                    card->applyVisibility();
+                    if (card->isVisible()) { card->raise(); ++shown; }
+                    else ++hidden;
                 }
             }
             qInfo() << "[toggle] -> visible =" << nowVisible
