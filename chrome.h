@@ -1087,6 +1087,20 @@ private:
         int offset = index;
         QObject::connect(tile, &QPushButton::clicked,
                          [this, appName, offset]() {
+            // External apps (glyph = "ext:<desktop-base>")
+            for (const auto &e : appRegistry()) {
+                if (appName == QLatin1String(e.label)) {
+                    QString g = QString::fromUtf8(e.glyph);
+                    if (g.startsWith("ext:")) {
+                        QProcess::startDetached("gio", {
+                            "launch",
+                            "/usr/share/applications/"
+                            + g.mid(4) + ".desktop" });
+                        return;
+                    }
+                    break;
+                }
+            }
             // Launchpad must never spawn a new shell process. If a
             // Launchpad tile somehow ends up in the grid, toggle the
             // existing launcher instead. Closes the orphan-shell /

@@ -634,8 +634,73 @@ static void drawGlyph(QPainter &p, const QRectF &r, const QColor &) {
     p.drawPolygon(caret);
 }
 
+static QString externalDesktopFor(const QString &label) {
+    // Label → .desktop basename (in /usr/share/applications/).
+    // Kept here (not in appRegistry) because drawFor is compiled
+    // before appRegistry is declared in this header.
+    if (label == "LibreOffice Writer") return "libreoffice-writer";
+    if (label == "LibreOffice Calc")   return "libreoffice-calc";
+    if (label == "Document Viewer")    return "org.gnome.Evince";
+    if (label == "VLC")                return "vlc";
+    if (label == "GParted")            return "gparted";
+    if (label == "Character Map")      return "gucharmap";
+    if (label == "Epiphany")           return "org.gnome.Epiphany";
+    return QString();
+}
+
+static QString readIconName(const QString &desktopBase) {
+    // Read Icon= line from /usr/share/applications/<base>.desktop
+    QString path = "/usr/share/applications/" + desktopBase + ".desktop";
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return QString();
+    QTextStream ts(&f);
+    QString line;
+    while (ts.readLineInto(&line)) {
+        if (line.startsWith("Icon="))
+            return line.mid(5).trimmed();
+    }
+    return QString();
+}
+
+static void drawExternal(QPainter &p, const QRectF &r, const QColor &,
+                         const QString &desktopBase) {
+    p.setRenderHint(QPainter::Antialiasing, true);
+    // Neutral graphite chip so third-party logos (usually colorful)
+    // remain legible on top.
+    appTile(p, r, QColor(48, 48, 56), QColor(28, 28, 36));
+
+    QString iconName = readIconName(desktopBase);
+    if (iconName.isEmpty()) iconName = "application-x-executable";
+
+    QIcon icon = QIcon::fromTheme(iconName);
+    if (icon.isNull()) {
+        // Some apps provide an absolute path instead of a theme name
+        QPixmap raw(iconName);
+        if (!raw.isNull()) icon = QIcon(raw);
+    }
+    if (icon.isNull()) return;
+
+    int sz = int(r.width() * 0.55);
+    QPixmap pm = icon.pixmap(QSize(sz, sz));
+    if (pm.isNull()) return;
+
+    QRectF dst(r.center().x() - pm.width() / 2.0,
+               r.center().y() - pm.height() / 2.0,
+               pm.width(), pm.height());
+    p.drawPixmap(dst, pm, QRectF(pm.rect()));
+}
+
 static void drawFor(const QString &name, QPainter &p,
                     const QRectF &r, const QColor &c) {
+    // External apps — resolved via externalDesktopFor(label),
+    // not via appRegistry() (declared later in this header).
+    {
+        QString ext = externalDesktopFor(name);
+        if (!ext.isEmpty()) {
+            drawExternal(p, r, c, ext);
+            return;
+        }
+    }
     if (name == "Finder")         drawFinder(p, r, c);
     else if (name == "Launchpad") drawLaunchpad(p, r, c);
     else if (name == "Omega")     drawOmega(p, r, c);
@@ -760,6 +825,17 @@ static const QVector<AppEntry> &appRegistry() {
         { "mymach",      "myMach",    "\xE2\x9A\x99",       true,  true  },
         { "boombube",    "BoomTube",  "\xE2\x96\xB6",       true,  true  },
         { "mosaic",      "Mosaic",    "\xF0\x9F\x8E\xA8",  true,  true  },
+        // ---- External apps (added 2026-10-19) ----
+        // glyph = "ext:<desktop-base>" — drawExternal loads the real
+        // system icon from /usr/share/applications/<base>.desktop.
+        // Click handler routes to `gio launch`.
+        { "ext-lo-writer", "LibreOffice Writer", "ext:libreoffice-writer", false, true },
+        { "ext-lo-calc",   "LibreOffice Calc",   "ext:libreoffice-calc",   false, true },
+        { "ext-evince",    "Document Viewer",    "ext:org.gnome.Evince",   false, true },
+        { "ext-vlc",       "VLC",                "ext:vlc",                false, true },
+        { "ext-gparted",   "GParted",            "ext:gparted",            false, true },
+        { "ext-gucharmap", "Character Map",      "ext:gucharmap",          false, true },
+        { "ext-epiphany",  "Epiphany",           "ext:org.gnome.Epiphany", false, true },
         { "notes",       "Notes",     "\xF0\x9F\x93\x9D",  true,  true  },
         { "mail",        "Mail",      "\xE2\x9C\x89",       true,  true  },
         { "settings",    "Settings",  "\xE2\x9A\x99",       true,  true  },
