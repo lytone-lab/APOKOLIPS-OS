@@ -7680,43 +7680,6 @@ private:
         return page;
     }
 
-    static void launchGtklock() {
-        auto &cfg = VisualConfigManager::instance().cfg();
-
-        QStringList args;
-
-        // Pin GTK theme — avoids a slow theme scan on every lock
-        args << "-g" << "Adwaita";
-
-        // Load our Sigil stylesheet if it exists
-        QString cssPath = QDir::homePath() + "/.config/gtklock/style.css";
-        if (QFile::exists(cssPath))
-            args << "-s" << cssPath;
-
-        // Time / date format
-        if (cfg.lockShowClock) {
-            args << "-t" << (cfg.clock24Hour ? "%H:%M" : "%I:%M %p");
-        } else {
-            args << "-t" << " ";
-        }
-        if (cfg.lockShowDate) {
-            args << "-D" << "%A, %d %B";
-        } else {
-            args << "-D" << " ";
-        }
-
-        // Wallpaper background
-        if (!cfg.lockWallpaper.isEmpty()
-            && QFile::exists(cfg.lockWallpaper)) {
-            args << "-b" << cfg.lockWallpaper;
-        }
-
-        // Idle: hide the form until mouse/key moves
-        args << "-H" << "-T" << "4";
-
-        // Attach stdin (gtklock may need it via --daemonize)
-        QProcess::startDetached("gtklock", args);
-    }
 
     void applySwayidle() {
         auto &c = VisualConfigManager::instance().cfg();

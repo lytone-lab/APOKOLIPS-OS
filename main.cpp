@@ -2869,29 +2869,27 @@ static int runShell(int argc, char *argv[])
         // Apply timeouts from config on shell startup
         auto &c = VisualConfigManager::instance().cfg();
         if (c.screenOffTimeoutMin > 0 || c.sleepTimeoutMin > 0) {
+            // Kill any stale swayidle from a previous shell run so we
+            // don't stack multiple idle handlers (used to call gtklock).
+            QProcess::execute("pkill", { "-x", "swayidle" });
+
+            const QString lockCmd = QCoreApplication::applicationFilePath()
+                                    + " --lock";
             QStringList args = { "-w" };
             if (c.screenOffTimeoutMin > 0) {
                 int sec = c.screenOffTimeoutMin * 60;
                 args << QString::number(sec)
-                     << "swaymsg output * dpms off"
+                     << (lockCmd + " && swaymsg output * dpms off")
                      << "resume swaymsg output * dpms on";
             }
             if (c.sleepTimeoutMin > 0) {
                 int sec = c.sleepTimeoutMin * 60;
                 args << QString::number(sec)
-                     << "systemctl suspend";
+                     << (lockCmd + " && systemctl suspend")
+                     << "resume true";
             }
             QProcess::startDetached("swayidle", args);
         }
-    }
-
-    // Pre-warm gtklock so the first real lock isn't a cold start
-    {
-        QProcess *warm = new QProcess(&window);
-        warm->start("gtklock", { "--version" });
-        QObject::connect(warm,
-            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            warm, &QProcess::deleteLater);
     }
 
     // ---- Clear stale warp state from any previous shell session ----
@@ -3988,6 +3986,11 @@ static int runShell(int argc, char *argv[])
     fileMenu->addAction(reloadAct);
     QObject::connect(reloadAct, &QAction::triggered, reloadSelf);
 
+    // Boot Lock: Trigger the Sigil lock screen 1 second after boot.
+    QTimer::singleShot(1000, lockScreen, [lockScreen]() {
+        lockScreen->showLock();
+    });
+
     return app.exec();
 }
 
@@ -4280,11 +4283,14 @@ int main(int argc, char *argv[])
         QString sockPath = QDir::tempPath() + "/apokolips-lock.sock";
         QLocalSocket sock;
         sock.connectToServer(sockPath);
-        if (sock.waitForConnected(500)) {
-            sock.write("lock");
-            sock.waitForBytesWritten(300);
-            sock.disconnectFromServer();
+        if (!sock.waitForConnected(500)) {
+            qWarning() << "[lock] could not reach shell IPC — "
+                          "shell may be down";
+            return 1;   // Fail so swayidle's && chain won't blank the screen
         }
+        sock.write("lock");
+        sock.waitForBytesWritten(300);
+        sock.disconnectFromServer();
         return 0;
     }
 
