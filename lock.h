@@ -40,6 +40,9 @@ static int pamConvFunc(int num_msg, const struct pam_message **msg,
     return PAM_SUCCESS;
 }
 
+// Defined in main.cpp — finds the sway IPC socket.
+static QString discoverSwaySock();
+
 class LockScreen : public QWidget {
 public:
     LockScreen(QWidget *parent = nullptr) : QWidget(parent) {
@@ -86,6 +89,7 @@ public:
         if (parentWidget())
             setGeometry(parentWidget()->rect());
         loadWallpaper();
+        runSwayMode("locked");
         raise();
         show();
         setFocus();
@@ -212,7 +216,7 @@ protected:
         p.setPen(Sigil::textDim());
         p.drawText(QRect(0, height() - 40, width(), 20),
                    Qt::AlignCenter,
-                   "Session 1: Esc to dismiss (auth in Session 2)");
+                   "Press Enter to unlock • Esc clears password");
     }
 
     void tryAuthenticate() {
@@ -233,6 +237,7 @@ protected:
             
             if (ret == PAM_SUCCESS) {
                 qInfo() << "[lock] auth success";
+                runSwayMode("default");
                 hide();
                 if (parentWidget()) parentWidget()->setFocus();
             } else {
@@ -279,6 +284,25 @@ protected:
     }
 
 private:
+    void runSwayMode(const QString &m) {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        const QString sock = discoverSwaySock();
+        if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+        QProcess p;
+        p.setProcessEnvironment(env);
+        p.start("swaymsg", { "mode", m });
+        if (!p.waitForFinished(800)) {
+            qWarning() << "[lock] swaymsg mode" << m << "TIMEOUT";
+            return;
+        }
+        if (p.exitCode() != 0) {
+            qWarning() << "[lock] swaymsg mode" << m << "FAILED:"
+                       << QString::fromUtf8(p.readAllStandardError()).trimmed();
+        } else {
+            qInfo() << "[lock] sway mode →" << m;
+        }
+    }
+
     void loadWallpaper() {
         const auto &cfg = VisualConfigManager::instance().cfg();
         QString path = cfg.lockWallpaper;
