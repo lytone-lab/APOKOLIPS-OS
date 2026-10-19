@@ -9631,7 +9631,11 @@ private:
                 "  font-size: 12px; padding: 4px 14px; }"
                 "QPushButton:hover { background: rgba(200,74,74,220); }");
             QObject::connect(lock, &QPushButton::clicked,
-                             []() { launchGtklock(); });
+                             []() {
+                QProcess::startDetached(
+                    QCoreApplication::applicationFilePath(),
+                    { "--lock" });
+            });
             h->addWidget(lock);
 
             cv->addWidget(nowRow);

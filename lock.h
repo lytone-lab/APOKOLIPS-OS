@@ -21,13 +21,10 @@
 class LockScreen : public QWidget {
 public:
     LockScreen(QWidget *parent = nullptr) : QWidget(parent) {
-        setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+        // OVERLAY MODE: No window flags. This lives inside the shell.
         setFocusPolicy(Qt::StrongFocus);
-
-        // Fullscreen geometry BEFORE loading wallpaper so we blur at
-        // the correct aspect ratio.
-        if (QScreen *s = QGuiApplication::primaryScreen())
-            setGeometry(s->geometry());
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
 
         loadWallpaper();
 
@@ -45,8 +42,16 @@ public:
         });
         m_cursorTimer->start();
 
-        showFullScreen();
+        hide();
+    }
+
+    void showLock() {
+        if (parentWidget())
+            setGeometry(parentWidget()->rect());
+        raise();
+        show();
         setFocus();
+        update();
     }
 
 protected:
@@ -168,7 +173,8 @@ protected:
 
     void keyPressEvent(QKeyEvent *e) override {
         if (e->key() == Qt::Key_Escape) {
-            close();
+            hide();
+            if (parentWidget()) parentWidget()->setFocus();
             return;
         }
         if (e->key() == Qt::Key_Backspace) {

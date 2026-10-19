@@ -2963,6 +2963,24 @@ static int runShell(int argc, char *argv[])
 
     ClipboardPanel *clipboardPanel = new ClipboardPanel(root);
 
+    // ---- Native Lock Screen Overlay ----
+    LockScreen *lockScreen = new LockScreen(root);
+    QString lockSockPath = QDir::tempPath() + "/apokolips-lock.sock";
+    QFile::remove(lockSockPath);
+    QLocalServer *lockServer = new QLocalServer(&window);
+    if (lockServer->listen(lockSockPath)) {
+        QObject::connect(lockServer, &QLocalServer::newConnection,
+                         [lockServer, lockScreen]() {
+            QLocalSocket *conn = lockServer->nextPendingConnection();
+            QObject::connect(conn, &QLocalSocket::readyRead, [conn, lockScreen]() {
+                if (conn->readAll().contains("lock")) {
+                    lockScreen->showLock();
+                }
+                conn->disconnectFromServer();
+            });
+        });
+    }
+
     // IPC — second instance connects and sends "toggle"
     QString clipSockPath = QDir::tempPath() + "/apokolips-clipboard.sock";
     QFile::remove(clipSockPath);
@@ -4257,19 +4275,17 @@ int main(int argc, char *argv[])
     }
 
     if (argc >= 2 && QString(argv[1]) == "--lock") {
-        // Native Sigil lock screen (Session 1 — visual only).
-        // Replaces gtklock. Esc dismisses; auth in Session 2.
-        QApplication app(argc, argv);
-        app.setApplicationName("Apokolips Lock");
-        app.setDesktopFileName("apokolips-lock");
-
-        VisualConfigManager::instance().load();
-        ThemeManager::instance().setTheme(
-            WallpaperConfig::themeForId(WallpaperConfig::loadId()));
-
-        LockScreen w;
-        w.show();
-        return app.exec();
+        // Lightning-fast IPC client: tells the running shell to lock.
+        QCoreApplication app(argc, argv);
+        QString sockPath = QDir::tempPath() + "/apokolips-lock.sock";
+        QLocalSocket sock;
+        sock.connectToServer(sockPath);
+        if (sock.waitForConnected(500)) {
+            sock.write("lock");
+            sock.waitForBytesWritten(300);
+            sock.disconnectFromServer();
+        }
+        return 0;
     }
 
     // ---- Mesh warp proof of concept (temporary) ----
