@@ -678,6 +678,28 @@ static void drawExternal(QPainter &p, const QRectF &r, const QColor &,
         QPixmap raw(iconName);
         if (!raw.isNull()) icon = QIcon(raw);
     }
+    if (icon.isNull()) {
+        // Try absolute-path fallbacks from hicolor dirs.
+        // Includes "scalable" (SVG) because some apps like Epiphany
+        // ONLY ship a scalable SVG and no PNG sizes.
+        const QStringList sizes = {"256x256", "128x128", "scalable",
+                                   "64x64", "48x48", "32x32", "24x24", "16x16"};
+        for (const QString &sz : sizes) {
+            QString base = "/usr/share/icons/hicolor/" + sz + "/apps/";
+            for (const QString &ext : {"png", "svg"}) {
+                QString path = base + iconName + "." + ext;
+                QPixmap raw(path);
+                if (!raw.isNull()) {
+                    icon = QIcon(raw);
+                    break;
+                }
+            }
+            if (!icon.isNull()) break;
+        }
+    }
+    if (icon.isNull()) {
+        icon = QIcon::fromTheme("application-x-executable");
+    }
     if (icon.isNull()) return;
 
     int sz = int(r.width() * 0.55);
