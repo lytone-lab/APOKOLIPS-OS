@@ -351,6 +351,13 @@ protected:
                     c.widgetPositions[id] = mm;
                 });
         } else if (chosen == hideAct) {
+            // Persist so the widget stays hidden across restarts and
+            // stays in sync with the Settings per-widget toggle.
+            const QString myId = m_id;
+            VisualConfigManager::instance().setAndSave(
+                [myId](VisualConfig &c) {
+                    c.widgetVisibility[myId] = false;
+                });
             hide();
         }
     }
