@@ -17,6 +17,26 @@
 #include "visualconfig.h"
 #include "theme.h"
 #include "style.h"
+#include <security/pam_appl.h>
+#include <cstring>
+
+static int pamConvFunc(int num_msg, const struct pam_message **msg,
+                       struct pam_response **resp, void *appdata_ptr) {
+    if (num_msg <= 0 || num_msg > PAM_MAX_NUM_MSG) return PAM_CONV_ERR;
+    *resp = (struct pam_response *)calloc(num_msg, sizeof(struct pam_response));
+    if (*resp == nullptr) return PAM_BUF_ERR;
+    for (int i = 0; i < num_msg; ++i) {
+        switch (msg[i]->msg_style) {
+        case PAM_PROMPT_ECHO_OFF:
+        case PAM_PROMPT_ECHO_ON:
+            (*resp)[i].resp = strdup((const char*)appdata_ptr);
+            break;
+        default:
+            break;
+        }
+    }
+    return PAM_SUCCESS;
+}
 
 class LockScreen : public QWidget {
 public:
@@ -42,6 +62,20 @@ public:
             update();
         });
         m_cursorTimer->start();
+
+        m_shakeTimer = new QTimer(this);
+        m_shakeTimer->setInterval(16);
+        m_shakePhase = 0;
+        QObject::connect(m_shakeTimer, &QTimer::timeout, this, [this]() {
+            m_shakePhase++;
+            if (m_shakePhase > 20) { // ~320ms total
+                m_shakeTimer->stop();
+                m_shakeOffset = 0;
+            } else {
+                m_shakeOffset = int(std::sin(m_shakePhase * 1.2) * 12);
+            }
+            update();
+        });
 
         hide();
     }
@@ -129,7 +163,7 @@ protected:
         const int fieldH = 44;
         const int fieldX = (width() - fieldW) / 2;
         const int fieldY = nameY + 50;
-        const QRect field(fieldX, fieldY, fieldW, fieldH);
+        const QRect field(fieldX + m_shakeOffset, fieldY, fieldW, fieldH);
 
         QPainterPath fieldPath;
         fieldPath.addRoundedRect(field, fieldH / 2, fieldH / 2);
@@ -173,10 +207,38 @@ protected:
                    "Session 1: Esc to dismiss (auth in Session 2)");
     }
 
-    void keyPressEvent(QKeyEvent *e) override {
-        if (e->key() == Qt::Key_Escape) {
+    void tryAuthenticate() {
+        if (m_password.isEmpty()) return;
+        QByteArray passBytes = m_password.toUtf8();
+        struct pam_conv conv = { pamConvFunc, (void*)passBytes.constData() };
+        pam_handle_t* pamh = nullptr;
+        QString user = qEnvironmentVariable("USER");
+        if (user.isEmpty()) user = "lytone";
+
+        int ret = pam_start("login", user.toUtf8().constData(), &conv, &pamh);
+        if (ret == PAM_SUCCESS) {
+            ret = pam_authenticate(pamh, 0);
+            pam_end(pamh, ret);
+        }
+
+        if (ret == PAM_SUCCESS) {
+            qInfo() << "[lock] auth success";
+            m_password.clear();
             hide();
             if (parentWidget()) parentWidget()->setFocus();
+        } else {
+            qInfo() << "[lock] auth failed";
+            m_password.clear();
+            m_shakePhase = 0;
+            m_shakeTimer->start();
+        }
+        update();
+    }
+
+    void keyPressEvent(QKeyEvent *e) override {
+        if (e->key() == Qt::Key_Escape) {
+            m_password.clear(); // Esc no longer unlocks
+            update();
             return;
         }
         if (e->key() == Qt::Key_Backspace) {
@@ -185,9 +247,7 @@ protected:
             return;
         }
         if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
-            qInfo() << "[lock] Enter pressed. Password length:"
-                    << m_password.length()
-                    << "(auth not wired — Session 2)";
+            tryAuthenticate();
             return;
         }
         const QString text = e->text();
@@ -285,4 +345,7 @@ private:
     QTimer *m_cursorTimer = nullptr;
     bool m_cursorBlink = true;
     QString m_password;
+    QTimer *m_shakeTimer = nullptr;
+    int m_shakePhase = 0;
+    int m_shakeOffset = 0;
 };

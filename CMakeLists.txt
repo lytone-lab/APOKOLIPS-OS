@@ -13,6 +13,7 @@ find_package(qtermwidget6 REQUIRED)
 add_executable(apokolips-shell main.cpp)
 
 target_link_libraries(apokolips-shell PRIVATE
+    pam
     Qt6::Widgets
     Qt6::Network
     Qt6::Multimedia
