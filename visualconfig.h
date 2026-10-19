@@ -60,6 +60,7 @@ struct VisualConfig {
     bool   soundNotify = true;
     bool   soundStartup = true;
     int    soundVolume = 80;
+    int    startupSoundVariant = 0; // 0=Deep, 1=Oxblood, 2=Ascending
     // Notifications (Category 8)
     int    notifPosition = 0; // 0=Right, 1=Left
     int    notifStyle = 0;    // 0=glass, 1=solid
@@ -594,6 +595,8 @@ public:
             m_cfg.soundStartup = o["soundStartup"].toBool(true);
         if (o.contains("soundVolume"))
             m_cfg.soundVolume = o["soundVolume"].toInt(80);
+        if (o.contains("startupSoundVariant"))
+            m_cfg.startupSoundVariant = o["startupSoundVariant"].toInt(0);
         if (o.contains("notifPosition"))
             m_cfg.notifPosition = o["notifPosition"].toInt(0);
         if (o.contains("notifStyle"))
@@ -890,6 +893,7 @@ public:
         o["soundNotify"]          = m_cfg.soundNotify;
         o["soundStartup"]         = m_cfg.soundStartup;
         o["soundVolume"]          = m_cfg.soundVolume;
+        o["startupSoundVariant"]  = m_cfg.startupSoundVariant;
         o["notifPosition"]        = m_cfg.notifPosition;
         o["notifStyle"]           = m_cfg.notifStyle;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;

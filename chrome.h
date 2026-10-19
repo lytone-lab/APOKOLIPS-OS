@@ -3704,6 +3704,7 @@ public:
     // Resets the wave-stagger so this icon starts moving a
     // fraction of a beat later than its neighbour.
     void armStagger(int extraMs) {
+        SoundManager::playPool();
         const auto &cfg = VisualConfigManager::instance().cfg();
         int base = qBound(0, cfg.poolStaggerMs, 200);
         m_staggerLeft = (base + extraMs) / 30;   // 33 Hz ticks

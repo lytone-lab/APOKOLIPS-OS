@@ -7397,6 +7397,77 @@ private:
             v->addWidget(c);
         }
 
+        // ---- STARTUP SOUND picker card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("STARTUP SOUND"));
+
+            QLabel *desc = new QLabel(
+                "Chime played when the shell boots. Click a name to preview; "
+                "the highlighted option is active.");
+            desc->setWordWrap(true);
+            desc->setStyleSheet(QString(
+                "color: %1; font-size: 11px; background: transparent;")
+                .arg(Sigil::textDim().name()));
+            cv->addWidget(desc);
+
+            struct StartupOpt { int id; const char *name; const char *file; };
+            const StartupOpt opts[] = {
+                { 0, "Deep Waking",       "startup_deep.wav"      },
+                { 1, "Oxblood Resonance", "startup_oxblood.wav"   },
+                { 2, "Ascending Steps",   "startup_ascending.wav" }
+            };
+
+            QHBoxLayout *srow = new QHBoxLayout;
+            srow->setSpacing(10);
+            QList<QPushButton *> btns;
+
+            auto restyleStartup = [btns]() {
+                int cur = VisualConfigManager::instance().cfg().startupSoundVariant;
+                for (int i = 0; i < btns.size(); ++i) {
+                    bool sel = (i == cur);
+                    btns[i]->setStyleSheet(QString(
+                        "QPushButton {"
+                        "  background: %1;"
+                        "  color: %2;"
+                        "  border: 2px solid %3;"
+                        "  border-radius: 8px;"
+                        "  padding: 10px 16px;"
+                        "  font-size: 12px; }"
+                        "QPushButton:hover { background: %4; }")
+                        .arg(sel ? rgba(Sigil::rowSelected()) : QString("rgba(255,255,255,20)"),
+                             Sigil::textPrimary().name(),
+                             sel ? Sigil::accent().name() : rgba(Sigil::border()),
+                             rgba(Sigil::rowHover())));
+                }
+            };
+
+            for (const StartupOpt &o : opts) {
+                QPushButton *b = new QPushButton(QString::fromUtf8(o.name));
+                b->setCursor(Qt::PointingHandCursor);
+                b->setMinimumHeight(40);
+                btns.append(b);
+                int id = o.id;
+                QString file = QString::fromUtf8(o.file);
+                QObject::connect(b, &QPushButton::clicked, [id, file, restyleStartup]() {
+                    VisualConfigManager::instance().setAndSave(
+                        [id](VisualConfig &c) { c.startupSoundVariant = id; });
+                    restyleStartup();
+                    QProcess::startDetached("paplay", {
+                        QCoreApplication::applicationDirPath()
+                        + "/../assets/sounds/" + file });
+                });
+                srow->addWidget(b, 1);
+            }
+            cv->addLayout(srow);
+            restyleStartup();
+
+            v->addWidget(c);
+        }
+
         // ---- SYSTEM SOUNDS card ----
         {
             Sigil::Card *c = new Sigil::Card;
