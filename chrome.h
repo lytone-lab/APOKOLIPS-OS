@@ -3962,6 +3962,17 @@ private:
                     if (obs.intersects(r.adjusted(-4, -4, 4, 4)))
                         return false;
                 }
+                // Dock obstacle (Variation B — soft 12px buffer).
+                // Only counts when dock is visible; auto-hide makes
+                // the obstacle vanish so icons flow into the space.
+                if (auto *d = dynamic_cast<Dock *>(w)) {
+                    if (!d->isVisible()) continue;
+                    QPoint dg = d->mapToGlobal(QPoint(0, 0));
+                    QPoint tl = mapFromGlobal(dg);
+                    QRect obs(tl, d->size());
+                    if (obs.intersects(r.adjusted(-12, -12, 12, 12)))
+                        return false;
+                }
             }
         }
 
