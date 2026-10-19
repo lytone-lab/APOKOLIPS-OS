@@ -4693,10 +4693,13 @@ public:
         // trigger a wallpaper change without needing a class-order
         // forward reference.
         PoolCanvas::wallpaperHook() = [this](const QString &id) {
+            // Single swap owner: same pattern as View menu. saveId
+            // writes the config; the shell's wpPoll then applies the
+            // wallpaper once. Direct setWallpaper here would conflict
+            // with the poll and produce a black flash.
             Wallpaper *nw = WallpaperConfig::makeById(id);
             if (!nw) return;
-            setWallpaper(nw);
-            ThemeManager::instance().setTheme(nw->theme());
+            delete nw;
             WallpaperConfig::saveId(id);
             // Discovering a dev wallpaper via this menu unlocks it
             // permanently in Settings.

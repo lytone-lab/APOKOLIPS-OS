@@ -2524,10 +2524,16 @@ static int runShell(int argc, char *argv[])
     for (const auto &w : wallpapers) {
         QAction *a = wallSub->addAction(w.name);
         QString id = w.id;
-        QObject::connect(a, &QAction::triggered, [root, id]() {
+        QObject::connect(a, &QAction::triggered, [id]() {
+            // Single swap owner: saveId writes the config file and
+            // the wpPoll (200ms tick) performs the actual setWallpaper
+            // + setTheme. Calling those here as well would delete and
+            // re-create the wallpaper a second time ~200ms later,
+            // producing a black flash. Same single-writer pattern
+            // that Settings uses (which works correctly).
             Wallpaper *nw = WallpaperConfig::makeById(id);
-            root->setWallpaper(nw);
-            ThemeManager::instance().setTheme(nw->theme());
+            if (!nw) return;
+            delete nw;
             WallpaperConfig::saveId(id);
         });
     }
@@ -3936,7 +3942,7 @@ static int runShell(int argc, char *argv[])
     // ---- Watch wallpaper.json (wallpaper switch from Settings) ----
     QString wpPath = WallpaperConfig::configPath();
     QTimer *wpPoll = new QTimer(&window);
-    wpPoll->setInterval(200);
+    wpPoll->setInterval(100);
     QString *lastWpId = new QString(WallpaperConfig::loadId());
 
     QObject::connect(wpPoll, &QTimer::timeout,
