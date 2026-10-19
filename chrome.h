@@ -541,7 +541,11 @@ public:
         if (m_search) m_search->setVisible(vc.launcherHasSearch);
         raise(); show(); setFocus(); m_fadeTarget = 1.0; m_animTimer->start();
     }
-    void hideLauncher() { m_fadeTarget = 0.0; m_animTimer->start(); }
+    void hideLauncher() {
+        if (m_search) m_search->clear();
+        m_fadeTarget = 0.0;
+        m_animTimer->start();
+    }
 
     void rebuildTiles() {
         // Hide panel, tear down grid, rebuild fresh from registry.
@@ -741,6 +745,10 @@ private:
         m_search = new QLineEdit;
         m_search->setPlaceholderText("Search apps, files, settings...");
         pl->addWidget(m_search);
+        QObject::connect(m_search, &QLineEdit::textChanged,
+                         this, [this](const QString &q) {
+            filterTiles(q);
+        });
 
         m_tilesLayout = new QGridLayout;
         m_tilesLayout->setSpacing(14);
@@ -820,6 +828,20 @@ private:
     void resizeEvent(QResizeEvent *e) override {
         QWidget::resizeEvent(e);
         repositionPanel();
+    }
+
+    void filterTiles(const QString &query) {
+        const QString q = query.trimmed();
+        for (QPushButton *tile : m_tiles) {
+            if (!tile) continue;
+            if (q.isEmpty()) {
+                tile->setVisible(true);
+                continue;
+            }
+            const QString appName = tile->property("appName").toString();
+            const bool matches = appName.contains(q, Qt::CaseInsensitive);
+            tile->setVisible(matches);
+        }
     }
 
     QWidget *makeTile(const QString &icon, const QString &name, int index) {
