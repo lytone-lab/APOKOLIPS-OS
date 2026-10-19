@@ -202,18 +202,71 @@ private:
             qWarning() << "[lock] failed to load wallpaper:" << path;
             return;
         }
+
         QSize target = size();
         if (target.isEmpty()) target = QSize(1920, 1080);
-        const int DOWN = 8;
+
+        // Downscale by 6× with smooth interpolation. Base 320×180 at
+        // 1920×1080 — enough detail that the blur doesn't lose structure,
+        // small enough that box blur is nearly free.
+        const int DOWN = 6;
         QImage small(qMax(1, target.width() / DOWN),
                      qMax(1, target.height() / DOWN),
                      QImage::Format_ARGB32_Premultiplied);
         small.fill(Qt::transparent);
-        QPainter sp(&small);
-        sp.setRenderHint(QPainter::SmoothPixmapTransform);
-        sp.scale(1.0 / DOWN, 1.0 / DOWN);
-        sp.drawPixmap(0, 0, target.width(), target.height(), raw);
-        sp.end();
+        {
+            QPainter sp(&small);
+            sp.setRenderHint(QPainter::SmoothPixmapTransform);
+            sp.scale(1.0 / DOWN, 1.0 / DOWN);
+            sp.drawPixmap(0, 0, target.width(), target.height(), raw);
+        }
+
+        // 3-pass separable box blur ≈ Gaussian.
+        // Without this, the 6× downscale/upscale cycle creates
+        // visible pixel blocks. Box blur flattens the small image
+        // BEFORE upscale, so the result is smooth gradient, not blocks.
+        const int R = 4;
+        const int PASSES = 3;
+        for (int pass = 0; pass < PASSES; ++pass) {
+            QImage tmp = small;
+            // Horizontal pass
+            for (int y = 0; y < small.height(); ++y) {
+                const QRgb *sLine = reinterpret_cast<const QRgb*>(
+                    small.constScanLine(y));
+                QRgb *dLine = reinterpret_cast<QRgb*>(tmp.scanLine(y));
+                for (int x = 0; x < small.width(); ++x) {
+                    int r = 0, g = 0, b = 0, a = 0, n = 0;
+                    for (int k = -R; k <= R; ++k) {
+                        int xx = qBound(0, x + k, small.width() - 1);
+                        QRgb c = sLine[xx];
+                        r += qRed(c); g += qGreen(c);
+                        b += qBlue(c); a += qAlpha(c);
+                        ++n;
+                    }
+                    dLine[x] = qRgba(r / n, g / n, b / n, a / n);
+                }
+            }
+            // Vertical pass
+            QImage tmp2 = tmp;
+            for (int y = 0; y < tmp.height(); ++y) {
+                QRgb *dLine = reinterpret_cast<QRgb*>(tmp2.scanLine(y));
+                for (int x = 0; x < tmp.width(); ++x) {
+                    int r = 0, g = 0, b = 0, a = 0, n = 0;
+                    for (int k = -R; k <= R; ++k) {
+                        int yy = qBound(0, y + k, tmp.height() - 1);
+                        QRgb c = reinterpret_cast<const QRgb*>(
+                            tmp.constScanLine(yy))[x];
+                        r += qRed(c); g += qGreen(c);
+                        b += qBlue(c); a += qAlpha(c);
+                        ++n;
+                    }
+                    dLine[x] = qRgba(r / n, g / n, b / n, a / n);
+                }
+            }
+            small = tmp2;
+        }
+
+        // Upscale the now-smooth image to full resolution.
         m_blurredWall = QPixmap::fromImage(
             small.scaled(target, Qt::IgnoreAspectRatio,
                          Qt::SmoothTransformation));
