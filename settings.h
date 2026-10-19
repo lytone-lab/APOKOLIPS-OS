@@ -2,6 +2,7 @@
 #define APOKOLIPS_SETTINGS_H
 
 #include "shell.h"
+#include <QRegularExpression>
 #include "theme.h"
 #include "visualconfig.h"
 #include "style.h"
@@ -7231,6 +7232,170 @@ private:
         v->setSpacing(20);
 
         v->addWidget(Sigil::sectionTitle("Sound"));
+
+        // ---- PER-APP VOLUME card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("PER-APP VOLUME"));
+
+            // Parse wpctl status -n for active audio streams.
+            auto listAudioStreams = []() -> QList<QStringList> {
+                QList<QStringList> result; // each: [id, name, volume]
+                QProcess p;
+                p.start("wpctl", {"status", "-n"});
+                if (!p.waitForFinished(1000)) return result;
+                QString out = QString::fromUtf8(p.readAllStandardOutput());
+                bool inAudio = false, inStreams = false;
+                for (const QString &line : out.split('\n')) {
+                    if (line.startsWith("Audio")) { inAudio = true; inStreams = false; continue; }
+                    if (line.startsWith("Video") || line.startsWith("Settings")) { inAudio = false; inStreams = false; continue; }
+                    if (!inAudio) continue;
+                    if (line.contains("Streams:")) { inStreams = true; continue; }
+                    if (!inStreams) continue;
+                    int spaceCount = line.length() - line.trimmed().length();
+                    if (spaceCount < 6 || spaceCount > 10) continue;
+                    QString trimmed = line.trimmed();
+                    int dotPos = trimmed.indexOf('.');
+                    if (dotPos < 1 || dotPos > 6) continue;
+                    bool ok = false;
+                    int id = trimmed.left(dotPos).toInt(&ok);
+                    if (!ok) continue;
+                    QString name = trimmed.mid(dotPos + 1).trimmed();
+                    int bracketPos = name.indexOf('[');
+                    if (bracketPos > 0) name = name.left(bracketPos).trimmed();
+                    if (name.isEmpty()) continue;
+                    float vol = 1.0;
+                    QProcess gp;
+                    gp.start("wpctl", {"get-volume", QString::number(id)});
+                    if (gp.waitForFinished(500)) {
+                        QRegularExpression re("Volume:\\s*([0-9.]+)");
+                        auto m = re.match(QString::fromUtf8(gp.readAllStandardOutput()));
+                        if (m.hasMatch()) vol = m.captured(1).toFloat();
+                    }
+                    result.append({QString::number(id), name, QString::number(vol)});
+                    if (result.size() >= 10) break;
+                }
+                return result;
+            };
+
+            // Master volume slider
+            {
+                QWidget *row = new QWidget;
+                QHBoxLayout *rl = new QHBoxLayout(row);
+                rl->setContentsMargins(0, 4, 0, 4);
+                rl->setSpacing(12);
+
+                QLabel *lbl = new QLabel("Master");
+                lbl->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+                lbl->setMinimumWidth(120);
+
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(0, 100);
+                int masterPct = 58;
+                QProcess gp;
+                gp.start("wpctl", {"get-volume", "@DEFAULT_AUDIO_SINK@"});
+                if (gp.waitForFinished(500)) {
+                    QRegularExpression re("Volume:\\s*([0-9.]+)");
+                    auto m = re.match(QString::fromUtf8(gp.readAllStandardOutput()));
+                    if (m.hasMatch()) masterPct = int(m.captured(1).toFloat() * 100);
+                }
+                sl->setValue(masterPct);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
+                    "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal { background: rgb(168,50,50); border-radius: 2px; }");
+
+                QLabel *vLbl = new QLabel(QString("%1%").arg(masterPct));
+                vLbl->setStyleSheet(QString("color: %1; font-size: 12px; background: transparent;").arg(Sigil::textSecondary().name()));
+                vLbl->setMinimumWidth(45);
+                vLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+                QObject::connect(sl, &QSlider::valueChanged, [vLbl](int x) {
+                    vLbl->setText(QString("%1%").arg(x));
+                    QProcess::startDetached("wpctl", {"set-volume", "@DEFAULT_AUDIO_SINK@", QString::number(x / 100.0)});
+                });
+
+                rl->addWidget(lbl);
+                rl->addWidget(sl, 1);
+                rl->addWidget(vLbl);
+                cv->addWidget(row);
+            }
+
+            // Container for per-app rows
+            QWidget *appContainer = new QWidget;
+            QVBoxLayout *al = new QVBoxLayout(appContainer);
+            al->setContentsMargins(0, 4, 0, 0);
+            al->setSpacing(6);
+            cv->addWidget(appContainer);
+
+            auto refreshApps = [al, listAudioStreams]() {
+                while (QLayoutItem *item = al->takeAt(0)) {
+                    if (QWidget *w = item->widget()) w->deleteLater();
+                    delete item;
+                }
+                auto streams = listAudioStreams();
+                if (streams.isEmpty()) {
+                    QLabel *empty = new QLabel("No apps currently playing audio");
+                    empty->setStyleSheet(QString("color: %1; font-size: 12px; font-style: italic; background: transparent; padding: 6px 0;").arg(Sigil::textDim().name()));
+                    al->addWidget(empty);
+                    return;
+                }
+                for (const QStringList &s : streams) {
+                    if (s.size() < 3) continue;
+                    int streamId = s[0].toInt();
+                    QString name = s[1];
+                    int volPct = int(s[2].toFloat() * 100);
+
+                    QWidget *row = new QWidget;
+                    QHBoxLayout *rl = new QHBoxLayout(row);
+                    rl->setContentsMargins(0, 4, 0, 4);
+                    rl->setSpacing(12);
+
+                    QLabel *lbl = new QLabel(name);
+                    lbl->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+                    lbl->setMinimumWidth(120);
+                    lbl->setMaximumWidth(220);
+
+                    QSlider *sl = new QSlider(Qt::Horizontal);
+                    sl->setRange(0, 100);
+                    sl->setValue(volPct);
+                    sl->setStyleSheet(
+                        "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
+                        "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
+                        "QSlider::sub-page:horizontal { background: rgb(168,50,50); border-radius: 2px; }");
+
+                    QLabel *vLbl = new QLabel(QString("%1%").arg(volPct));
+                    vLbl->setStyleSheet(QString("color: %1; font-size: 12px; background: transparent;").arg(Sigil::textSecondary().name()));
+                    vLbl->setMinimumWidth(45);
+                    vLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+                    QObject::connect(sl, &QSlider::valueChanged, [vLbl, streamId](int x) {
+                        vLbl->setText(QString("%1%").arg(x));
+                        QProcess::startDetached("wpctl", {"set-mute", QString::number(streamId), "0"});
+                        QProcess::startDetached("wpctl", {"set-volume", QString::number(streamId), QString::number(x / 100.0)});
+                    });
+
+                    rl->addWidget(lbl);
+                    rl->addWidget(sl, 1);
+                    rl->addWidget(vLbl);
+                    al->addWidget(row);
+                }
+            };
+
+            refreshApps();
+
+            QTimer *refTimer = new QTimer(c);
+            refTimer->setInterval(2000);
+            QObject::connect(refTimer, &QTimer::timeout, [c, refreshApps]() {
+                if (c->isVisible()) refreshApps();
+            });
+            refTimer->start();
+
+            v->addWidget(c);
+        }
 
         // ---- SYSTEM SOUNDS card ----
         {
