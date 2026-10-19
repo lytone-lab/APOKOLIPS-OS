@@ -2,7 +2,7 @@
 #define APOKOLIPS_MESH_H
 
 // -----------------------------------------------------------------
-// PROOF OF CONCEPT — mesh warp genie
+// PROOF OF CONCEPT — mesh warp warp
 // -----------------------------------------------------------------
 // This is a standalone test harness, not integrated into the shell.
 // It opens a single OpenGL window, warps a PNG through a 20x20

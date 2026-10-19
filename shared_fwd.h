@@ -16,7 +16,7 @@ static QRect shellWindowRect(const QSize &preferred,
                              const QPoint &offset,
                              bool centered);
 static void  shellMinimizeFocusedWindow();
-static void  shellCloseViaGenie(QWidget *w);
+static void  shellCloseViaWarp(QWidget *w);
 static void  shellRestoreWindow(QWidget *w,
                                 const QString &title,
                                 const QSize &preferred = QSize());

@@ -1,9 +1,9 @@
-#ifndef APOKOLIPS_MESHGENIE_H
-#define APOKOLIPS_MESHGENIE_H
+#ifndef APOKOLIPS_MESHWARP_H
+#define APOKOLIPS_MESHWARP_H
 
 // -----------------------------------------------------------------
-// GenieMeshOverlay — the mesh-warp genie minimize animation.
-// Same visual shape as GenieOverlay, rendered via OpenGL fragment
+// MagicCarpetOverlay — the mesh-warp warp minimize animation.
+// Same visual shape as WarpOverlay, rendered via OpenGL fragment
 // shader instead of 24 CPU quadToQuad transforms.
 //
 // Softened rate range (variant B): 3.5 → 0.65. Tip corner still
@@ -25,10 +25,10 @@
 #include <QApplication>
 #include <cmath>
 
-class GenieMeshOverlay : public QOpenGLWidget,
+class MagicCarpetOverlay : public QOpenGLWidget,
                         protected QOpenGLFunctions {
 public:
-    GenieMeshOverlay(const QString &pngPath, QRect startRect,
+    MagicCarpetOverlay(const QString &pngPath, QRect startRect,
                      QPoint dockGlobal, bool reverse = false,
                      int durationOverrideMs = 0,
                      const QString &readySock = QString(),
@@ -42,7 +42,7 @@ public:
         setAttribute(Qt::WA_DeleteOnClose, true);
 
         if (!m_pix.load(pngPath) || startRect.isEmpty()) {
-            qWarning() << "[meshgenie] load failed:" << pngPath;
+            qWarning() << "[magiccarpet] load failed:" << pngPath;
             QTimer::singleShot(0, qApp, &QApplication::quit);
             return;
         }
@@ -60,10 +60,10 @@ public:
 
         const auto &cfg = VisualConfigManager::instance().cfg();
         const int requestedMs = durationOverrideMs > 0
-            ? durationOverrideMs : cfg.genieDurationMs;
+            ? durationOverrideMs : cfg.warpDurationMs;
         m_durationMs = qBound(128, requestedMs, 5000);
 
-        qDebug() << "[meshgenie] reverse=" << m_reverse
+        qDebug() << "[magiccarpet] reverse=" << m_reverse
                  << "durationMs=" << m_durationMs;
 
         m_timer = new QTimer(this);
@@ -124,16 +124,16 @@ protected:
 
         if (!m_prog->addShaderFromSourceCode(
                 QOpenGLShader::Vertex, vertSrc)) {
-            qWarning() << "[meshgenie] vertex compile:"
+            qWarning() << "[magiccarpet] vertex compile:"
                        << m_prog->log();
         }
         if (!m_prog->addShaderFromSourceCode(
                 QOpenGLShader::Fragment, fragSrc)) {
-            qWarning() << "[meshgenie] fragment compile:"
+            qWarning() << "[magiccarpet] fragment compile:"
                        << m_prog->log();
         }
         if (!m_prog->link()) {
-            qWarning() << "[meshgenie] link:" << m_prog->log();
+            qWarning() << "[magiccarpet] link:" << m_prog->log();
         }
 
         // ---- Texture from the pixmap ----
@@ -146,7 +146,7 @@ protected:
 
         // ---- Mesh ----
         // Compute the tip corner (nearest of 4 to the dock) exactly
-        // as GenieOverlay does, so both overlays pick the same tip.
+        // as WarpOverlay does, so both overlays pick the same tip.
         const auto dist = [](const QPointF &a, const QPointF &b) {
             return std::hypot(a.x() - b.x(), a.y() - b.y());
         };
@@ -163,7 +163,7 @@ protected:
         m_diag = qMax<qreal>(1.0, dist(corners[0], corners[2]));
 
         buildMesh();
-        qInfo() << "[meshgenie] initialized. mesh=" << MESH_N
+        qInfo() << "[magiccarpet] initialized. mesh=" << MESH_N
                 << "x" << MESH_N
                 << " verts=" << m_vertCount;
     }
@@ -172,12 +172,12 @@ protected:
 
     void paintGL() override {
         // Handshake ping on first paint — same protocol as
-        // GenieOverlay. The shell waits for this before hiding
+        // WarpOverlay. The shell waits for this before hiding
         // the real window.
         if (!m_readyPinged && !m_readySock.isEmpty()) {
             m_readyPinged = true;
             QTimer::singleShot(25, this, [this]() {
-                genieHandshakeReady(m_readySock);
+                warpHandshakeReady(m_readySock);
             });
         }
 
@@ -230,7 +230,7 @@ protected:
             if (m_timer) m_timer->stop();
             QTimer::singleShot(30, this, [this]() {
                 if (!m_readySock.isEmpty())
-                    genieHandshakeDone(m_readySock);
+                    warpHandshakeDone(m_readySock);
                 QTimer::singleShot(80, this, [this]() { close(); });
             });
         }
@@ -314,4 +314,4 @@ private:
     QOpenGLBuffer        *m_vbo  = nullptr;
 };
 
-#endif // APOKOLIPS_MESHGENIE_H
+#endif // APOKOLIPS_MESHWARP_H

@@ -1881,7 +1881,10 @@ public:
 
         m_timer = new QTimer(this);
         m_timer->setInterval(16);
-        QObject::connect(m_timer, &QTimer::timeout, this, [this]() { tick(); });
+        QObject::connect(m_timer, &QTimer::timeout, this, [this]() {
+            tick();
+            checkAutoHide();
+        });
         m_timer->start();
         // (dock container swallows clicks — do NOT override mousePressEvent)
 
@@ -2163,11 +2166,57 @@ private:
             m_timer->setInterval(16);
     }
 
+    void checkAutoHide() {
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        if (!cfg.dockAutoHide) {
+            if (!isVisible()) show();
+            return;
+        }
+
+        const QPoint gp = QCursor::pos();
+        QScreen *scr = QApplication::screenAt(gp);
+        if (!scr) scr = QApplication::primaryScreen();
+        const QRect scrRect = scr ? scr->geometry() : QRect(0, 0, 1, 1);
+
+        // 8px reveal zone at the screen edge where the dock lives
+        const int EDGE = 8;
+        bool nearEdge = false;
+        const QPoint dockGlobal = mapToGlobal(QPoint(0, 0));
+        if (m_vertical) {
+            if (dockGlobal.x() < scrRect.center().x())
+                nearEdge = gp.x() < scrRect.left() + EDGE;
+            else
+                nearEdge = gp.x() > scrRect.right() - EDGE;
+        } else {
+            nearEdge = gp.y() > scrRect.bottom() - EDGE;
+        }
+
+        if (!isVisible()) {
+            if (nearEdge) { show(); raise(); m_lastHoverMs = 0; }
+            return;
+        }
+
+        const QRect dockRect(dockGlobal, size());
+        const bool inDock = dockRect.contains(gp);
+
+        if (inDock || nearEdge) {
+            m_lastHoverMs = 0;
+        } else {
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            if (m_lastHoverMs == 0) m_lastHoverMs = now;
+            if (now - m_lastHoverMs >= cfg.dockAutoHideDelayMs) {
+                hide();
+                m_lastHoverMs = 0;
+            }
+        }
+    }
+
     QList<DockIcon *> m_icons;
     QBoxLayout  *m_layout = nullptr;
     bool         m_vertical = false;
     QTimer *m_timer = nullptr;
     QTimer *m_pollTimer = nullptr;
+    qint64 m_lastHoverMs = 0;
     qreal m_cursorX = 0;
     qreal m_cursorY = 0;
     bool  m_hasCursor = false;

@@ -78,6 +78,8 @@ struct VisualConfig {
     QString sigilAccent      = "oxblood";
     int    notificationBannerMs = 6000;
     int    dockPosition       = 0;   // 0=Bottom, 1=Left, 2=Right
+    bool   dockAutoHide       = false;
+    int    dockAutoHideDelayMs = 500;
     bool   clock24Hour       = true;
     bool   clockShowSeconds  = false;
     int    dockIconSize       = 52;   // base visual size (before magnify)
@@ -603,6 +605,16 @@ public:
                                           m_cfg.notificationBannerMs);
         m_cfg.dockPosition       = getI("dockPosition",
                                         m_cfg.dockPosition);
+        m_cfg.dockAutoHide       = o.contains("dockAutoHide")
+                                   ? o["dockAutoHide"].toBool(false)
+                                   : m_cfg.dockAutoHide;
+        m_cfg.dockAutoHideDelayMs = getI("dockAutoHideDelayMs",
+                                          m_cfg.dockAutoHideDelayMs);
+        m_cfg.dockAutoHide       = o.contains("dockAutoHide")
+                                   ? o["dockAutoHide"].toBool(false)
+                                   : m_cfg.dockAutoHide;
+        m_cfg.dockAutoHideDelayMs = getI("dockAutoHideDelayMs",
+                                          m_cfg.dockAutoHideDelayMs);
         m_cfg.clock24Hour        = o.contains("clock24Hour")
                                    ? o["clock24Hour"].toBool(true)
                                    : m_cfg.clock24Hour;
@@ -883,6 +895,8 @@ public:
         o["notifStyle"]           = m_cfg.notifStyle;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
         o["dockPosition"]       = m_cfg.dockPosition;
+        o["dockAutoHide"]        = m_cfg.dockAutoHide;
+        o["dockAutoHideDelayMs"] = m_cfg.dockAutoHideDelayMs;
         o["clock24Hour"]         = m_cfg.clock24Hour;
         o["clockShowSeconds"]    = m_cfg.clockShowSeconds;
         o["blurRefreshMs"]      = m_cfg.blurRefreshMs;

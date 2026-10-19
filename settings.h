@@ -7118,6 +7118,66 @@ private:
             v->addWidget(c);
         }
 
+        // ============================================================
+        // Card: DOCK AUTO-HIDE
+        // ============================================================
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
+
+            cv->addWidget(Sigil::groupLabel("AUTO-HIDE"));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Auto-hide dock",
+                "Hide the dock when not in use. Pointer at the screen edge reveals it.",
+                vc.dockAutoHide,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.dockAutoHide = on; });
+                }));
+
+            // Delay slider
+            {
+                QWidget *row = new QWidget;
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(6);
+                QHBoxLayout *top = new QHBoxLayout;
+                QLabel *t = new QLabel("Hide delay");
+                t->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+                QLabel *vLbl = new QLabel(QString("%1 ms").arg(vc.dockAutoHideDelayMs));
+                vLbl->setStyleSheet(QString("color: %1; font-size: 12px; background: transparent;").arg(Sigil::textSecondary().name()));
+                vLbl->setMinimumWidth(60);
+                vLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                top->addWidget(t); top->addStretch(); top->addWidget(vLbl);
+                rv->addLayout(top);
+
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(200, 2000);
+                sl->setSingleStep(100);
+                sl->setPageStep(100);
+                sl->setValue(vc.dockAutoHideDelayMs);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
+                    "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal { background: rgb(168,50,50); border-radius: 2px; }");
+                QObject::connect(sl, &QSlider::valueChanged, [vLbl](int x) {
+                    vLbl->setText(QString("%1 ms").arg(x));
+                    VisualConfigManager::instance().setAndSave([x](VisualConfig &c) { c.dockAutoHideDelayMs = x; });
+                });
+                rv->addWidget(sl);
+
+                QLabel *s = new QLabel("How long the pointer must be away before the dock hides");
+                s->setStyleSheet(QString("color: %1; font-size: 11px; background: transparent;").arg(Sigil::textDim().name()));
+                rv->addWidget(s);
+                cv->addWidget(row);
+            }
+
+            v->addWidget(c);
+        }
+
         return wrap;
     }
 

@@ -117,7 +117,7 @@ protected:
     }
 
     // Builds the header with three traffic lights pre-wired:
-    //   close -> shellCloseViaGenie(this)
+    //   close -> shellCloseViaWarp(this)
     //   min   -> shellMinimizeFocusedWindow()
     //   max   -> toggle preferred size / fullscreen
     // Returns the hbox; caller adds its own widgets after.
@@ -166,9 +166,9 @@ protected:
             // llvmpipe the animation runs at ~20fps, so a 1140ms
             // "duration" takes 2-3x longer visually. 900ms fires
             // mid-animation and the window disappears early.
-            shellCloseViaGenie(this);
+            shellCloseViaWarp(this);
             const int animMs = qBound(128,
-                VisualConfigManager::instance().cfg().genieDurationMs,
+                VisualConfigManager::instance().cfg().warpDurationMs,
                 5000);
             QTimer::singleShot(animMs * 3 + 1500, this, []() {
                 QCoreApplication::quit();

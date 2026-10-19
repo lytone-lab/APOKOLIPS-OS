@@ -3,7 +3,7 @@
 
 #include "shell.h"
 
-static bool restoreGenieForDock(const QString &dockName);
+static bool restoreWarpForDock(const QString &dockName);
 static QString discoverSwaySock();
 
 static volatile sig_atomic_t g_spotlightToggle = 0;
