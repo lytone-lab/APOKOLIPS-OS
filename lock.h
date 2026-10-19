@@ -18,6 +18,8 @@
 #include "theme.h"
 #include "style.h"
 #include <security/pam_appl.h>
+#include <QtConcurrent>
+#include <QFutureWatcher>
 #include <cstring>
 
 static int pamConvFunc(int num_msg, const struct pam_message **msg,
@@ -171,7 +173,13 @@ protected:
         p.setPen(QPen(Sigil::border(), 1));
         p.drawPath(fieldPath);
 
-        if (m_password.isEmpty()) {
+        if (m_authenticating) {
+            p.setPen(Sigil::textDim());
+            QFont hintFont = font();
+            hintFont.setPixelSize(13);
+            p.setFont(hintFont);
+            p.drawText(field, Qt::AlignCenter, "Verifying...");
+        } else if (m_password.isEmpty()) {
             p.setPen(Sigil::textDim());
             QFont hintFont = font();
             hintFont.setPixelSize(13);
@@ -208,31 +216,44 @@ protected:
     }
 
     void tryAuthenticate() {
-        if (m_password.isEmpty()) return;
-        QByteArray passBytes = m_password.toUtf8();
-        struct pam_conv conv = { pamConvFunc, (void*)passBytes.constData() };
-        pam_handle_t* pamh = nullptr;
+        if (m_password.isEmpty() || m_authenticating) return;
+        
+        m_authenticating = true;
         QString user = qEnvironmentVariable("USER");
         if (user.isEmpty()) user = "lytone";
-
-        int ret = pam_start("login", user.toUtf8().constData(), &conv, &pamh);
-        if (ret == PAM_SUCCESS) {
-            ret = pam_authenticate(pamh, 0);
-            pam_end(pamh, ret);
-        }
-
-        if (ret == PAM_SUCCESS) {
-            qInfo() << "[lock] auth success";
-            m_password.clear();
-            hide();
-            if (parentWidget()) parentWidget()->setFocus();
-        } else {
-            qInfo() << "[lock] auth failed";
-            m_password.clear();
-            m_shakePhase = 0;
-            m_shakeTimer->start();
-        }
+        QByteArray passBytes = m_password.toUtf8();
+        m_password.clear();
         update();
+
+        QFutureWatcher<int> *watcher = new QFutureWatcher<int>(this);
+        QObject::connect(watcher, &QFutureWatcher<int>::finished, this, [this, watcher]() {
+            int ret = watcher->result();
+            watcher->deleteLater();
+            m_authenticating = false;
+            
+            if (ret == PAM_SUCCESS) {
+                qInfo() << "[lock] auth success";
+                hide();
+                if (parentWidget()) parentWidget()->setFocus();
+            } else {
+                qInfo() << "[lock] auth failed";
+                m_shakePhase = 0;
+                m_shakeTimer->start();
+            }
+            update();
+        });
+
+        QFuture<int> future = QtConcurrent::run([user, passBytes]() {
+            struct pam_conv conv = { pamConvFunc, (void*)passBytes.constData() };
+            pam_handle_t* pamh = nullptr;
+            int ret = pam_start("login", user.toUtf8().constData(), &conv, &pamh);
+            if (ret == PAM_SUCCESS) {
+                ret = pam_authenticate(pamh, 0);
+                pam_end(pamh, ret);
+            }
+            return ret;
+        });
+        watcher->setFuture(future);
     }
 
     void keyPressEvent(QKeyEvent *e) override {
@@ -345,6 +366,7 @@ private:
     QTimer *m_cursorTimer = nullptr;
     bool m_cursorBlink = true;
     QString m_password;
+    bool m_authenticating = false;
     QTimer *m_shakeTimer = nullptr;
     int m_shakePhase = 0;
     int m_shakeOffset = 0;
