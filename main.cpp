@@ -2451,10 +2451,14 @@ static int runShell(int argc, char *argv[])
     {
         QAction *a = viewMenu->addAction("Toggle Dock");
         QObject::connect(a, &QAction::triggered, [root]() {
-            // Toggle the dock's visibility by walking the layout
+            bool nowVisible = !VisualConfigManager::instance()
+                                   .cfg().dockVisible;
+            VisualConfigManager::instance().setAndSave(
+                [nowVisible](VisualConfig &c) { c.dockVisible = nowVisible; });
             for (QWidget *w : root->findChildren<QWidget *>()) {
                 if (w->objectName() == "dockRoot") {
-                    w->setVisible(!w->isVisible());
+                    if (nowVisible) { w->show(); w->raise(); }
+                    else w->hide();
                     break;
                 }
             }
@@ -3589,7 +3593,9 @@ static int runShell(int argc, char *argv[])
         }
 
         dock->setOrientation(pos != 0);
-        dock->show();
+        if (VisualConfigManager::instance().cfg().dockVisible) {
+            dock->show();
+        }
         desktop->show();
         dock->raise();
 

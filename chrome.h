@@ -2177,6 +2177,10 @@ private:
 
     void checkAutoHide() {
         const auto &cfg = VisualConfigManager::instance().cfg();
+        if (!cfg.dockVisible) {
+            if (isVisible()) hide();
+            return;
+        }
         if (!cfg.dockAutoHide) {
             if (!isVisible() || m_opacityEffect->opacity() < 1.0) {
                 show();
