@@ -1958,19 +1958,47 @@ static int runShell(int argc, char *argv[])
     btnDiamond->setObjectName("topBarOmega");
 
 
-    // Bell button
-    QPushButton *btnBell = new QPushButton(QString::fromUtf8("\xE2\x9C\x89"));
+    // Bell button — drawn as a vector icon so it looks identical on
+    // every system (previously used the ✉ text glyph, which isn't a
+    // bell at all). macOS-style outline, rendered at 32px for crisp
+    // 16px display.
+    auto makeBellIcon = [](const QColor &col) -> QIcon {
+        const int S = 32;
+        QPixmap pm(S, S);
+        pm.fill(Qt::transparent);
+        QPainter bp(&pm);
+        bp.setRenderHint(QPainter::Antialiasing);
+        bp.setPen(QPen(col, qMax(1.5, S * 0.055), Qt::SolidLine,
+                       Qt::RoundCap, Qt::RoundJoin));
+        bp.setBrush(Qt::NoBrush);
+        const qreal s = S;
+        QPainterPath bell;
+        bell.moveTo(s * 0.22, s * 0.68);          // bottom-left rim
+        bell.lineTo(s * 0.78, s * 0.68);          // bottom rim
+        bell.lineTo(s * 0.70, s * 0.35);          // right shoulder
+        bell.cubicTo(s * 0.70, s * 0.12,          // arc over top
+                     s * 0.30, s * 0.12,
+                     s * 0.30, s * 0.35);
+        bell.lineTo(s * 0.22, s * 0.68);          // left side to start
+        bp.drawPath(bell);
+        bp.drawArc(QRectF(s * 0.44, s * 0.72, s * 0.12, s * 0.10),
+                   180 * 16, 180 * 16);           // clapper
+        return QIcon(pm);
+    };
+
+    QPushButton *btnBell = new QPushButton();
     btnBell->setCursor(Qt::PointingHandCursor);
     btnBell->setFlat(true);
-    ThemeManager::instance().subscribe([btnBell](const Theme &t) {
+    btnBell->setIconSize(QSize(16, 16));
+    btnBell->setFixedSize(26, 26);
+    btnBell->setIcon(makeBellIcon(Sigil::textPrimary()));
+    ThemeManager::instance().subscribe([btnBell, makeBellIcon](const Theme &t) {
+        btnBell->setIcon(makeBellIcon(t.textPrimary));
         btnBell->setStyleSheet(QString(
-            "QPushButton { color: %1; background: transparent;"
-            "  border: none; font-size: 15px; padding: 2px 4px; }"
-            "QPushButton:hover { color: %2;"
-            "  background: %3; border-radius: 5px; }"
-            "QPushButton:pressed { background: %4; }")
-            .arg(t.accent.name(), t.accent.lighter(120).name(),
-                 rgba(t.accentSoft), rgba(t.accentStrong)));
+            "QPushButton { background: transparent; border: none; padding: 0; }"
+            "QPushButton:hover { background: %1; border-radius: 5px; }"
+            "QPushButton:pressed { background: %2; }")
+            .arg(rgba(t.accentSoft), rgba(t.accentStrong)));
     });
     topLayout->addWidget(btnBell);
     btnBell->setObjectName("topBarBell");
