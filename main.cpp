@@ -1955,6 +1955,7 @@ static int runShell(int argc, char *argv[])
     // (wired below, after apoMenu is built).
     OmegaButton *btnDiamond = new OmegaButton;
     topLayout->addWidget(btnDiamond);
+    btnDiamond->setObjectName("topBarOmega");
 
 
     // Bell button
@@ -1972,6 +1973,7 @@ static int runShell(int argc, char *argv[])
                  rgba(t.accentSoft), rgba(t.accentStrong)));
     });
     topLayout->addWidget(btnBell);
+    btnBell->setObjectName("topBarBell");
     QObject::connect(btnBell, &QPushButton::clicked, [notifications]() {
         notifications->toggle();
     });
@@ -1986,6 +1988,7 @@ static int runShell(int argc, char *argv[])
             .arg(t.textPrimary.name()));
     });
     topLayout->addWidget(brand);
+    brand->setObjectName("topBarBrand");
 
     HUDWidget *hud = new HUDWidget;
     hud->setVisible(false);
@@ -3224,6 +3227,7 @@ static int runShell(int argc, char *argv[])
             " background: transparent;").arg(t.textSecondary.name()));
     });
     topLayout->addWidget(statsLbl);
+    statsLbl->setObjectName("topBarStats");
 
     QTimer *statsTimer = new QTimer(&window);
     QObject::connect(statsTimer, &QTimer::timeout, [statsLbl]() {
@@ -3336,6 +3340,32 @@ static int runShell(int argc, char *argv[])
     };
 
     topLayout->addWidget(clock);
+    clock->setObjectName("topBarClock");
+
+    // ---- Top Bar customisation: live refresh ----
+    {
+        QFileSystemWatcher *tbWatch = new QFileSystemWatcher(&window);
+        QString tbCfg = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                        + "/apokolips/visual.json";
+        if (QFile::exists(tbCfg)) tbWatch->addPath(tbCfg);
+
+        auto refreshTopBar = [topBar, &menuButtons]() {
+            topBar->refreshFromConfig();
+            for (QPushButton *b : menuButtons)
+                b->setVisible(VisualConfigManager::instance().cfg().topBarShowMenu);
+        };
+
+        // Apply once so saved state is honoured at startup
+        refreshTopBar();
+
+        QObject::connect(tbWatch, &QFileSystemWatcher::fileChanged,
+                         [tbWatch, tbCfg, refreshTopBar]() {
+            VisualConfigManager::instance().load();
+            refreshTopBar();
+            if (!tbWatch->files().contains(tbCfg) && QFile::exists(tbCfg))
+                tbWatch->addPath(tbCfg);
+        });
+    }
 
     auto formatClock = []() {
         auto &cfg = VisualConfigManager::instance().cfg();

@@ -165,7 +165,7 @@ protected:
     void changeEvent(QEvent *e) override {
         QWidget::changeEvent(e);
         // Sway may reposition/resize us when a window comes back from
-        // scratchpad after genie minimize. Re-apply our dock-aware
+        // scratchpad after warp minimize. Re-apply our dock-aware
         // geometry on every state change so we do not end up covering
         // the dock.
         if (e->type() == QEvent::WindowStateChange
@@ -358,7 +358,7 @@ private:
         QPushButton *maxBtn = makeLight("#155c1e", "#28c840", maxGlyph);
 
         QObject::connect(m_closeBtn, &QPushButton::clicked,
-                         [this]() { shellCloseViaGenie(this); });
+                         [this]() { shellCloseViaWarp(this); });
         QObject::connect(minBtn, &QPushButton::clicked,
                          []() { shellMinimizeFocusedWindow(); });
         QObject::connect(maxBtn, &QPushButton::clicked, [this]() {
@@ -865,6 +865,101 @@ private:
                           [](VisualConfig &c, int x) { c.windowHeaderHeight = x; });
             addChromeSlider("Shadow depth", "Window drop shadow (px)", 0, 40, vc.windowShadowDepth,
                           [](VisualConfig &c, int x) { c.windowShadowDepth = x; });
+
+            v->addWidget(c);
+        }
+
+        // ---- TOP BAR card (Category 2) ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
+            cv->addWidget(Sigil::groupLabel("TOP BAR"));
+
+            // Height slider
+            {
+                QWidget *row = new QWidget;
+                QVBoxLayout *rv = new QVBoxLayout(row);
+                rv->setContentsMargins(0, 0, 0, 0);
+                rv->setSpacing(6);
+                QHBoxLayout *top = new QHBoxLayout;
+                QLabel *t = new QLabel("Height");
+                t->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+                QLabel *vLbl = new QLabel(QString("%1 px").arg(vc.topBarHeight));
+                vLbl->setStyleSheet(QString("color: %1; font-size: 12px; background: transparent;").arg(Sigil::textSecondary().name()));
+                vLbl->setMinimumWidth(50);
+                vLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                top->addWidget(t); top->addStretch(); top->addWidget(vLbl);
+                rv->addLayout(top);
+
+                QSlider *sl = new QSlider(Qt::Horizontal);
+                sl->setRange(24, 40);
+                sl->setValue(vc.topBarHeight);
+                sl->setStyleSheet(
+                    "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
+                    "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
+                    "QSlider::sub-page:horizontal { background: rgb(168,50,50); border-radius: 2px; }");
+                QObject::connect(sl, &QSlider::valueChanged, [vLbl](int x) {
+                    vLbl->setText(QString("%1 px").arg(x));
+                    VisualConfigManager::instance().setAndSave([x](VisualConfig &c) { c.topBarHeight = x; });
+                });
+                rv->addWidget(sl);
+
+                QLabel *s = new QLabel("Bar height in pixels (24-40)");
+                s->setStyleSheet(QString("color: %1; font-size: 11px; background: transparent;").arg(Sigil::textDim().name()));
+                rv->addWidget(s);
+                cv->addWidget(row);
+            }
+
+            // Toggles
+            cv->addWidget(Sigil::makeToggleRow(
+                "Clock", "Show the time in the top bar",
+                vc.topBarShowClock,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.topBarShowClock = on; });
+                }));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "CPU / RAM stats", "Show system stats in the top bar",
+                vc.topBarShowStats,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.topBarShowStats = on; });
+                }));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Notification bell", "Show the bell icon",
+                vc.topBarShowBell,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.topBarShowBell = on; });
+                }));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "App name (brand)", "Show the current app name",
+                vc.topBarShowBrand,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.topBarShowBrand = on; });
+                }));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "Omega menu", "Show the system menu icon",
+                vc.topBarShowOmega,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.topBarShowOmega = on; });
+                }));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "File / Edit / View menus", "Show the app menu bar",
+                vc.topBarShowMenu,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.topBarShowMenu = on; });
+                }));
 
             v->addWidget(c);
         }
@@ -3296,7 +3391,7 @@ private:
 
             // Reduce motion toggle.
             // GTK apps respond today (gsettings enable-animations).
-            // Shell animations (genie/scale/suck/thanos/mesh, menu
+            // Shell animations (warp/scale/suck/thanos/mesh, menu
             // fades, launcher spring, wallpaper parallax, cursor
             // trail) are V2 (see PROJECT_STATE.txt "WIRING BACKLOG"
             // — high contrast / reduce motion, which lists the
@@ -6807,9 +6902,9 @@ private:
                 left->addWidget(subtitle);
                 h->addLayout(left, 1);
 
-                QStringList labels = { "Genie", "Scale", "Suck",
-                                       "Thanos Snap", "Mesh Genie" };
-                QStringList values = { "genie", "scale", "suck",
+                QStringList labels = { "Warp", "Scale", "Suck",
+                                       "Thanos Snap", "Magic Carpet" };
+                QStringList values = { "warp", "scale", "suck",
                                        "thanos", "mesh" };
                 int curIdx = values.indexOf(vc.minimizeStyle);
                 if (curIdx < 0) curIdx = 0;
@@ -6915,13 +7010,13 @@ private:
             v->addWidget(c);
         }
 
-        v->addWidget(makeGenieCard());
+        v->addWidget(makeWarpCard());
 
         v->addStretch();
         return page;
     }
 
-    QWidget *makeGenieCard() {
+    QWidget *makeWarpCard() {
         // Rendered as a section inside makeDockPage.
         QWidget *wrap = new QWidget;
         QVBoxLayout *v = new QVBoxLayout(wrap);
@@ -6936,14 +7031,14 @@ private:
             QVBoxLayout *cv = new QVBoxLayout(c);
             cv->setContentsMargins(20, 16, 20, 16);
             cv->setSpacing(12);
-            cv->addWidget(Sigil::groupLabel("MINIMIZE — GENIE"));
+            cv->addWidget(Sigil::groupLabel("MINIMIZE — WARP"));
             cv->addWidget(Sigil::makeToggleRow(
-                "Enable Genie effect",
+                "Enable Warp effect",
                 "Windows pour into the dock when minimized",
-                vc.genieEnabled,
+                vc.warpEnabled,
                 [](bool on) {
                     VisualConfigManager::instance().setAndSave(
-                        [on](VisualConfig &c) { c.genieEnabled = on; });
+                        [on](VisualConfig &c) { c.warpEnabled = on; });
                 }));
             v->addWidget(c);
         }
@@ -6954,7 +7049,7 @@ private:
             QVBoxLayout *cv = new QVBoxLayout(c);
             cv->setContentsMargins(20, 16, 20, 16);
             cv->setSpacing(18);
-            cv->addWidget(Sigil::groupLabel("GENIE SHAPE"));
+            cv->addWidget(Sigil::groupLabel("WARP SHAPE"));
 
             auto addSlider = [&](const QString &title, const QString &sub,
                                  int value, int lo, int hi,
@@ -7014,10 +7109,10 @@ private:
 
             addSlider("Duration",
                       "How long the animation takes, in milliseconds",
-                      vc.genieDurationMs, 120, 1500, " ms",
+                      vc.warpDurationMs, 120, 1500, " ms",
                       [](int x) {
                 VisualConfigManager::instance().setAndSave(
-                    [x](VisualConfig &c) { c.genieDurationMs = x; });
+                    [x](VisualConfig &c) { c.warpDurationMs = x; });
             });
 
             v->addWidget(c);

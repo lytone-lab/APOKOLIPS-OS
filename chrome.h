@@ -1489,8 +1489,8 @@ protected:
         BadgeRegistry::clear(m_name);
         update();
 
-        // Restore a matching Genie-minimized window instead of relaunching it.
-        if (restoreGenieForDock(m_name))
+        // Restore a matching Warp-minimized window instead of relaunching it.
+        if (restoreWarpForDock(m_name))
             return;
 
         // If the app is already running, focus its window instead of
@@ -1614,7 +1614,7 @@ protected:
 
         qDebug() << "[dock] startDetached" << program << args;
         // (--from-dock removed: fresh launches no longer animate,
-        //  minimised windows are restored via the reverse-genie path)
+        //  minimised windows are restored via the reverse-warp path)
 
         qint64 launchedPid = 0;
         const bool ok = QProcess::startDetached(
@@ -2208,7 +2208,7 @@ private:
 class TopBar : public QWidget {
 public:
     explicit TopBar(QWidget *parent = nullptr) : QWidget(parent) {
-        setFixedHeight(30);
+        setFixedHeight(VisualConfigManager::instance().cfg().topBarHeight);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAutoFillBackground(false);
         setCursor(Qt::OpenHandCursor);
@@ -2218,6 +2218,18 @@ public:
         update();
     }
     bool isMouseOver() const { return m_hovered; }
+
+    void refreshFromConfig() {
+        const auto &cfg = VisualConfigManager::instance().cfg();
+        setFixedHeight(cfg.topBarHeight);
+        if (auto *w = findChild<QWidget*>("topBarClock")) w->setVisible(cfg.topBarShowClock);
+        if (auto *w = findChild<QWidget*>("topBarStats")) w->setVisible(cfg.topBarShowStats);
+        if (auto *w = findChild<QWidget*>("topBarBell"))  w->setVisible(cfg.topBarShowBell);
+        if (auto *w = findChild<QWidget*>("topBarBrand")) w->setVisible(cfg.topBarShowBrand);
+        if (auto *w = findChild<QWidget*>("topBarOmega")) w->setVisible(cfg.topBarShowOmega);
+        update();
+    }
+
 protected:
     void enterEvent(QEnterEvent *e) override {
         m_hovered = true;
@@ -3233,9 +3245,9 @@ protected:
         grim.waitForFinished(600);
 
         // Read the user's chosen minimize style from visual.json.
-        // Accept every style the shell accepts — genie, scale, suck,
+        // Accept every style the shell accepts — warp, scale, suck,
         // thanos. Keep in sync with visualconfig.h validation.
-        QString style = "genie";
+        QString style = "warp";
         {
             QFile f(QDir::homePath()
                     + "/.config/apokolips/visual.json");
@@ -3244,7 +3256,7 @@ protected:
                     f.readAll()).object();
                 QString s = o.value("minimizeStyle").toString();
                 if (s == "scale" || s == "suck"
-                    || s == "genie" || s == "thanos")
+                    || s == "warp" || s == "thanos")
                     style = s;
             }
         }

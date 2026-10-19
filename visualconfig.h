@@ -8,6 +8,14 @@
 struct VisualConfig {
     double blurStrength       = 0.25;   // 0=none, 1=heavy
     int    topBarAlpha        = 110;
+    // Top Bar (Category 2)
+    int    topBarHeight       = 30;   // 24..40 px
+    bool   topBarShowClock    = true;
+    bool   topBarShowStats    = true;
+    bool   topBarShowBell     = true;
+    bool   topBarShowBrand    = true;
+    bool   topBarShowOmega    = true;
+    bool   topBarShowMenu     = true;
     int    dockAlpha          = 130;
     int    launcherAlpha      = 165;
     int    controlCenterAlpha = 165;
@@ -73,13 +81,13 @@ struct VisualConfig {
     bool   clock24Hour       = true;
     bool   clockShowSeconds  = false;
     int    dockIconSize       = 52;   // base visual size (before magnify)
-    bool   genieEnabled       = true;
-    QString minimizeStyle     = "genie";   // genie | scale | suck
-    int    genieDurationMs    = 700;
-    int    genieStrips        = 140;
-    double genieStagger       = 0.35;
-    double genieCurve         = 0.4;
-    double genieFadeStart     = 0.95;
+    bool   warpEnabled       = true;
+    QString minimizeStyle     = "warp";   // warp | scale | suck
+    int    warpDurationMs    = 700;
+    int    warpStrips        = 140;
+    double warpStagger       = 0.35;
+    double warpCurve         = 0.4;
+    double warpFadeStart     = 0.95;
     int    screenOffTimeoutMin = 15;   // 0 = never
     int    sleepTimeoutMin     = 30;   // 0 = never
     bool   lowPowerMode        = false;
@@ -143,7 +151,7 @@ struct VisualConfig {
     bool    boomtubeShuffle    = false;
     QString boomtubeLoop       = "off";   // off | all | one
     QString mymachGraphStyle   = "line";  // line | bar | area | radial
-    int     genieSCount       = 1;     // 1..5 S-wiggles on genie path
+    int     warpSCount       = 1;     // 1..5 S-wiggles on warp path
     QStringList discoveredWallpapers; // dev wallpapers user has found
     QString customWallpaperPath;      // user-picked image (absolute path)
     QVariantMap upscaleDecisions;     // path -> "quick" | "sharp" | "skip"
@@ -202,6 +210,25 @@ public:
         auto getI = [&](const char *k, int d)    { return o.contains(k) ? o[k].toInt()    : d; };
         m_cfg.blurStrength       = getD("blurStrength",       m_cfg.blurStrength);
         m_cfg.topBarAlpha        = getI("topBarAlpha",        m_cfg.topBarAlpha);
+        m_cfg.topBarHeight       = getI("topBarHeight",       m_cfg.topBarHeight);
+        m_cfg.topBarShowClock    = o.contains("topBarShowClock")
+                                   ? o["topBarShowClock"].toBool(true)
+                                   : m_cfg.topBarShowClock;
+        m_cfg.topBarShowStats    = o.contains("topBarShowStats")
+                                   ? o["topBarShowStats"].toBool(true)
+                                   : m_cfg.topBarShowStats;
+        m_cfg.topBarShowBell     = o.contains("topBarShowBell")
+                                   ? o["topBarShowBell"].toBool(true)
+                                   : m_cfg.topBarShowBell;
+        m_cfg.topBarShowBrand    = o.contains("topBarShowBrand")
+                                   ? o["topBarShowBrand"].toBool(true)
+                                   : m_cfg.topBarShowBrand;
+        m_cfg.topBarShowOmega    = o.contains("topBarShowOmega")
+                                   ? o["topBarShowOmega"].toBool(true)
+                                   : m_cfg.topBarShowOmega;
+        m_cfg.topBarShowMenu     = o.contains("topBarShowMenu")
+                                   ? o["topBarShowMenu"].toBool(true)
+                                   : m_cfg.topBarShowMenu;
         m_cfg.dockAlpha          = getI("dockAlpha",          m_cfg.dockAlpha);
         m_cfg.launcherAlpha      = getI("launcherAlpha",      m_cfg.launcherAlpha);
         m_cfg.controlCenterAlpha = getI("controlCenterAlpha", m_cfg.controlCenterAlpha);
@@ -223,24 +250,24 @@ public:
         if (o.contains("poolOvershootPct"))
             m_cfg.poolOvershootPct = o["poolOvershootPct"].toInt(12);
         m_cfg.dockIconSize       = getI("dockIconSize", m_cfg.dockIconSize);
-        m_cfg.genieEnabled       = o.contains("genieEnabled")
-                                   ? o["genieEnabled"].toBool(true)
-                                   : m_cfg.genieEnabled;
+        m_cfg.warpEnabled       = o.contains("warpEnabled")
+                                   ? o["warpEnabled"].toBool(true)
+                                   : m_cfg.warpEnabled;
         m_cfg.minimizeStyle      = o.contains("minimizeStyle")
                                    ? o["minimizeStyle"].toString()
                                    : m_cfg.minimizeStyle;
-        m_cfg.genieDurationMs    = getI("genieDurationMs",
-                                        m_cfg.genieDurationMs);
-        m_cfg.genieStrips        = getI("genieStrips", m_cfg.genieStrips);
-        m_cfg.genieStagger       = o.contains("genieStagger")
-                                   ? o["genieStagger"].toDouble(0.35)
-                                   : m_cfg.genieStagger;
-        m_cfg.genieCurve         = o.contains("genieCurve")
-                                   ? o["genieCurve"].toDouble(0.65)
-                                   : m_cfg.genieCurve;
-        m_cfg.genieFadeStart     = o.contains("genieFadeStart")
-                                   ? o["genieFadeStart"].toDouble(0.95)
-                                   : m_cfg.genieFadeStart;
+        m_cfg.warpDurationMs    = getI("warpDurationMs",
+                                        m_cfg.warpDurationMs);
+        m_cfg.warpStrips        = getI("warpStrips", m_cfg.warpStrips);
+        m_cfg.warpStagger       = o.contains("warpStagger")
+                                   ? o["warpStagger"].toDouble(0.35)
+                                   : m_cfg.warpStagger;
+        m_cfg.warpCurve         = o.contains("warpCurve")
+                                   ? o["warpCurve"].toDouble(0.65)
+                                   : m_cfg.warpCurve;
+        m_cfg.warpFadeStart     = o.contains("warpFadeStart")
+                                   ? o["warpFadeStart"].toDouble(0.95)
+                                   : m_cfg.warpFadeStart;
         m_cfg.screenOffTimeoutMin = getI("screenOffTimeoutMin",
                                          m_cfg.screenOffTimeoutMin);
         m_cfg.sleepTimeoutMin     = getI("sleepTimeoutMin",
@@ -425,8 +452,8 @@ public:
             m_cfg.upscaleDecisions =
                 o["upscaleDecisions"].toObject().toVariantMap();
         }
-        m_cfg.genieSCount         = getI("genieSCount",
-                                         m_cfg.genieSCount);
+        m_cfg.warpSCount         = getI("warpSCount",
+                                         m_cfg.warpSCount);
         if (o.contains("poolIconPos")
             && o["poolIconPos"].isObject()) {
             m_cfg.poolIconPos = o["poolIconPos"].toObject()
@@ -597,22 +624,22 @@ public:
         if (m_cfg.finderAlpha        < 30)  m_cfg.finderAlpha        = 30;
         if (m_cfg.dockIconSize       < 32)  m_cfg.dockIconSize       = 32;
         if (m_cfg.dockIconSize       > 90)  m_cfg.dockIconSize       = 90;
-        if (m_cfg.minimizeStyle != "genie"
+        if (m_cfg.minimizeStyle != "warp"
             && m_cfg.minimizeStyle != "scale"
             && m_cfg.minimizeStyle != "suck"
             && m_cfg.minimizeStyle != "thanos"
             && m_cfg.minimizeStyle != "mesh")
-            m_cfg.minimizeStyle = "genie";
-        if (m_cfg.genieDurationMs < 120) m_cfg.genieDurationMs = 120;
-        if (m_cfg.genieDurationMs > 1500) m_cfg.genieDurationMs = 1500;
-        if (m_cfg.genieStrips < 40)   m_cfg.genieStrips = 40;
-        if (m_cfg.genieStrips > 320)  m_cfg.genieStrips = 320;
-        if (m_cfg.genieStagger < 0.0) m_cfg.genieStagger = 0.0;
-        if (m_cfg.genieStagger > 0.8) m_cfg.genieStagger = 0.8;
-        if (m_cfg.genieCurve < 0.3)   m_cfg.genieCurve = 0.3;
-        if (m_cfg.genieCurve > 2.0)   m_cfg.genieCurve = 2.0;
-        if (m_cfg.genieFadeStart < 0.5) m_cfg.genieFadeStart = 0.5;
-        if (m_cfg.genieFadeStart > 1.0) m_cfg.genieFadeStart = 1.0;
+            m_cfg.minimizeStyle = "warp";
+        if (m_cfg.warpDurationMs < 120) m_cfg.warpDurationMs = 120;
+        if (m_cfg.warpDurationMs > 1500) m_cfg.warpDurationMs = 1500;
+        if (m_cfg.warpStrips < 40)   m_cfg.warpStrips = 40;
+        if (m_cfg.warpStrips > 320)  m_cfg.warpStrips = 320;
+        if (m_cfg.warpStagger < 0.0) m_cfg.warpStagger = 0.0;
+        if (m_cfg.warpStagger > 0.8) m_cfg.warpStagger = 0.8;
+        if (m_cfg.warpCurve < 0.3)   m_cfg.warpCurve = 0.3;
+        if (m_cfg.warpCurve > 2.0)   m_cfg.warpCurve = 2.0;
+        if (m_cfg.warpFadeStart < 0.5) m_cfg.warpFadeStart = 0.5;
+        if (m_cfg.warpFadeStart > 1.0) m_cfg.warpFadeStart = 1.0;
         if (m_cfg.screenOffTimeoutMin < 0)   m_cfg.screenOffTimeoutMin = 0;
         if (m_cfg.screenOffTimeoutMin > 240) m_cfg.screenOffTimeoutMin = 240;
         if (m_cfg.sleepTimeoutMin < 0)   m_cfg.sleepTimeoutMin = 0;
@@ -673,8 +700,8 @@ public:
         // to pick up the new default.
         if (m_cfg.dockMagnifyMax     < 0.05) m_cfg.dockMagnifyMax    = 0.05;
         if (m_cfg.dockSigma          < 15)  m_cfg.dockSigma          = 15;
-        if (m_cfg.genieSCount < 1) m_cfg.genieSCount = 1;
-        if (m_cfg.genieSCount > 5) m_cfg.genieSCount = 5;
+        if (m_cfg.warpSCount < 1) m_cfg.warpSCount = 1;
+        if (m_cfg.warpSCount > 5) m_cfg.warpSCount = 5;
     }
 
     void resetToDefaults() {
@@ -687,6 +714,13 @@ public:
         QJsonObject o;
         o["blurStrength"]       = m_cfg.blurStrength;
         o["topBarAlpha"]        = m_cfg.topBarAlpha;
+        o["topBarHeight"]       = m_cfg.topBarHeight;
+        o["topBarShowClock"]    = m_cfg.topBarShowClock;
+        o["topBarShowStats"]    = m_cfg.topBarShowStats;
+        o["topBarShowBell"]     = m_cfg.topBarShowBell;
+        o["topBarShowBrand"]    = m_cfg.topBarShowBrand;
+        o["topBarShowOmega"]    = m_cfg.topBarShowOmega;
+        o["topBarShowMenu"]     = m_cfg.topBarShowMenu;
         o["dockAlpha"]          = m_cfg.dockAlpha;
         o["launcherAlpha"]      = m_cfg.launcherAlpha;
         o["controlCenterAlpha"] = m_cfg.controlCenterAlpha;
@@ -700,13 +734,13 @@ public:
         o["poolStaggerMs"]      = m_cfg.poolStaggerMs;
         o["poolOvershootPct"]   = m_cfg.poolOvershootPct;
         o["dockIconSize"]       = m_cfg.dockIconSize;
-        o["genieEnabled"]       = m_cfg.genieEnabled;
+        o["warpEnabled"]       = m_cfg.warpEnabled;
         o["minimizeStyle"]      = m_cfg.minimizeStyle;
-        o["genieDurationMs"]    = m_cfg.genieDurationMs;
-        o["genieStrips"]        = m_cfg.genieStrips;
-        o["genieStagger"]       = m_cfg.genieStagger;
-        o["genieCurve"]         = m_cfg.genieCurve;
-        o["genieFadeStart"]     = m_cfg.genieFadeStart;
+        o["warpDurationMs"]    = m_cfg.warpDurationMs;
+        o["warpStrips"]        = m_cfg.warpStrips;
+        o["warpStagger"]       = m_cfg.warpStagger;
+        o["warpCurve"]         = m_cfg.warpCurve;
+        o["warpFadeStart"]     = m_cfg.warpFadeStart;
         o["screenOffTimeoutMin"] = m_cfg.screenOffTimeoutMin;
         o["sleepTimeoutMin"]     = m_cfg.sleepTimeoutMin;
         o["lowPowerMode"]        = m_cfg.lowPowerMode;
@@ -775,7 +809,7 @@ public:
         o["customWallpaperPath"]  = m_cfg.customWallpaperPath;
         o["upscaleDecisions"]     = QJsonObject::fromVariantMap(
                                         m_cfg.upscaleDecisions);
-        o["genieSCount"]         = m_cfg.genieSCount;
+        o["warpSCount"]         = m_cfg.warpSCount;
         o["poolIconPos"]      = QJsonObject::fromVariantMap(
                                        m_cfg.poolIconPos);
         o["launcherEnabled"]     = m_cfg.launcherEnabled;
