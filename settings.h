@@ -547,6 +547,48 @@ private:
         sidebarScroll->setWidget(sidebarContent);
         sidebarScroll->setAutoFillBackground(false);
         sidebarScroll->setAttribute(Qt::WA_NoSystemBackground, true);
+
+
+    // ---- Live widget visibility sync ----
+    // Widget toggles in the Appearance page reflect the true config
+    // state. Right-click "Hide widget" on a desktop widget writes
+    // widgetVisibility[id] = false. Without this watcher, the toggle
+    // would stay checked until Settings is reopened.
+    {
+        QFileSystemWatcher *cfgWatch = new QFileSystemWatcher(this);
+        QString cfgPath = QStandardPaths::writableLocation(
+                              QStandardPaths::ConfigLocation);
+        if (cfgPath.isEmpty())
+            cfgPath = QDir::homePath() + "/.config";
+        cfgPath += "/apokolips/visual.json";
+        if (QFile::exists(cfgPath)) cfgWatch->addPath(cfgPath);
+
+        QObject::connect(cfgWatch, &QFileSystemWatcher::fileChanged,
+                         this, [this, cfgWatch, cfgPath]() {
+            VisualConfigManager::instance().load();
+            const auto &cfg = VisualConfigManager::instance().cfg();
+            // Find toggles by objectName (QWidget*, since Sigil::Toggle
+            // does not declare Q_OBJECT and cannot be used as the
+            // template type in findChildren<Toggle*>).
+            for (QWidget *w : findChildren<QWidget*>("sigilToggle")) {
+                Sigil::Toggle *tg = static_cast<Sigil::Toggle*>(w);
+                QWidget *parent = tg->parentWidget();
+                if (!parent) continue;
+                QString sub;
+                for (QLabel *lbl : parent->findChildren<QLabel*>()) {
+                    if (lbl->text().startsWith("apokolips-widget:")) {
+                        sub = lbl->text();
+                        break;
+                    }
+                }
+                if (sub.isEmpty()) continue;
+                const QString id = sub.mid(QString("apokolips-widget:").size());
+                tg->setOnSilent(cfg.widgetVisibility.value(id, true).toBool());
+            }
+            if (!cfgWatch->files().contains(cfgPath) && QFile::exists(cfgPath))
+                cfgWatch->addPath(cfgPath);
+        });
+    }
         sidebarScroll->viewport()->setAutoFillBackground(false);
         sidebarScroll->viewport()->setAttribute(Qt::WA_NoSystemBackground, true);
         sidebarScroll->viewport()->setStyleSheet("background: transparent;");
