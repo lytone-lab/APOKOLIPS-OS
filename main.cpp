@@ -4005,6 +4005,13 @@ static int runShell(int argc, char *argv[])
 // Runs inside the daemon process. Never returns until the process dies.
 int main(int argc, char *argv[])
 {
+    // Set icon theme globally before any window is created. Yaru is
+    // Ubuntu's default icon theme and has complete coverage for most
+    // installed apps (gucharmap, LibreOffice, Evince, etc.). Without
+    // this, QIcon::fromTheme() falls back to hicolor which is often
+    // incomplete.
+    QIcon::setThemeName("Yaru");
+
     // Daemon mode must be checked before any other dispatch — it's the
     // only mode that never exits during normal operation.
     if (argc >= 2 && QString::fromLocal8Bit(argv[1])

@@ -698,6 +698,37 @@ static void drawExternal(QPainter &p, const QRectF &r, const QColor &,
         }
     }
     if (icon.isNull()) {
+        // Try every installed theme's standard sizes. Covers apps
+        // whose icons live in Yaru/Adwaita/HighContrast but not
+        // in hicolor (e.g., gucharmap).
+        const QStringList themes = {"Yaru", "Adwaita", "HighContrast", "hicolor"};
+        const QStringList sizes  = {"48x48", "64x64", "128x128",
+                                     "256x256", "scalable", "32x32", "24x24"};
+        for (const QString &theme : themes) {
+            for (const QString &sz : sizes) {
+                QString base = "/usr/share/icons/" + theme + "/" + sz + "/apps/";
+                for (const QString &ext : {"png", "svg", "xpm"}) {
+                    QString path = base + iconName + "." + ext;
+                    QPixmap raw(path);
+                    if (!raw.isNull()) { icon = QIcon(raw); break; }
+                }
+                if (!icon.isNull()) break;
+            }
+            if (!icon.isNull()) break;
+        }
+    }
+    if (icon.isNull()) {
+        // Legacy catch-all for apps that still use /usr/share/pixmaps.
+        for (const QString &ext : {"png", "svg", "xpm"}) {
+            QString path = "/usr/share/pixmaps/" + iconName + "." + ext;
+            QPixmap raw(path);
+            if (!raw.isNull()) {
+                icon = QIcon(raw);
+                break;
+            }
+        }
+    }
+    if (icon.isNull()) {
         icon = QIcon::fromTheme("application-x-executable");
     }
     if (icon.isNull()) return;
