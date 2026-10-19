@@ -531,7 +531,16 @@ public:
         if (!cfg.launcherEnabled) return;
         (isVisible() && m_opacity > 0.5) ? hideLauncher() : showLauncher();
     }
-    void showLauncher() { raise(); show(); setFocus(); m_fadeTarget = 1.0; m_animTimer->start(); }
+    void showLauncher() {
+        // Apply the "Add search field to the Launcher" setting every
+        // time the panel opens. If launcherHasSearch is off, hide both
+        // the "SEARCH" title and the QLineEdit so the panel collapses
+        // into a clean icon grid.
+        const auto &vc = VisualConfigManager::instance().cfg();
+        if (m_titleLabel) m_titleLabel->setVisible(vc.launcherHasSearch);
+        if (m_search) m_search->setVisible(vc.launcherHasSearch);
+        raise(); show(); setFocus(); m_fadeTarget = 1.0; m_animTimer->start();
+    }
     void hideLauncher() { m_fadeTarget = 0.0; m_animTimer->start(); }
 
     void rebuildTiles() {
