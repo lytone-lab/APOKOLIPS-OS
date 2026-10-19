@@ -2539,9 +2539,9 @@ static int runShell(int argc, char *argv[])
     }
 
     {
-        QAction *a = viewMenu->addAction("Enter Mission Control");
-        QObject::connect(a, &QAction::triggered, [sway]() {
-            sway({ "layout", "tabbed" });
+        QAction *a = viewMenu->addAction("Mission Control");
+        QObject::connect(a, &QAction::triggered, [missionControl]() {
+            missionControl->toggle();
         });
     }
     topLayout->addWidget(makeMenuButton("View", viewMenu));
