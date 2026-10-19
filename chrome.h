@@ -1894,6 +1894,15 @@ public:
         QObject::connect(m_pollTimer, &QTimer::timeout,
                          this, [this]() { pollRunning(); });
         m_pollTimer->start();
+
+        m_opacityEffect = new QGraphicsOpacityEffect(this);
+        setGraphicsEffect(m_opacityEffect);
+        m_fadeAnim = new QPropertyAnimation(m_opacityEffect, "opacity", this);
+        m_fadeAnim->setDuration(250);
+        m_fadeAnim->setEasingCurve(QEasingCurve::InOutQuad);
+        QObject::connect(m_fadeAnim, &QPropertyAnimation::finished, this, [this]() {
+            if (m_fadeAnim->endValue().toDouble() == 0.0) hide();
+        });
     }
 
     void pollRunning() {
@@ -2169,7 +2178,13 @@ private:
     void checkAutoHide() {
         const auto &cfg = VisualConfigManager::instance().cfg();
         if (!cfg.dockAutoHide) {
-            if (!isVisible()) show();
+            if (!isVisible() || m_opacityEffect->opacity() < 1.0) {
+                show();
+                m_fadeAnim->stop();
+                m_fadeAnim->setStartValue(m_opacityEffect->opacity());
+                m_fadeAnim->setEndValue(1.0);
+                m_fadeAnim->start();
+            }
             return;
         }
 
@@ -2192,7 +2207,15 @@ private:
         }
 
         if (!isVisible()) {
-            if (nearEdge) { show(); raise(); m_lastHoverMs = 0; }
+            if (nearEdge) { 
+                show(); 
+                raise(); 
+                m_lastHoverMs = 0; 
+                m_fadeAnim->stop();
+                m_fadeAnim->setStartValue(m_opacityEffect->opacity());
+                m_fadeAnim->setEndValue(1.0);
+                m_fadeAnim->start();
+            }
             return;
         }
 
@@ -2201,11 +2224,22 @@ private:
 
         if (inDock || nearEdge) {
             m_lastHoverMs = 0;
+            if (m_opacityEffect->opacity() < 1.0 && m_fadeAnim->endValue().toDouble() != 1.0) {
+                m_fadeAnim->stop();
+                m_fadeAnim->setStartValue(m_opacityEffect->opacity());
+                m_fadeAnim->setEndValue(1.0);
+                m_fadeAnim->start();
+            }
         } else {
             const qint64 now = QDateTime::currentMSecsSinceEpoch();
             if (m_lastHoverMs == 0) m_lastHoverMs = now;
             if (now - m_lastHoverMs >= cfg.dockAutoHideDelayMs) {
-                hide();
+                if (m_opacityEffect->opacity() > 0.0 && m_fadeAnim->endValue().toDouble() != 0.0) {
+                    m_fadeAnim->stop();
+                    m_fadeAnim->setStartValue(m_opacityEffect->opacity());
+                    m_fadeAnim->setEndValue(0.0);
+                    m_fadeAnim->start();
+                }
                 m_lastHoverMs = 0;
             }
         }
@@ -2216,6 +2250,8 @@ private:
     bool         m_vertical = false;
     QTimer *m_timer = nullptr;
     QTimer *m_pollTimer = nullptr;
+    QGraphicsOpacityEffect *m_opacityEffect = nullptr;
+    QPropertyAnimation *m_fadeAnim = nullptr;
     qint64 m_lastHoverMs = 0;
     qreal m_cursorX = 0;
     qreal m_cursorY = 0;
