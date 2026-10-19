@@ -26,7 +26,8 @@ public:
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
 
-        loadWallpaper();
+        // loadWallpaper() moved to showLock() so we have the full
+        // screen geometry before generating the blur.
 
         m_clockTimer = new QTimer(this);
         m_clockTimer->setInterval(1000);
@@ -48,6 +49,7 @@ public:
     void showLock() {
         if (parentWidget())
             setGeometry(parentWidget()->rect());
+        loadWallpaper();
         raise();
         show();
         setFocus();
