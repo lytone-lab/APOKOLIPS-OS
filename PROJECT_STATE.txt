@@ -1792,6 +1792,26 @@ RETIRED FILES
   rewrite, still queued in ANIMATION QUEUE above. Do not resurrect.
 
 ------------------------------------------------------------------------
+LOCAL VM CONFIG — not in repo, applied once per VM
+------------------------------------------------------------------------
+
+Audio buffer size (2026-10-19):
+  File: ~/.config/pipewire/pipewire.conf.d/10-quantum.conf
+  Content:
+    context.properties = {
+        default.clock.force-quantum = 4096
+    }
+  Why: default 1024 caused buffer underruns (ERR 38 on sink, ERR 9 on
+  BoomTube in pw-top) during playback on this VM. Symptom was
+  "slower/scratchy" audio. 4096 = ~85ms latency, inaudible for
+  music/video, eliminates underruns. Only affects audio latency
+  (irrelevant for rhythm games or live production — if user ever
+  does those, drop back to 2048 or 1024 here).
+  Apply: systemctl --user restart pipewire pipewire-pulse wireplumber
+  This file is NOT in git. If the VM is rebuilt, this must be
+  re-created manually — flag this to whoever is rebuilding the VM.
+
+------------------------------------------------------------------------
 ORPHAN ITEMS — live only in ARCHITECTURE_NOTES, cross-referenced here
 ------------------------------------------------------------------------
 These items live in ARCHITECTURE_NOTES.md but were not surfaced in
