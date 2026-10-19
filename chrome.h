@@ -789,6 +789,18 @@ private:
         m_gridRow = gridRow;
 
         pl->addLayout(gridRow);
+
+        // File-results section — populated by searchFiles() when
+        // the user types a query. Hidden by default. Sits below the
+        // app grid so both app matches and file matches are visible.
+        m_fileResultsBox = new QWidget;
+        m_fileResultsBox->setAttribute(Qt::WA_TranslucentBackground, true);
+        m_fileResultsLayout = new QVBoxLayout(m_fileResultsBox);
+        m_fileResultsLayout->setContentsMargins(20, 8, 20, 8);
+        m_fileResultsLayout->setSpacing(4);
+        m_fileResultsBox->setVisible(false);
+        pl->addWidget(m_fileResultsBox);
+
         pl->addStretch();
 
         repositionPanel();
@@ -842,6 +854,101 @@ private:
             const bool matches = appName.contains(q, Qt::CaseInsensitive);
             tile->setVisible(matches);
         }
+        searchFiles(q);
+    }
+
+    // Scoped file search — searches Documents, Downloads, Desktop,
+    // Pictures, Music, Videos recursively. Skips noise directories
+    // (node_modules, .git, build, __pycache__) even when found inside
+    // a scoped folder. Caps at 20 results. Fast on VM because scope
+    // is small; on real hardware this is instant.
+    void searchFiles(const QString &query) {
+        if (!m_fileResultsLayout) return;
+
+        // Tear down old results
+        for (QPushButton *row : m_fileResultsList) {
+            if (row) row->deleteLater();
+        }
+        m_fileResultsList.clear();
+
+        const QString q = query.trimmed();
+        if (q.length() < 2) {
+            if (m_fileResultsBox) m_fileResultsBox->setVisible(false);
+            return;
+        }
+
+        const QString home = QDir::homePath();
+        const QStringList scopes = {
+            home + "/Documents",
+            home + "/Downloads",
+            home + "/Desktop",
+            home + "/Pictures",
+            home + "/Music",
+            home + "/Videos",
+        };
+        const QStringList excludeDirs = {
+            "/node_modules/", "/.git/", "/build/",
+            "/__pycache__/", "/.cache/",
+        };
+
+        int count = 0;
+        const int MAX_RESULTS = 20;
+
+        for (const QString &scope : scopes) {
+            if (count >= MAX_RESULTS) break;
+            QDir scopeDir(scope);
+            if (!scopeDir.exists()) continue;
+
+            QDirIterator it(scope,
+                QDir::Files | QDir::NoDotAndDotDot,
+                QDirIterator::Subdirectories);
+            while (it.hasNext() && count < MAX_RESULTS) {
+                it.next();
+                const QString path = it.filePath();
+
+                bool skip = false;
+                for (const QString &ex : excludeDirs) {
+                    if (path.contains(ex)) { skip = true; break; }
+                }
+                if (skip) continue;
+
+                QFileInfo fi(path);
+                if (!fi.fileName().contains(q, Qt::CaseInsensitive))
+                    continue;
+
+                QPushButton *row = new QPushButton;
+                row->setCursor(Qt::PointingHandCursor);
+                row->setFixedHeight(34);
+                row->setStyleSheet(
+                    "QPushButton {"
+                    "  text-align: left;"
+                    "  padding: 4px 12px;"
+                    "  color: " + Sigil::textPrimary().name() + ";"
+                    "  background: transparent;"
+                    "  border: none;"
+                    "  border-radius: 6px;"
+                    "  font-size: 12px; }"
+                    "QPushButton:hover {"
+                    "  background: " + rgba(Sigil::rowHover()) + "; }");
+                row->setText("  ð  " + fi.fileName()
+                             + "   —   " + fi.absolutePath().left(60));
+
+                const QString filePath = path;
+                QObject::connect(row, &QPushButton::clicked,
+                                 [this, filePath]() {
+                    QProcess::startDetached("xdg-open", { filePath });
+                    if (parentWidget())
+                        this->hideLauncher();
+                });
+
+                m_fileResultsLayout->addWidget(row);
+                m_fileResultsList.append(row);
+                ++count;
+            }
+        }
+
+        if (m_fileResultsBox) m_fileResultsBox->setVisible(count > 0);
+        repositionPanel();
     }
 
     QWidget *makeTile(const QString &icon, const QString &name, int index) {
@@ -1109,6 +1216,9 @@ private:
     qreal m_fadeTarget = 0.0;
     Theme m_theme;
     QList<QPushButton *> m_tiles;
+    QWidget *m_fileResultsBox = nullptr;
+    QVBoxLayout *m_fileResultsLayout = nullptr;
+    QList<QPushButton *> m_fileResultsList;
     QList<QLabel *> m_iconLabels;
     QList<QLabel *> m_nameLabels;
     QList<QVBoxLayout *> m_gridColumns;
