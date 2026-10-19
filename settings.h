@@ -7423,48 +7423,43 @@ private:
 
             QHBoxLayout *srow = new QHBoxLayout;
             srow->setSpacing(10);
-            QList<QPushButton *> btns;
 
-            auto restyleStartup = [btns]() {
-                int cur = VisualConfigManager::instance().cfg().startupSoundVariant;
-                for (int i = 0; i < btns.size(); ++i) {
-                    bool sel = (i == cur);
-                    btns[i]->setStyleSheet(QString(
-                        "QPushButton {"
-                        "  background: %1;"
-                        "  color: %2;"
-                        "  border: 2px solid %3;"
-                        "  border-radius: 8px;"
-                        "  padding: 10px 16px;"
-                        "  font-size: 12px; }"
-                        "QPushButton:hover { background: %4; }")
-                        .arg(sel ? rgba(Sigil::rowSelected()) : QString("rgba(255,255,255,20)"),
-                             Sigil::textPrimary().name(),
-                             sel ? Sigil::accent().name() : rgba(Sigil::border()),
-                             rgba(Sigil::rowHover())));
-                }
-            };
+            QButtonGroup *grp = new QButtonGroup(c);
+            grp->setExclusive(true);
+            int curVar = VisualConfigManager::instance().cfg().startupSoundVariant;
 
             for (const StartupOpt &o : opts) {
                 QPushButton *b = new QPushButton(QString::fromUtf8(o.name));
                 b->setCursor(Qt::PointingHandCursor);
+                b->setCheckable(true);
+                b->setChecked(o.id == curVar);
                 b->setMinimumHeight(40);
-                btns.append(b);
-                int id = o.id;
-                QString file = QString::fromUtf8(o.file);
-                QObject::connect(b, &QPushButton::clicked, [id, file, restyleStartup]() {
-                    VisualConfigManager::instance().setAndSave(
-                        [id](VisualConfig &c) { c.startupSoundVariant = id; });
-                    restyleStartup();
-                    QProcess::startDetached("paplay", {
-                        QCoreApplication::applicationDirPath()
-                        + "/../assets/sounds/" + file });
-                });
+                b->setStyleSheet(
+                    "QPushButton {"
+                    "  background: rgba(255,255,255,20);"
+                    "  border: 1px solid rgba(255,255,255,40);"
+                    "  border-radius: 8px;"
+                    "  color: rgb(240,237,232);"
+                    "  font-size: 12px;"
+                    "  padding: 0 10px;"
+                    "}"
+                    "QPushButton:checked {"
+                    "  background: rgba(168,50,50,220);"
+                    "  border: 1px solid rgba(168,50,50,255);"
+                    "}");
+                grp->addButton(b, o.id);
                 srow->addWidget(b, 1);
             }
-            cv->addLayout(srow);
-            restyleStartup();
 
+            QObject::connect(grp, &QButtonGroup::idClicked, [opts](int id) {
+                VisualConfigManager::instance().setAndSave(
+                    [id](VisualConfig &c) { c.startupSoundVariant = id; });
+                QProcess::startDetached("paplay", {
+                    QCoreApplication::applicationDirPath()
+                    + "/../assets/sounds/" + QString::fromUtf8(opts[id].file) });
+            });
+
+            cv->addLayout(srow);
             v->addWidget(c);
         }
 
