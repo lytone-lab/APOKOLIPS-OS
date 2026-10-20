@@ -901,7 +901,6 @@ static const QVector<AppEntry> &appRegistry() {
         { "ext-lo-calc",   "LibreOffice Calc",   "ext:libreoffice-calc",   false, true },
         { "ext-evince",    "Document Viewer",    "ext:org.gnome.Evince",   false, true },
         { "ext-vlc",       "VLC",                "ext:vlc",                true,  true },
-        { "ext-gparted",   "GParted",            "ext:gparted",            false, true },
         { "ext-gucharmap", "Character Map",      "ext:gucharmap",          false, true },
         { "ext-epiphany",  "Epiphany",           "ext:org.gnome.Epiphany", true,  true },
         { "notes",       "Notes",     "\xF0\x9F\x93\x9D",  true,  true  },
