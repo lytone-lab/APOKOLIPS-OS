@@ -361,8 +361,10 @@ protected:
             [this]() { onCloseWindow(); });
         add(QKeySequence(Qt::Key_Escape),
             [this]() { onEscape(); });
-        add(QKeySequence("Meta+M"),
-            []() { shellMinimizeFocusedWindow(); });
+        // Note: Meta+M is intentionally NOT registered as a per-app
+        // shortcut. Sway binds it globally (bindsym $mod+m). Registering
+        // it in every ShellApp caused N overlapping calls when N apps
+        // were open, resulting in N stacked minimize sounds.
     }
 
     void paintEvent(QPaintEvent *) override

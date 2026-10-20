@@ -104,14 +104,16 @@ public:
         if (weOpened) showCenter();
 
         QPointer<QWidget> guard(card);
-        QTimer::singleShot(ms, this, [this, guard, weOpened]() {
-            if (!guard) return;
-            m_cards.removeAll(guard);
-            if (m_cardsLayout) m_cardsLayout->removeWidget(guard);
-            guard->deleteLater();
-            if (m_emptyLabel) m_emptyLabel->setVisible(m_cards.isEmpty());
-            if (weOpened && m_cards.isEmpty()) hideCenter();
-        });
+        if (VisualConfigManager::instance().cfg().notifAutoDismiss) {
+            QTimer::singleShot(ms, this, [this, guard, weOpened]() {
+                if (!guard) return;
+                m_cards.removeAll(guard);
+                if (m_cardsLayout) m_cardsLayout->removeWidget(guard);
+                guard->deleteLater();
+                if (m_emptyLabel) m_emptyLabel->setVisible(m_cards.isEmpty());
+                if (weOpened && m_cards.isEmpty()) hideCenter();
+            });
+        }
     }
 
 protected:
@@ -788,7 +790,16 @@ private:
         m_gridColumns = cols;
         m_gridRow = gridRow;
 
-        pl->addLayout(gridRow);
+        QWidget *scrollContent = new QWidget;
+        scrollContent->setAttribute(Qt::WA_TranslucentBackground, true);
+        scrollContent->setAttribute(Qt::WA_NoSystemBackground, true);
+        scrollContent->setStyleSheet("background: transparent;");
+        QVBoxLayout *scrollLayout = new QVBoxLayout(scrollContent);
+        scrollLayout->setContentsMargins(0, 0, 0, 0);
+        scrollLayout->setSpacing(18);
+        // Stop Qt from shrinking the grid rows when the panel is short
+        scrollLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+        scrollLayout->addLayout(gridRow);
 
         // File-results section — populated by searchFiles() when
         // the user types a query. Hidden by default. Sits below the
@@ -799,9 +810,29 @@ private:
         m_fileResultsLayout->setContentsMargins(20, 8, 20, 8);
         m_fileResultsLayout->setSpacing(4);
         m_fileResultsBox->setVisible(false);
-        pl->addWidget(m_fileResultsBox);
+        scrollLayout->addWidget(m_fileResultsBox);
+        scrollLayout->addStretch();
 
-        pl->addStretch();
+        QScrollArea *scroll = new QScrollArea;
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setAttribute(Qt::WA_TranslucentBackground, true);
+        scroll->viewport()->setAutoFillBackground(false);
+        scroll->viewport()->setAttribute(Qt::WA_TranslucentBackground, true);
+        scroll->viewport()->setStyleSheet("background: transparent;");
+        scroll->setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+            "QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }"
+            "QScrollBar::handle:vertical { background: rgba(255,255,255,40); border-radius: 4px; min-height: 20px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { border: none; background: none; }"
+        );
+        scroll->setWidget(scrollContent);
+        // Prevent QScrollArea from squishing the content horizontally
+        const auto &vc2 = VisualConfigManager::instance().cfg();
+        const int cCols = qBound(3, vc2.launcherColumns, 8);
+        const int cTileW = vc2.launcherIconSize + 88;
+        scrollContent->setMinimumWidth(cCols * cTileW + (cCols - 1) * 14 + 40);
+        pl->addWidget(scroll, 1);
 
         repositionPanel();
     }
@@ -813,7 +844,8 @@ private:
         const int cols = qBound(3, vc.launcherColumns, 8);
         const int tileW = vc.launcherIconSize + 88;
         const int contentW = cols * tileW + (cols - 1) * 14;
-        return 56 + contentW + 24;
+        // Account for margins (56), scrollbar (~10), and grid inner margins (40).
+        return contentW + 140;
     }
 
     // Height grows with app count so the launcher never squeezes.
@@ -831,7 +863,7 @@ private:
         const int natural = gridH + chromeH;
         int maxH = 900;
         if (QScreen *s = QGuiApplication::primaryScreen())
-            maxH = int(s->geometry().height() * 0.90);
+            maxH = int(s->geometry().height() * 0.85);
         return qBound(300, natural, maxH);
     }
 
@@ -3838,7 +3870,6 @@ public:
     // Resets the wave-stagger so this icon starts moving a
     // fraction of a beat later than its neighbour.
     void armStagger(int extraMs) {
-        SoundManager::playPool();
         const auto &cfg = VisualConfigManager::instance().cfg();
         int base = qBound(0, cfg.poolStaggerMs, 200);
         m_staggerLeft = (base + extraMs) / 30;   // 33 Hz ticks

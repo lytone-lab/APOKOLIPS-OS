@@ -634,6 +634,21 @@ static void drawGlyph(QPainter &p, const QRectF &r, const QColor &) {
     p.drawPolygon(caret);
 }
 
+static QStringList allAppIdsForDockName(const QString &name) {
+    // Returns every likely sway app_id for a dock label. Empty if
+    // the label is a shell app (caller falls back to appIdForDockName).
+    // Multiple candidates because some apps set a different app_id
+    // than their .desktop basename.
+    if (name == "LibreOffice Writer") return {"libreoffice-writer", "soffice", "libreoffice"};
+    if (name == "LibreOffice Calc")   return {"libreoffice-calc", "soffice", "libreoffice"};
+    if (name == "VLC")                return {"vlc"};
+    if (name == "Document Viewer")    return {"org.gnome.Evince", "evince"};
+    if (name == "Epiphany")           return {"org.gnome.Epiphany", "epiphany"};
+    if (name == "GParted")            return {"gparted"};
+    if (name == "Character Map")      return {"gucharmap"};
+    return QStringList();
+}
+
 static QString externalDesktopFor(const QString &label) {
     // Label → .desktop basename (in /usr/share/applications/).
     // Kept here (not in appRegistry) because drawFor is compiled
@@ -882,13 +897,13 @@ static const QVector<AppEntry> &appRegistry() {
         // glyph = "ext:<desktop-base>" — drawExternal loads the real
         // system icon from /usr/share/applications/<base>.desktop.
         // Click handler routes to `gio launch`.
-        { "ext-lo-writer", "LibreOffice Writer", "ext:libreoffice-writer", false, true },
+        { "ext-lo-writer", "LibreOffice Writer", "ext:libreoffice-writer", true,  true },
         { "ext-lo-calc",   "LibreOffice Calc",   "ext:libreoffice-calc",   false, true },
         { "ext-evince",    "Document Viewer",    "ext:org.gnome.Evince",   false, true },
-        { "ext-vlc",       "VLC",                "ext:vlc",                false, true },
+        { "ext-vlc",       "VLC",                "ext:vlc",                true,  true },
         { "ext-gparted",   "GParted",            "ext:gparted",            false, true },
         { "ext-gucharmap", "Character Map",      "ext:gucharmap",          false, true },
-        { "ext-epiphany",  "Epiphany",           "ext:org.gnome.Epiphany", false, true },
+        { "ext-epiphany",  "Epiphany",           "ext:org.gnome.Epiphany", true,  true },
         { "notes",       "Notes",     "\xF0\x9F\x93\x9D",  true,  true  },
         { "mail",        "Mail",      "\xE2\x9C\x89",       true,  true  },
         { "settings",    "Settings",  "\xE2\x9A\x99",       true,  true  },
