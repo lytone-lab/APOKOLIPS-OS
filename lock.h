@@ -298,8 +298,32 @@ private:
         if (p.exitCode() != 0) {
             qWarning() << "[lock] swaymsg mode" << m << "FAILED:"
                        << QString::fromUtf8(p.readAllStandardError()).trimmed();
-        } else {
-            qInfo() << "[lock] sway mode →" << m;
+            return;
+        }
+        qInfo() << "[lock] sway mode →" << m;
+
+        // When entering "locked" mode, also raise the shell above any
+        // external app (LibreOffice, VLC, Epiphany) that might be open.
+        // Without this, sway keeps the external window above the lock
+        // screen since they're peers in the same layer.
+        if (m == "locked") {
+            // Force the shell into fullscreen so it covers ANY open apps
+            // (LibreOffice, VLC, etc.) sitting next to it on the tiled layout.
+            QProcess f1;
+            f1.setProcessEnvironment(env);
+            f1.start("swaymsg", { "[app_id=\"apokolips-shell\"]", "fullscreen", "enable" });
+            f1.waitForFinished(500);
+
+            QProcess f2;
+            f2.setProcessEnvironment(env);
+            f2.start("swaymsg", { "[app_id=\"apokolips-shell\"]", "focus" });
+            f2.waitForFinished(500);
+        } else if (m == "default") {
+            // Drop out of fullscreen when unlocking
+            QProcess f3;
+            f3.setProcessEnvironment(env);
+            f3.start("swaymsg", { "[app_id=\"apokolips-shell\"]", "fullscreen", "disable" });
+            f3.waitForFinished(500);
         }
     }
 
