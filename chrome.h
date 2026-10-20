@@ -1640,6 +1640,98 @@ protected:
     }
 
     void launchApp() {
+        // External apps (launched via .desktop file) — delegate to gio
+        // so we don't maintain 15 launch paths for apps we didn't write.
+        // The .desktop file handles Wayland integration, StartupWMClass,
+        // MIME types, etc.
+        QString extBase = Icons::externalDesktopFor(m_name);
+        if (!extBase.isEmpty()) {
+            // Parse Exec= from the .desktop file and run directly.
+            // More reliable than `gio launch` which can fail silently
+            // on non-executable .desktop files or apps needing PATH
+            // resolution (LibreOffice, Epiphany).
+            const QString path = "/usr/share/applications/"
+                                 + extBase + ".desktop";
+            QFile df(path);
+            if (!df.open(QIODevice::ReadOnly)) {
+                qWarning() << "[launch] cannot open" << path;
+                return;
+            }
+            QTextStream ts(&df);
+            QString line, execCmd;
+            while (ts.readLineInto(&line)) {
+                if (line.startsWith("Exec=")) {
+                    execCmd = line.mid(5);
+                    break;
+                }
+            }
+            df.close();
+
+            // Strip desktop-entry placeholders (%U %F %u %f %i %c %k)
+            execCmd.remove(QRegularExpression(" ?%[UFufick]"));
+            execCmd = execCmd.trimmed();
+            if (execCmd.isEmpty()) {
+                qWarning() << "[launch] empty Exec for" << extBase;
+                return;
+            }
+
+            QStringList parts = QProcess::splitCommand(execCmd);
+            if (parts.isEmpty()) {
+                qWarning() << "[launch] failed to parse Exec:" << execCmd;
+                return;
+            }
+            const QString program = parts.takeFirst();
+            qInfo() << "[launch]" << extBase << "→" << program << parts;
+
+            // Inject Wayland display env vars. The shell runs under
+            // systemd --user and doesn't inherit these from sway, so
+            // GUI apps launched from here fall back to X11 and fail
+            // with "Can't open display".
+            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+            if (env.value("WAYLAND_DISPLAY").isEmpty()) {
+                QString runtime = env.value("XDG_RUNTIME_DIR");
+                if (runtime.isEmpty()) runtime = "/run/user/1000";
+                QDir rd(runtime);
+                for (const QString &f : rd.entryList({"wayland-*"},
+                                                     QDir::Files | QDir::System)) {
+                    if (f.endsWith(".lock")) continue;
+                    env.insert("WAYLAND_DISPLAY", f);
+                    break;
+                }
+            }
+            if (env.value("XDG_RUNTIME_DIR").isEmpty())
+                env.insert("XDG_RUNTIME_DIR", "/run/user/1000");
+            if (env.value("XDG_SESSION_TYPE").isEmpty())
+                env.insert("XDG_SESSION_TYPE", "wayland");
+
+            // LibreOffice defaults to X11 backend without SAL_USE_VCLPLUGIN.
+            // Force Qt6 VCL so it uses Wayland natively.
+            if (env.value("SAL_USE_VCLPLUGIN").isEmpty())
+                env.insert("SAL_USE_VCLPLUGIN", "qt6");
+
+            // XWayland fallback: if DISPLAY isn't set, try :0 so any
+            // remaining X11 app still works when XWayland is active.
+            if (env.value("DISPLAY").isEmpty()) {
+                if (QFile::exists("/tmp/.X11-unix/X0"))
+                    env.insert("DISPLAY", ":0");
+                else if (QFile::exists("/tmp/.X11-unix/X1"))
+                    env.insert("DISPLAY", ":1");
+            }
+
+            qInfo() << "[launch] env:"
+                    << "WAYLAND_DISPLAY=" << env.value("WAYLAND_DISPLAY")
+                    << "DISPLAY=" << env.value("DISPLAY")
+                    << "SAL_USE_VCLPLUGIN=" << env.value("SAL_USE_VCLPLUGIN");
+
+            QProcess *proc = new QProcess;
+            proc->setProgram(program);
+            proc->setArguments(parts);
+            proc->setProcessEnvironment(env);
+            proc->startDetached();
+            delete proc;
+            return;
+        }
+
         // Clear this app's notification badge when launched
         BadgeRegistry::clear(m_name);
         update();
@@ -2096,9 +2188,14 @@ public:
 
         for (DockIcon *di : m_icons) {
             const QString appId = appIdForDockName(di->appName());
+            QStringList candidateIds;
+            if (!appId.isEmpty()) candidateIds.append(appId);
+            candidateIds.append(Icons::allAppIdsForDockName(di->appName()));
+
             bool alive = false;
-            if (!appId.isEmpty() && liveAppIds.contains(appId))
-                alive = true;
+            for (const QString &cid : candidateIds) {
+                if (liveAppIds.contains(cid)) { alive = true; break; }
+            }
             // Shell chrome apps share app_id=apokolips-shell; also
             // match by title if the dock entry is one of ours.
             if (!alive) {
