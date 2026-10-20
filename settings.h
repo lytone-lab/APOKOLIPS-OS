@@ -855,6 +855,30 @@ private:
 
             v->addWidget(c);
 
+        // ---- CURSOR card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(18);
+            cv->addWidget(Sigil::groupLabel("CURSOR"));
+
+            cv->addWidget(Sigil::makeToggleRow(
+                "macOS-style cursor",
+                "Replace the default pointer with a classic macOS arrow",
+                vc.cursorStyle == 1,
+                [](bool on) {
+                    VisualConfigManager::instance().setAndSave(
+                        [on](VisualConfig &c) { c.cursorStyle = on ? 1 : 0; });
+                    for (QWidget *w : QApplication::allWidgets()) {
+                        if (on) w->setCursor(Cursors::makeMacCursor());
+                        else w->unsetCursor();
+                    }
+                }));
+
+            v->addWidget(c);
+        }
+
         // ---- WINDOW CHROME card (Category 1) ----
         {
             Sigil::Card *c = new Sigil::Card;
@@ -10425,6 +10449,14 @@ private:
             QSlider *sl = new QSlider(Qt::Horizontal);
             sl->setRange(1, 30);   // seconds
             sl->setValue(vc.notificationBannerMs / 1000);
+        cv->addWidget(Sigil::makeToggleRow(
+            "Auto-dismiss",
+            "Automatically hide notifications after the timeout",
+            vc.notifAutoDismiss,
+            [](bool on) {
+                VisualConfigManager::instance().setAndSave(
+                    [on](VisualConfig &c) { c.notifAutoDismiss = on; });
+            }));
             sl->setStyleSheet(QString(
                 "QSlider::groove:horizontal { height: 4px;"
                 "  background: rgba(255,255,255,25);"

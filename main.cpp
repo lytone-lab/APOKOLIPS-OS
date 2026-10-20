@@ -2031,11 +2031,11 @@ static int runShell(int argc, char *argv[])
     // the shell's event loop and freeze the UI (including window close).
     QTimer *focusPoll = new QTimer(&window);
     focusPoll->setInterval(250);
-    QObject::connect(focusPoll, &QTimer::timeout, [brand, hud, topBar, &menuButtons]() {
+    QObject::connect(focusPoll, &QTimer::timeout, [brand, hud, topBar, &menuButtons, root]() {
         QProcess *p = new QProcess;
         QObject::connect(p,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            [p, brand, hud, topBar, &menuButtons](int, QProcess::ExitStatus) {
+            [p, brand, hud, topBar, &menuButtons, root](int, QProcess::ExitStatus) {
             QByteArray out = p->readAllStandardOutput();
             p->deleteLater();
             QJsonDocument doc = QJsonDocument::fromJson(out);
@@ -2105,6 +2105,18 @@ static int runShell(int argc, char *argv[])
             g_trackedAppId = id;
             g_trackedTitle = focusedTitle;
             g_trackedRect = focusedRect;
+
+            // Auto-hide widgets if the focused window is maximized/fullscreen
+            if (VisualConfigManager::instance().cfg().widgetAutoHideMaximized) {
+                bool isFullscreen = (focusedRect.width() >= root->width() &&
+                                     focusedRect.height() >= root->height());
+                for (QWidget *w : root->findChildren<QWidget *>()) {
+                    if (auto *card = dynamic_cast<WidgetCard *>(w)) {
+                        if (isFullscreen) card->hide();
+                        else card->applyVisibility();
+                    }
+                }
+            }
         }
 
         // Hovering the top bar makes sway focus the shell itself.
@@ -2925,6 +2937,15 @@ static int runShell(int argc, char *argv[])
             QProcess::execute("pkill", { "-f",
                 QString("apokolips-shell %1").arg(flag) });
         }
+        // Kill external apps we launched so they don't float over the
+        // lock screen after a reload.
+        QStringList extProcs = {
+            "soffice.bin", "epiphany", "vlc", "evince",
+            "gparted", "gucharmap"
+        };
+        for (const QString &proc : extProcs) {
+            QProcess::execute("pkill", { "-x", proc });
+        }
         qInfo() << "[shell] clean-slate: killed leftover app processes";
     }
 
@@ -2968,10 +2989,17 @@ static int runShell(int argc, char *argv[])
     QLocalServer *lockServer = new QLocalServer(&window);
     if (lockServer->listen(lockSockPath)) {
         QObject::connect(lockServer, &QLocalServer::newConnection,
-                         [lockServer, lockScreen]() {
+                         [lockServer, lockScreen, missionControl, launcher, notifications, controlCenter]() {
             QLocalSocket *conn = lockServer->nextPendingConnection();
-            QObject::connect(conn, &QLocalSocket::readyRead, [conn, lockScreen]() {
+            QObject::connect(conn, &QLocalSocket::readyRead, [conn, lockScreen, missionControl, launcher, notifications, controlCenter]() {
                 if (conn->readAll().contains("lock")) {
+                    // Hide all shell overlays before locking so they
+                    // don't get stuck underneath or on top of the
+                    // lock screen.
+                    if (missionControl) missionControl->hide();
+                    if (launcher) launcher->hideLauncher();
+                    if (notifications) notifications->hideCenter();
+                    if (controlCenter) controlCenter->hideCC();
                     lockScreen->showLock();
                 }
                 conn->disconnectFromServer();

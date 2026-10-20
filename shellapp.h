@@ -17,6 +17,37 @@
 #include <QCoreApplication>
 #include <QPointer>
 
+
+// Cursors — platform-independent cursor pixmaps. Declared here so
+// shellapp.h and settings.h (which compile before helpers.h) can
+// use them.
+namespace Cursors {
+    inline QCursor makeMacCursor() {
+        QPixmap pm(32, 32);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        QPainterPath path;
+        path.moveTo(2, 2);
+        path.lineTo(2, 22);
+        path.lineTo(8, 16);
+        path.lineTo(14, 26);
+        path.lineTo(18, 24);
+        path.lineTo(12, 14);
+        path.lineTo(20, 14);
+        path.closeSubpath();
+
+        p.setPen(QPen(Qt::white, 2, Qt::SolidLine,
+                      Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(Qt::black);
+        p.drawPath(path);
+        p.end();
+
+        return QCursor(pm, 2, 2);
+    }
+}
+
 class ShellApp : public QWidget {
 public:
     // ---- Per-app chrome override ----
@@ -63,6 +94,16 @@ public:
             setWindowTitle(title);
             setWindowFlags(Qt::FramelessWindowHint);
             setShellWindowGeometry(this, preferred);
+        }
+
+        if (VisualConfigManager::instance().cfg().cursorStyle == 1) {
+            setCursor(Cursors::makeMacCursor());
+        } else {
+            unsetCursor();
+        }
+
+        if (VisualConfigManager::instance().cfg().cursorStyle == 1) {
+            setCursor(Cursors::makeMacCursor());
         }
 
         m_appTheme = ThemeManager::instance().current();

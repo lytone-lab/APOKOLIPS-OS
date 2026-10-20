@@ -78,6 +78,8 @@ struct VisualConfig {
     int    cursorGlowFade       = 50;   // 0..100  0=no fade, 100=fast tail fade
     QString sigilAccent      = "oxblood";
     int    notificationBannerMs = 6000;
+    bool   notifAutoDismiss = true;
+    bool   widgetAutoHideMaximized = true;
     int    dockPosition       = 0;   // 0=Bottom, 1=Left, 2=Right
     bool   dockAutoHide       = false;
     int    dockAutoHideDelayMs = 500;
@@ -128,6 +130,7 @@ struct VisualConfig {
     bool   shellHighContrast  = false;
     double shellTextScale     = 1.0;
     int    cursorSize         = 24;
+    int    cursorStyle        = 0; // 0=system, 1=macOS
     QString visualAlerts      = "off";
     int    notifTimeoutSec    = 6;
     bool   locationEnabled    = false;
@@ -607,6 +610,12 @@ public:
             m_cfg.sigilAccent = o["sigilAccent"].toString();
         m_cfg.notificationBannerMs = getI("notificationBannerMs",
                                           m_cfg.notificationBannerMs);
+        m_cfg.notifAutoDismiss = o.contains("notifAutoDismiss")
+                                 ? o["notifAutoDismiss"].toBool(true)
+                                 : m_cfg.notifAutoDismiss;
+        m_cfg.widgetAutoHideMaximized = o.contains("widgetAutoHideMaximized")
+                                 ? o["widgetAutoHideMaximized"].toBool(true)
+                                 : m_cfg.widgetAutoHideMaximized;
         m_cfg.dockPosition       = getI("dockPosition",
                                         m_cfg.dockPosition);
         m_cfg.dockAutoHide       = o.contains("dockAutoHide")
@@ -790,6 +799,7 @@ public:
         o["shellHighContrast"]   = m_cfg.shellHighContrast;
         o["shellTextScale"]      = m_cfg.shellTextScale;
         o["cursorSize"]          = m_cfg.cursorSize;
+        o["cursorStyle"]         = m_cfg.cursorStyle;
         o["visualAlerts"]        = m_cfg.visualAlerts;
         o["notifTimeoutSec"]     = m_cfg.notifTimeoutSec;
         o["locationEnabled"]     = m_cfg.locationEnabled;
@@ -897,6 +907,8 @@ public:
         o["notifPosition"]        = m_cfg.notifPosition;
         o["notifStyle"]           = m_cfg.notifStyle;
         o["notificationBannerMs"] = m_cfg.notificationBannerMs;
+        o["notifAutoDismiss"]     = m_cfg.notifAutoDismiss;
+        o["widgetAutoHideMaximized"] = m_cfg.widgetAutoHideMaximized;
         o["dockPosition"]       = m_cfg.dockPosition;
         o["dockAutoHide"]        = m_cfg.dockAutoHide;
         o["dockAutoHideDelayMs"] = m_cfg.dockAutoHideDelayMs;
