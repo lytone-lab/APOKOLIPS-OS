@@ -7507,8 +7507,6 @@ private:
 
             addSoundToggle("Enable sounds", "Master toggle for all UI sounds", vc.soundEnabled,
                            [](VisualConfig &c, bool on) { c.soundEnabled = on; });
-            addSoundToggle("Minimize sound", "Play a pop when a window minimizes", vc.soundMinimize,
-                           [](VisualConfig &c, bool on) { c.soundMinimize = on; });
             addSoundToggle("Notification sound", "Play a chime for new notifications", vc.soundNotify,
                            [](VisualConfig &c, bool on) { c.soundNotify = on; });
             addSoundToggle("Startup sound", "Play a chime when the shell boots", vc.soundStartup,

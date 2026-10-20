@@ -566,7 +566,6 @@ static void shellScaleToDock(QWidget *w)
 // its full minimize animation on the currently focused window.
 static void shellMinimizeFocusedWindow()
 {
-    SoundManager::playMinimize();
     QProcess::startDetached("bash", { "-c",
         "pkill -RTMIN -f 'apokolips-shell/build/apokolips-shell$'" });
 }
@@ -2111,11 +2110,17 @@ static int runShell(int argc, char *argv[])
 
             // Auto-hide widgets if the focused window is maximized/fullscreen
             if (VisualConfigManager::instance().cfg().widgetAutoHideMaximized) {
-                bool isFullscreen = focusedIsFullscreen;
-                for (QWidget *w : root->findChildren<QWidget *>()) {
-                    if (auto *card = dynamic_cast<WidgetCard *>(w)) {
-                        if (isFullscreen) card->hide();
-                        else card->applyVisibility();
+                // Only act when fullscreen state CHANGES. Previously
+                // this ran 4x/sec, spamming applyVisibility logs and
+                // fighting the widget toggle.
+                static bool s_lastFullscreen = false;
+                if (focusedIsFullscreen != s_lastFullscreen) {
+                    s_lastFullscreen = focusedIsFullscreen;
+                    for (QWidget *w : root->findChildren<QWidget *>()) {
+                        if (auto *card = dynamic_cast<WidgetCard *>(w)) {
+                            if (focusedIsFullscreen) card->hide();
+                            else card->applyVisibility();
+                        }
                     }
                 }
             }

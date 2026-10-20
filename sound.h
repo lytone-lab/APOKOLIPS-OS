@@ -8,9 +8,13 @@
 
 namespace SoundManager {
     inline void play(const QString& file, const QString& type) {
+        VisualConfigManager::instance().load();
         const auto& cfg = VisualConfigManager::instance().cfg();
+        
+        qDebug() << "[sound] play requested:" << type
+                 << "enabled=" << cfg.soundEnabled
+                 << "typeEnabled=" << (type == "minimize" ? cfg.soundMinimize : true);
         if (!cfg.soundEnabled) return;
-        if (type == "minimize" && !cfg.soundMinimize) return;
         if (type == "notify" && !cfg.soundNotify) return;
         if (type == "startup" && !cfg.soundStartup) return;
 
@@ -26,7 +30,6 @@ namespace SoundManager {
         effect->play();
     }
 
-    inline void playMinimize() { play("close.wav", "minimize"); }
     inline void playNotification() { play("notification.wav", "notify"); }
 
     inline void playStartup() {
