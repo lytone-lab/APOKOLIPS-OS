@@ -816,12 +816,32 @@ private:
         return 56 + contentW + 24;
     }
 
+    // Height grows with app count so the launcher never squeezes.
+    // Capped at 90% of screen height as a safety net (installing 50
+    // apps would push tiles offscreen without a scroll area, which
+    // is Variant C — deferred until needed).
+    int computedPanelH() const {
+        const auto &vc = VisualConfigManager::instance().cfg();
+        const int cols = qBound(3, vc.launcherColumns, 8);
+        const int tileH = vc.launcherIconSize + 58;
+        const int appCount = qMax(1, m_tiles.size());
+        const int rows = (appCount + cols - 1) / cols;
+        const int gridH = rows * tileH + (rows - 1) * 14;
+        const int chromeH = 40 + 20 + 26 + 30 + 20;  // search+header+margins
+        const int natural = gridH + chromeH;
+        int maxH = 900;
+        if (QScreen *s = QGuiApplication::primaryScreen())
+            maxH = int(s->geometry().height() * 0.90);
+        return qBound(300, natural, maxH);
+    }
+
     // Position the panel per the 3x3 anchor grid. 0=TL, 1=TC,
     // 2=TR, 3=ML, 4=MC, 5=MR, 6=BL, 7=BC, 8=BR.
     void repositionPanel() {
         if (!m_panel) return;
         const auto &vc = VisualConfigManager::instance().cfg();
         const int panelW = computedPanelW();
+        const int panelH = computedPanelH();
         int px, py;
         switch (vc.launcherAnchor % 3) {
             case 0:  px = 40; break;
@@ -830,11 +850,14 @@ private:
         }
         switch (vc.launcherAnchor / 3) {
             case 0:  py = 120; break;
-            case 2:  py = height() - PANEL_H - 120; break;
-            default: py = (height() - PANEL_H) / 2;
+            case 2:  py = height() - panelH - 120; break;
+            default: py = (height() - panelH) / 2;
         }
-        m_panel->setGeometry(px, py, panelW, PANEL_H);
-        m_panelRect = QRect(px, py, panelW, PANEL_H);
+        // py can go negative if panelH is very large and anchor is
+        // bottom — clamp so the panel never escapes the top edge.
+        if (py < 40) py = 40;
+        m_panel->setGeometry(px, py, panelW, panelH);
+        m_panelRect = QRect(px, py, panelW, panelH);
     }
 
     void resizeEvent(QResizeEvent *e) override {
