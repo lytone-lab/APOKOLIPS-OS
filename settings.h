@@ -864,8 +864,8 @@ private:
             cv->addWidget(Sigil::groupLabel("CURSOR"));
 
             cv->addWidget(Sigil::makeToggleRow(
-                "macOS-style cursor",
-                "Replace the default pointer with a classic macOS arrow",
+                "Bone Arrow",
+                "Graphite pointer with a bone-white outline",
                 vc.cursorStyle == 1,
                 [](bool on) {
                     VisualConfigManager::instance().setAndSave(
