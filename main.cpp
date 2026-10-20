@@ -2066,6 +2066,7 @@ static int runShell(int argc, char *argv[])
         int conId = -1;
         QString focusedTitle;
         QRect focusedRect;
+        bool focusedIsFullscreen = false;
         std::function<bool(const QJsonObject &)> findConId =
             [&](const QJsonObject &n) -> bool {
             const QString type = n.value("type").toString();
@@ -2077,6 +2078,8 @@ static int runShell(int argc, char *argv[])
                 focusedRect = QRect(r.value("x").toInt(), r.value("y").toInt(),
                                     r.value("width").toInt(),
                                     r.value("height").toInt());
+                // fullscreen is 1 if app is fullscreen, 2 if global
+                focusedIsFullscreen = (n.value("fullscreen").toInt() > 0);
                 return true;
             }
             for (const QJsonValue &v : n.value("nodes").toArray())
@@ -2108,8 +2111,7 @@ static int runShell(int argc, char *argv[])
 
             // Auto-hide widgets if the focused window is maximized/fullscreen
             if (VisualConfigManager::instance().cfg().widgetAutoHideMaximized) {
-                bool isFullscreen = (focusedRect.width() >= root->width() &&
-                                     focusedRect.height() >= root->height());
+                bool isFullscreen = focusedIsFullscreen;
                 for (QWidget *w : root->findChildren<QWidget *>()) {
                     if (auto *card = dynamic_cast<WidgetCard *>(w)) {
                         if (isFullscreen) card->hide();
