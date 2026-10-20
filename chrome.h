@@ -105,7 +105,10 @@ public:
 
         QPointer<QWidget> guard(card);
         if (VisualConfigManager::instance().cfg().notifAutoDismiss) {
+            qInfo() << "[notif] auto-dismiss scheduled in" << ms << "ms";
             QTimer::singleShot(ms, this, [this, guard, weOpened]() {
+                qInfo() << "[notif] auto-dismiss fired (guard alive ="
+                        << (guard ? "yes" : "no") << ")";
                 if (!guard) return;
                 m_cards.removeAll(guard);
                 if (m_cardsLayout) m_cardsLayout->removeWidget(guard);
