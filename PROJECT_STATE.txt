@@ -1922,3 +1922,18 @@ END OF PROJECT STATE
   - Browser: no registered default (Epiphany removed).
   - PDF viewer: no registered default (Evince removed).
 
+
+--- SESSION UPDATE — 2026-10-21 (live reload + app audit) ---
+
+[SHIPPED] Per-app chrome — live reload
+  What: Added QFileSystemWatcher to ShellApp::setupShellApp and
+        SettingsWindow. Changes to visual.json now update apps instantly
+        without a restart.
+  Fix: Settings preview negative-radius glitch (qMax(0, bodyRadius - 1)).
+  State: partial. Finder, Notes, Calculator, Settings are wired.
+         Aperture, BoomTube, myMach, Node, Mail remain.
+
+[CLOSED BY DIAGNOSTIC] Notes and Calculator
+  Verdict: exists / already done. Both inherit ShellApp and lack a custom
+  paintEvent. They automatically obey Livery overrides. No patch needed.
+
