@@ -1876,3 +1876,49 @@ END OF PROJECT STATE
       Fix: ensure QProcess has parent = this so it dies with the
       widget; or call waitForFinished() + kill() in destructor.
       Small.
+
+--- SESSION LOG — 2026-10-21 (per-app chrome + named features) ---
+
+[SHIPPED] Per-app chrome — Variant C, Finder only (commit 0b68a54)
+  What: ShellApp::hasOverride() added; Finder paintEvent uses
+        ShellApp::paintChrome when an appOverrides entry exists.
+        No change when no override is set.
+  Why: Livery (Settings "Livery" section, makePerAppPage) already stores
+       chromeStyle/trafficSide/accent/radius in VisualConfig::appOverrides,
+       but no app consumed it. Finder now consumes it.
+  State: partial. Finder only. Remaining first-party apps:
+         Notes, Calculator, Settings, Aperture, BoomTube, myMach,
+         Node, Mail. Mosaic already chains ShellApp::paintEvent.
+  Next: one app per patch, diagnostic first, visual check, commit.
+
+[NOTE] Livery is the per-app override home. Do not add a second accent
+  path. Livery owns the data (appOverrides) and the UI (makePerAppPage);
+  the missing piece was application at paint time. Extend Livery.
+
+[NOTE] Theme-consistency limit (honest scope for V1):
+  First-party apps: full per-app override (chromeStyle, trafficSide,
+  accent, radius). External apps (LibreOffice, WPS, Epiphany, VLC, etc.):
+  best-effort only via GTK_THEME / QT_STYLE_OVERRIDE env injection and
+  sway for_window rules. Do not promise Sigil-in-LibreOffice.
+
+[PARKED -> NAMED 2026-10-21] Four features unparked for this session only,
+  not started. Dependencies recorded so future sessions do not guess:
+  - Mission Control (multi-session): needs workspaces UI first
+    (top-bar indicator + keyboard switching). Essential V1 gap.
+  - Rules engine: control layer, not visual. Needs Settings infra and
+    a stable per-app chrome layer. P2 basic / P3 visual in vision doc.
+  - Mod system: depends on rules engine + manifest format.
+  - Windhawk full skinning: largest. Depends on per-app chrome for
+    first-party apps, best-effort external injection, style registry.
+
+[OPEN ESSENTIAL GAPS — not yet built, audited 2026-10-21]
+  - Power / session menu (logout/restart/shutdown/suspend). drawPower
+    exists; wiring unverified.
+  - Workspaces UI (top-bar indicator + keyboard switching).
+  - Window switcher (Alt+Tab / Super+Tab). Spotlight is not a substitute.
+  - Display settings (refresh, scale, Night Shift).
+  - Audio settings (output, input, volume).
+  - Keyboard bindings editor (reverted 2026-10-09, redesign needed).
+  - Browser: no registered default (Epiphany removed).
+  - PDF viewer: no registered default (Evince removed).
+
