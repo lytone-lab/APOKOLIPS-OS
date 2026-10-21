@@ -1937,3 +1937,15 @@ END OF PROJECT STATE
   Verdict: exists / already done. Both inherit ShellApp and lack a custom
   paintEvent. They automatically obey Livery overrides. No patch needed.
 
+
+--- PATH 1 COMPLETE — 2026-10-21 (Per-App Chrome / Livery) ---
+
+[SHIPPED] Per-app chrome (Livery) for all first-party apps.
+  - Patched with conditional Variant C: Finder, Settings, Aperture,
+    BoomTube, myMach, Node.
+  - Closed by diagnostic (already obeyed Livery via ShellApp base):
+    Notes, Calculator, Mosaic, Mail.
+  - Live reload added to ShellApp and SettingsWindow (QFileSystemWatcher).
+  - Limits documented: chromeStyle does not apply to Settings; external
+    apps are best-effort only.
+
