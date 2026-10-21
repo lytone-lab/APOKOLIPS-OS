@@ -367,18 +367,33 @@ protected:
 
         QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
         QPainterPath full;
-        full.addRoundedRect(body, 14, 14);
-        p.fillPath(full, QColor(20, 20, 22));
+
+        bool ovr = hasOverride();
+        int radius = (ovr && m_override.radius >= 0) ? m_override.radius : 14;
+        radius = qBound(0, radius, 32);
+        full.addRoundedRect(body, radius, radius);
+
+        QColor bodyCol = ovr ? Sigil::contentBg() : QColor(20, 20, 22);
+        p.fillPath(full, bodyCol);
 
         p.save();
         p.setClipPath(full);
-        p.fillRect(QRect(0, 0, width(), 42), QColor(28, 28, 30));
+        QColor headerCol = ovr ? Sigil::headerBg() : QColor(28, 28, 30);
+        p.fillRect(QRect(0, 0, width(), 42), headerCol);
         p.restore();
 
         p.setPen(QPen(QColor(255, 255, 255, 22), 1));
         p.drawLine(0, 42, width(), 42);
 
-        p.setPen(QPen(QColor(255, 255, 255, 22), 1));
+        QColor borderCol = Sigil::border();
+        if (ovr && m_override.accent != "inherit" && !m_override.accent.isEmpty()) {
+            QColor a(m_override.accent);
+            if (a.isValid()) borderCol = a;
+        } else if (!ovr) {
+            borderCol = QColor(255, 255, 255, 22);
+        }
+
+        p.setPen(QPen(borderCol, 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(full);
     }
