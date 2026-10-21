@@ -7,6 +7,10 @@
 #include "theme.h"
 #include "visualconfig.h"
 #include "style.h"
+#include <QGraphicsScene>
+#include <QGraphicsPixmapItem>
+#include <QGraphicsBlurEffect>
+
 
 class WallpaperConfig {
 public:
@@ -188,6 +192,22 @@ public:
 //   - returns the index of the clicked button (0-based)
 //   - returns -1 if closed without a button
 // ----------------------------------------------------------------
+
+static QImage applyGaussianBlur(const QImage &src, int radius) {
+    if (src.isNull()) return src;
+    QGraphicsScene scene;
+    QGraphicsPixmapItem item(QPixmap::fromImage(src));
+    QGraphicsBlurEffect effect;
+    effect.setBlurRadius(radius);
+    item.setGraphicsEffect(&effect);
+    scene.addItem(&item);
+    QImage result(src.size(), QImage::Format_ARGB32_Premultiplied);
+    result.fill(Qt::transparent);
+    QPainter p(&result);
+    scene.render(&p, QRectF(), QRectF(0, 0, src.width(), src.height()));
+    return result;
+}
+
 class SigilDialog : public QDialog {
 public:
     static int ask(QWidget *parent,
@@ -197,12 +217,49 @@ public:
                    const QString &checkboxText = QString(),
                    bool *checkboxOut = nullptr)
     {
-        // Temporarily change the app_id so Sway floats it instead of tiling
         QString oldId = QGuiApplication::desktopFileName();
         QGuiApplication::setDesktopFileName("apokolips-dialog");
 
+        class Backdrop : public QWidget {
+        public:
+            QPixmap bg;
+            Backdrop() {
+                setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
+                setAttribute(Qt::WA_TranslucentBackground);
+                setAttribute(Qt::WA_TransparentForMouseEvents);
+                if (auto *s = QGuiApplication::primaryScreen())
+                    setGeometry(s->geometry());
+            }
+            void paintEvent(QPaintEvent *) override {
+                QPainter p(this);
+                if (!bg.isNull()) p.drawPixmap(rect(), bg);
+                p.fillRect(rect(), QColor(0, 0, 0, 100));
+            }
+        } backdrop;
+
+        QProcess grim;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        if (env.value("WAYLAND_DISPLAY").isEmpty()) {
+            QDir rd(env.value("XDG_RUNTIME_DIR", "/run/user/1000"));
+            for (const QString &f : rd.entryList({"wayland-*"}, QDir::Files | QDir::System)) {
+                if (!f.endsWith(".lock")) { env.insert("WAYLAND_DISPLAY", f); break; }
+            }
+        }
+        grim.setProcessEnvironment(env);
+        grim.start("grim", {"-t", "ppm", "-"});
+        if (grim.waitForFinished(1000)) {
+            QImage img = QImage::fromData(grim.readAllStandardOutput(), "PPM");
+            if (!img.isNull()) {
+                QImage small = img.scaled(img.width()/4, img.height()/4, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                QImage blurred = applyGaussianBlur(small, 12);
+                backdrop.bg = QPixmap::fromImage(blurred.scaled(img.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+            }
+        }
+        backdrop.show();
+
         SigilDialog dlg(parent, title, message, buttons, checkboxText);
         int res = dlg.exec();
+        backdrop.hide();
 
         QGuiApplication::setDesktopFileName(oldId);
         if (checkboxOut) *checkboxOut = dlg.checkboxChecked();
@@ -236,22 +293,9 @@ public:
             move(g.center().x() - w / 2, g.center().y() - h / 2);
         }
 
-        Wallpaper *wp = WallpaperConfig::makeById(WallpaperConfig::loadId());
-        if (wp) {
-            const int DOWN = 8;
-            QImage small(qMax(1, width() / DOWN), qMax(1, height() / DOWN),
-                         QImage::Format_ARGB32_Premultiplied);
-            small.fill(Qt::transparent);
-            QPainter p(&small);
-            p.setRenderHint(QPainter::Antialiasing);
-            p.scale(1.0 / DOWN, 1.0 / DOWN);
-            wp->paint(p, QRect(0, 0, width(), height()));
-            p.end();
-            m_blurredBg = QPixmap::fromImage(
-                small.scaled(size(), Qt::IgnoreAspectRatio,
-                             Qt::SmoothTransformation));
-            delete wp;
-        }
+        // Backdrop blur handled by full-screen overlay in ask().
+        m_blurredBg = QPixmap(); // clear fake blur
+    
 
         m_theme = ThemeManager::instance().current();
         buildUi(title, message, buttons, checkboxText);
@@ -305,7 +349,7 @@ protected:
             p.drawPixmap(rect(), m_blurredBg);
             p.restore();
         }
-        StyleRenderer::drawPanel(p, QRectF(frameRect), 14, m_theme, 200);
+        StyleRenderer::drawPanel(p, QRectF(frameRect), 14, m_theme, 160);
 
         QPainterPath hdr;
         hdr.addRoundedRect(QRect(0, 0, width(), 36), 14, 14);
@@ -321,6 +365,8 @@ protected:
     }
 
 private:
+    QLabel *m_iconLabel = nullptr;
+
     void buildUi(const QString &title, const QString &message,
                  const QStringList &buttons, const QString &checkboxText)
     {
