@@ -84,6 +84,18 @@ public:
         m_preferredSize = preferred;
         m_appId         = appIdForTitle(title);
         readOverride();
+        auto *watcher = new QFileSystemWatcher(this);
+        QString cfgPath = QDir::homePath() + "/.config/apokolips/visual.json";
+        watcher->addPath(cfgPath);
+        connect(watcher, &QFileSystemWatcher::fileChanged, this, [this, watcher, cfgPath](const QString &path) {
+            if (path == cfgPath) {
+                readOverride();
+                update();
+                if (!watcher->files().contains(path) && QFile::exists(path)) {
+                    watcher->addPath(path);
+                }
+            }
+        });
 
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);

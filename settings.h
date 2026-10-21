@@ -14,6 +14,44 @@
 class SettingsWindow : public QWidget {
 public:
     explicit SettingsWindow(QWidget *parent = nullptr) : QWidget(parent) {
+        {
+            const auto &cfg = VisualConfigManager::instance().cfg();
+            QVariant v = cfg.appOverrides.value("apokolips-settings");
+            if (v.canConvert<QVariantMap>()) {
+                m_appOverride = v.toMap();
+                m_ovr.chromeStyle = m_appOverride.value(
+                    "chromeStyle", m_ovr.chromeStyle).toString();
+                m_ovr.trafficSide = m_appOverride.value(
+                    "trafficSide", m_ovr.trafficSide).toString();
+                m_ovr.accent = m_appOverride.value(
+                    "accent", m_ovr.accent).toString();
+                m_ovr.radius = m_appOverride.value(
+                    "radius", m_ovr.radius).toInt();
+            }
+        }
+        auto *watcher = new QFileSystemWatcher(this);
+        QString cfgPath = QDir::homePath() + "/.config/apokolips/visual.json";
+        watcher->addPath(cfgPath);
+        connect(watcher, &QFileSystemWatcher::fileChanged, this, [this, watcher, cfgPath](const QString &path) {
+            if (path == cfgPath) {
+                const auto &cfg = VisualConfigManager::instance().cfg();
+                QVariant v = cfg.appOverrides.value("apokolips-settings");
+                if (v.canConvert<QVariantMap>()) {
+                    m_appOverride = v.toMap();
+                    m_ovr.chromeStyle = m_appOverride.value("chromeStyle", m_ovr.chromeStyle).toString();
+                    m_ovr.trafficSide = m_appOverride.value("trafficSide", m_ovr.trafficSide).toString();
+                    m_ovr.accent = m_appOverride.value("accent", m_ovr.accent).toString();
+                    m_ovr.radius = m_appOverride.value("radius", m_ovr.radius).toInt();
+                } else {
+                    m_appOverride.clear();
+                    m_ovr = ShellApp::AppOverride();
+                }
+                update();
+                if (!watcher->files().contains(path) && QFile::exists(path)) {
+                    watcher->addPath(path);
+                }
+            }
+        });
         StyleManager::load();   // <-- read saved style so buttons highlight correctly
         // Apply the saved seal before anything draws.
         {
@@ -221,8 +259,10 @@ protected:
         // antialiased edge blends to the wallpaper, not to black.
         const auto &vc = VisualConfigManager::instance().cfg();
         QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        int bodyRadius = (m_ovr.radius >= 0) ? m_ovr.radius : vc.windowRadius;
+        bodyRadius = qBound(0, bodyRadius, 32);
         QPainterPath full;
-        full.addRoundedRect(body, vc.windowRadius, vc.windowRadius);
+        full.addRoundedRect(body, bodyRadius, bodyRadius);
 
         p.fillPath(full, Sigil::contentBg());
 
@@ -299,13 +339,21 @@ protected:
         // the compositor rendered as a black fringe.
         QRectF borderRect = QRectF(rect()).adjusted(1.0, 1.0, -1.0, -1.0);
         QPainterPath borderPath;
-        borderPath.addRoundedRect(borderRect, 13, 13);
-        p.setPen(QPen(Sigil::border(), 1));
+        borderPath.addRoundedRect(borderRect, qMax(0, bodyRadius - 1), qMax(0, bodyRadius - 1));
+        QColor borderCol = Sigil::border();
+        if (m_ovr.accent != "inherit" && !m_ovr.accent.isEmpty()) {
+            QColor a(m_ovr.accent);
+            if (a.isValid()) borderCol = a;
+        }
+        p.setPen(QPen(borderCol, 1));
         p.setBrush(Qt::NoBrush);
         p.drawPath(borderPath);
     }
 
 private:
+    QVariantMap m_appOverride;
+    ShellApp::AppOverride m_ovr;
+
     void buildUi() {
         QVBoxLayout *root = new QVBoxLayout(this);
         // Bottom margin = rounded-corner radius. Keeps child
