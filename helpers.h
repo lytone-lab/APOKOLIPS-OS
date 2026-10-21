@@ -197,10 +197,16 @@ public:
                    const QString &checkboxText = QString(),
                    bool *checkboxOut = nullptr)
     {
+        // Temporarily change the app_id so Sway floats it instead of tiling
+        QString oldId = QGuiApplication::desktopFileName();
+        QGuiApplication::setDesktopFileName("apokolips-dialog");
+
         SigilDialog dlg(parent, title, message, buttons, checkboxText);
-        dlg.exec();
+        int res = dlg.exec();
+
+        QGuiApplication::setDesktopFileName(oldId);
         if (checkboxOut) *checkboxOut = dlg.checkboxChecked();
-        return dlg.m_clicked;
+        return res;
     }
 
     SigilDialog(QWidget *parent, const QString &title,
@@ -212,6 +218,7 @@ public:
     {
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
+
 
         int msgLines = qMax(1, message.count('\n') + 1);
         if (message.length() > 60) msgLines += message.length() / 60;
