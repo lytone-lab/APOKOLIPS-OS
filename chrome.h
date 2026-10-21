@@ -479,6 +479,77 @@ private:
     QList<QWidget *> m_history;
 };
 
+// Launches an external app via its .desktop file. Parses Exec= and
+// injects Wayland env vars (WAYLAND_DISPLAY, SAL_USE_VCLPLUGIN).
+// Used by both DockIcon::launchApp and AppLauncher tile click so
+// external apps launch identically from every entry point.
+static void launchExternalDesktop(const QString &desktopBase) {
+    const QString path = "/usr/share/applications/"
+                         + desktopBase + ".desktop";
+    QFile df(path);
+    if (!df.open(QIODevice::ReadOnly)) {
+        qWarning() << "[launch] cannot open" << path;
+        return;
+    }
+    QTextStream ts(&df);
+    QString line, execCmd;
+    while (ts.readLineInto(&line)) {
+        if (line.startsWith("Exec=")) { execCmd = line.mid(5); break; }
+    }
+    df.close();
+
+    execCmd.remove(QRegularExpression(" ?%[UFufick]"));
+    execCmd = execCmd.trimmed();
+    if (execCmd.isEmpty()) {
+        qWarning() << "[launch] empty Exec for" << desktopBase;
+        return;
+    }
+    QStringList parts = QProcess::splitCommand(execCmd);
+    if (parts.isEmpty()) return;
+    const QString program = parts.takeFirst();
+    qInfo() << "[launch]" << desktopBase << "->" << program << parts;
+
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    if (env.value("WAYLAND_DISPLAY").isEmpty()) {
+        QString runtime = env.value("XDG_RUNTIME_DIR");
+        if (runtime.isEmpty()) runtime = "/run/user/1000";
+        QDir rd(runtime);
+        for (const QString &f : rd.entryList({"wayland-*"},
+                                             QDir::Files | QDir::System)) {
+            if (f.endsWith(".lock")) continue;
+            env.insert("WAYLAND_DISPLAY", f);
+            break;
+        }
+    }
+    if (env.value("XDG_RUNTIME_DIR").isEmpty())
+        env.insert("XDG_RUNTIME_DIR", "/run/user/1000");
+    if (env.value("XDG_SESSION_TYPE").isEmpty())
+        env.insert("XDG_SESSION_TYPE", "wayland");
+    if (env.value("SAL_USE_VCLPLUGIN").isEmpty())
+        env.insert("SAL_USE_VCLPLUGIN", "qt6");
+    
+    // Force GTK apps to use the dark theme and honor our CSS
+    env.insert("GTK_THEME", "Adwaita-dark");
+    if (env.value("DISPLAY").isEmpty()) {
+        if (QFile::exists("/tmp/.X11-unix/X0"))
+            env.insert("DISPLAY", ":0");
+        else if (QFile::exists("/tmp/.X11-unix/X1"))
+            env.insert("DISPLAY", ":1");
+    }
+
+    qInfo() << "[launch] env:"
+            << "WAYLAND_DISPLAY=" << env.value("WAYLAND_DISPLAY")
+            << "DISPLAY=" << env.value("DISPLAY")
+            << "SAL_USE_VCLPLUGIN=" << env.value("SAL_USE_VCLPLUGIN");
+
+    QProcess *proc = new QProcess;
+    proc->setProgram(program);
+    proc->setArguments(parts);
+    proc->setProcessEnvironment(env);
+    proc->startDetached();
+    delete proc;
+}
+
 class AppLauncher : public QWidget {
 public:
     explicit AppLauncher(QWidget *parent = nullptr) : QWidget(parent) {
@@ -1150,10 +1221,8 @@ private:
                 if (appName == QLatin1String(e.label)) {
                     QString g = QString::fromUtf8(e.glyph);
                     if (g.startsWith("ext:")) {
-                        QProcess::startDetached("gio", {
-                            "launch",
-                            "/usr/share/applications/"
-                            + g.mid(4) + ".desktop" });
+                        launchExternalDesktop(g.mid(4));
+                        if (parentWidget()) parentWidget()->hide();
                         return;
                     }
                     break;
