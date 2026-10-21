@@ -3277,6 +3277,119 @@ static int runShell(int argc, char *argv[])
     if (spotlight) spotlight->raise();
 
     // Avatar badge — small accent-tinted circle with user glyph
+    class WorkspacePill : public QWidget {
+    public:
+        WorkspacePill(QWidget *parent = nullptr) : QWidget(parent) {
+            setFixedHeight(22);
+            setMinimumWidth(80);
+            setCursor(Qt::PointingHandCursor);
+            setAttribute(Qt::WA_TranslucentBackground);
+            ThemeManager::instance().subscribe([this](const Theme &) { update(); });
+            m_timer = new QTimer(this);
+            connect(m_timer, &QTimer::timeout, this, &WorkspacePill::poll);
+            m_timer->start(500);
+            poll();
+        }
+    protected:
+        void paintEvent(QPaintEvent *) override {
+            QPainter p(this);
+            p.setRenderHint(QPainter::Antialiasing);
+            const Theme &t = ThemeManager::instance().current();
+            QRect r = rect().adjusted(1, 1, -1, -1);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(t.panelBg.red(), t.panelBg.green(), t.panelBg.blue(), m_workspaces.isEmpty() ? 30 : 140));
+            p.drawRoundedRect(r, 11, 11);
+            if (m_workspaces.isEmpty()) return;
+            int n = m_workspaces.size();
+            int btnW = 22;
+            int totalW = n * btnW;
+            int startX = (width() - totalW) / 2;
+            QFont f = font();
+            f.setPixelSize(11);
+            f.setBold(true);
+            p.setFont(f);
+            for (int i = 0; i < n; ++i) {
+                QRect box(startX + i * btnW, 0, btnW, height());
+                if (m_workspaces[i].active) {
+                    p.setBrush(t.accent);
+                    p.setPen(Qt::NoPen);
+                    p.drawRoundedRect(box.adjusted(2, 2, -2, -2), 8, 8);
+                    p.setPen(Qt::white);
+                } else {
+                    p.setPen(t.textSecondary);
+                }
+                p.drawText(box, Qt::AlignCenter, m_workspaces[i].name);
+            }
+        }
+        void mousePressEvent(QMouseEvent *e) override {
+            if (e->button() == Qt::LeftButton) {
+                int n = m_workspaces.size();
+                if (n == 0) return;
+                int btnW = 22;
+                int totalW = n * btnW;
+                int startX = (width() - totalW) / 2;
+                int idx = (e->pos().x() - startX) / btnW;
+                if (idx >= 0 && idx < n) {
+                    QString exe = QStandardPaths::findExecutable("swaymsg");
+                    if (exe.isEmpty()) exe = "/usr/bin/swaymsg";
+                    QProcess::startDetached(exe, {"workspace", m_workspaces[idx].name});
+                }
+            }
+        }
+    private:
+        struct WS { QString name; bool active; };
+        QVector<WS> m_workspaces;
+        QTimer *m_timer;
+        void poll() {
+            QString exe = QStandardPaths::findExecutable("swaymsg");
+            if (exe.isEmpty()) exe = "/usr/bin/swaymsg";
+
+            QProcess *p = new QProcess(this);
+            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+            QString sock = QString::fromLocal8Bit(qgetenv("SWAYSOCK"));
+            if (sock.isEmpty()) {
+                QString runtime = env.value("XDG_RUNTIME_DIR");
+                if (runtime.isEmpty()) runtime = "/run/user/1000";
+                QDir rd(runtime);
+                for (const QString &f : rd.entryList({"sway-ipc.*"}, QDir::Files | QDir::System)) {
+                    if (!f.endsWith(".lock")) { sock = rd.absoluteFilePath(f); break; }
+                }
+            }
+            if (!sock.isEmpty()) env.insert("SWAYSOCK", sock);
+            p->setProcessEnvironment(env);
+            
+            connect(p, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [this, p, sock](int code, QProcess::ExitStatus) {
+                QByteArray out = p->readAllStandardOutput();
+                QByteArray err = p->readAllStandardError();
+                
+                QFile lf("/tmp/ws_pill.log");
+                if (lf.open(QIODevice::Append | QIODevice::Text)) {
+                    lf.write(QString("Sock: " + sock + " | Exit: " + QString::number(code) + "\nOut: " + QString(out) + "\nErr: " + QString(err) + "\n").toUtf8());
+                }
+
+                if (code == 0) {
+                    QJsonDocument doc = QJsonDocument::fromJson(out);
+                    if (doc.isArray()) {
+                        QVector<WS> ws;
+                        for (const QJsonValue &v : doc.array()) {
+                            QJsonObject o = v.toObject();
+                            WS w;
+                            w.name = o["name"].toString();
+                            if (w.name.isEmpty()) w.name = QString::number(o["num"].toInt());
+                            w.active = o["focused"].toBool();
+                            ws.append(w);
+                        }
+                        m_workspaces = ws;
+                        setFixedWidth(qMax(60, m_workspaces.size() * 24 + 10));
+                        update();
+                    }
+                }
+                p->deleteLater();
+            });
+            p->start(exe, {"-t", "get_workspaces", "-r"});
+        }
+    };
+
     class AvatarBadge : public QLabel {
     public:
         AvatarBadge(QWidget *parent = nullptr) : QLabel(parent) {
@@ -3308,6 +3421,10 @@ static int runShell(int argc, char *argv[])
     private:
         Theme m_theme;
     };
+    WorkspacePill *wsPill = new WorkspacePill;
+    topLayout->addWidget(wsPill);
+    topLayout->addSpacing(10);
+
     AvatarBadge *avatar = new AvatarBadge;
     topLayout->addWidget(avatar);
 
