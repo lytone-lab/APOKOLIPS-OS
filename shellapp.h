@@ -290,6 +290,12 @@ protected:
             m.value("radius", m_override.radius).toInt();
     }
 
+    bool hasOverride() const {
+        if (m_appId.isEmpty()) return false;
+        return VisualConfigManager::instance().cfg()
+                   .appOverrides.contains(m_appId);
+    }
+
 public:
     // The chrome renderer. Used by paintEvent and by the Settings
     // preview so both draw the *same* pixels. Static so the preview

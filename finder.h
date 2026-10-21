@@ -219,8 +219,12 @@ protected:
 
         // ---- Style-aware body ----
         const auto &vc = VisualConfigManager::instance().cfg();
-        StyleRenderer::drawPanel(p, QRectF(frameRect), 14, m_theme,
-                                 vc.finderAlpha);
+        if (hasOverride()) {
+            ShellApp::paintChrome(p, rect(), m_embedded, m_override);
+        } else {
+            StyleRenderer::drawPanel(p, QRectF(frameRect), 14, m_theme,
+                                     vc.finderAlpha);
+        }
 
         // ---- Top strip (header + tab bar + toolbar bg, 30+34+46=110 tall) ----
         const int TOP_H = 30;
