@@ -1627,8 +1627,10 @@ private:
 class DockIcon : public QWidget {
 public:
     DockIcon(const QString &icon, const QString &name, int index,
+             const QString &swayId = QString(), bool isDynamic = false,
              QWidget *parent = nullptr)
-        : QWidget(parent), m_icon(icon), m_name(name), m_index(index)
+        : QWidget(parent), m_icon(icon), m_name(name), m_index(index),
+          m_swayId(swayId), m_isDynamic(isDynamic)
     {
         setFixedSize(68, 68);
         setMouseTracking(true);
@@ -1641,6 +1643,9 @@ public:
         });
         StyleManager::subscribe([this](VisualStyle) { update(); });
     }
+
+    QString m_swayId;
+    bool m_isDynamic = false;
 
     void setTarget(qreal t)  { m_target = t; }
     void setCurrent(qreal c) {
@@ -1678,6 +1683,8 @@ public:
     }
     bool isRunning() const { return m_running; }
     QString appName() const { return m_name; }
+    QString swayId() const { return m_swayId; }
+    bool isDynamic() const { return m_isDynamic; }
     qint64  pid() const { return m_pid; }
     void setPid(qint64 p) { m_pid = p; }
 
@@ -2250,7 +2257,7 @@ public:
         setMouseTracking(true);
 
         m_layout = new QHBoxLayout(this);
-        m_layout->setContentsMargins(18, 18, 18, 14);
+        m_layout->setContentsMargins(18, 4, 18, 4);
         m_layout->setSpacing(4);
 
         m_timer = new QTimer(this);
@@ -2264,7 +2271,7 @@ public:
 
         // Separate timer to poll running state — cheaper than every frame
         m_pollTimer = new QTimer(this);
-        m_pollTimer->setInterval(700);
+        m_pollTimer->setInterval(200);
         QObject::connect(m_pollTimer, &QTimer::timeout,
                          this, [this]() { pollRunning(); });
         m_pollTimer->start();
@@ -2336,6 +2343,72 @@ public:
             }
             di->setRunning(alive);
         }
+
+        // --- Dynamic Dock Injection & Removal ---
+        bool dockChanged = false;
+        QSet<QString> activeDynamicIds;
+
+        // 1. Remove closed dynamic apps
+        for (int i = m_icons.size() - 1; i >= 0; --i) {
+            DockIcon *di = m_icons[i];
+            if (di->isDynamic()) {
+                if (!liveAppIds.contains(di->swayId())) {
+                    qInfo() << "[dock] removed dynamic" << di->swayId();
+                    m_layout->removeWidget(di);
+                    di->deleteLater();
+                    m_icons.removeAt(i);
+                    dockChanged = true;
+                } else {
+                    activeDynamicIds.insert(di->swayId());
+                }
+            }
+        }
+
+        // 2. Add newly opened apps
+        for (const QString &id : liveAppIds) {
+            if (id == "apokolips-shell" || id == "apokolips-animator" || id == "apokolips-dialog" || id == "apokolips-genie" ||
+                id == "apokolips-snap" || id == "apokolips-glyph" || id == "apokolips-lock" ||
+                id == "apokolips-clipboard" || id == "apokolips-notify") {
+                continue; // Skip shell internal overlays
+            }
+            if (activeDynamicIds.contains(id)) continue;
+
+            // Check if statically in the dock
+            bool inDock = false;
+            for (DockIcon *di : m_icons) {
+                if (!di->isDynamic()) {
+                    if (appIdForDockName(di->appName()) == id || Icons::allAppIdsForDockName(di->appName()).contains(id)) {
+                        inDock = true;
+                        break;
+                    }
+                }
+            }
+            if (inDock) continue;
+
+            // Resolve label and icon
+            QString label = id;
+            QString icon = "\xE2\x9A\x99"; // Gear fallback
+            QString lookup = id;
+            if (lookup.startsWith("apokolips-")) lookup = lookup.mid(10);
+
+            for (const auto &e : appRegistry()) {
+                if (QString::fromUtf8(e.id) == lookup) {
+                    label = QString::fromUtf8(e.label);
+                    icon = QString::fromUtf8(e.glyph);
+                    break;
+                }
+            }
+
+            qInfo() << "[dock] added dynamic" << id;
+            addIcon(icon, label, m_icons.size(), id, true);
+            dockChanged = true;
+        }
+
+        if (dockChanged) {
+            m_layout->activate();
+            updateGeometry();
+            update();
+        }
     }
 
     // Map a dock app name to its sway app_id.
@@ -2364,8 +2437,9 @@ public:
         return QString();
     }
 
-    void addIcon(const QString &icon, const QString &name, int index) {
-        DockIcon *di = new DockIcon(icon, name, index, this);
+    void addIcon(const QString &icon, const QString &name, int index,
+                 const QString &swayId = QString(), bool isDynamic = false) {
+        DockIcon *di = new DockIcon(icon, name, index, swayId, isDynamic, this);
         m_icons.append(di);
         m_layout->addWidget(di);
     }
