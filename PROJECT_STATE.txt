@@ -1960,3 +1960,13 @@ END OF PROJECT STATE
         internal processes (e.g., apokolips-animator) from appearing.
   State: done.
   Commit: chrome.h (see git log)
+
+--- SESSION UPDATE — 2026-10-22 (Keyboard Shortcuts Editor) ---
+
+[SHIPPED] Keyboard Shortcuts Editor (Variant B)
+  What: Added a "SHORTCUTS" card to Settings -> Keyboard.
+        Uses a custom QPushButton that captures key presses (Meta, Ctrl,
+        Alt, Shift + key). Writes safely to ~/.config/sway/config via a
+        regex replacement and reloads Sway instantly.
+  State: done.
+
