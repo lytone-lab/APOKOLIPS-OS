@@ -10,6 +10,62 @@
 #include "helpers.h"
 
 #include <QFileDialog>
+#include <QKeyEvent>
+#include <functional>
+
+
+class ShortcutRecorder : public QPushButton {
+public:
+    ShortcutRecorder(const QString &current, std::function<void(const QString&)> onRecord, QWidget *parent = nullptr)
+        : QPushButton(parent), m_onRecord(onRecord), m_original(current) {
+        setText(current);
+        setCursor(Qt::PointingHandCursor);
+        setStyleSheet("QPushButton { background: rgba(255,255,255,20); color: white; border-radius: 6px; padding: 4px 12px; font-size: 12px; } "
+                      "QPushButton:focus { background: rgba(168,50,50,150); border: 1px solid rgba(255,255,255,100); }");
+        connect(this, &QPushButton::clicked, this, [this]() {
+            setText("Press keys...");
+            setFocus();
+        });
+    }
+protected:
+    void keyPressEvent(QKeyEvent *e) override {
+        e->accept();
+        int k = e->key();
+        if (k == Qt::Key_Control || k == Qt::Key_Shift || k == Qt::Key_Alt || k == Qt::Key_Meta) return;
+
+        QStringList parts;
+        if (e->modifiers() & Qt::MetaModifier) parts << "$mod";
+        if (e->modifiers() & Qt::ControlModifier) parts << "Ctrl";
+        if (e->modifiers() & Qt::AltModifier) parts << "Mod1";
+        if (e->modifiers() & Qt::ShiftModifier) parts << "Shift";
+
+        QString keyStr;
+        if (k >= Qt::Key_A && k <= Qt::Key_Z) keyStr = QString(QChar(k)).toLower();
+        else if (k >= Qt::Key_0 && k <= Qt::Key_9) keyStr = QChar(k);
+        else if (k == Qt::Key_Return || k == Qt::Key_Enter) keyStr = "Return";
+        else if (k == Qt::Key_Space) keyStr = "space";
+        else if (k == Qt::Key_Escape) keyStr = "Escape";
+        else if (k == Qt::Key_Backspace) keyStr = "BackSpace";
+        else if (k == Qt::Key_Tab) keyStr = "Tab";
+        else if (k >= Qt::Key_F1 && k <= Qt::Key_F12) keyStr = QString("F%1").arg(k - Qt::Key_F1 + 1);
+        else keyStr = QString(QChar(k)).toLower();
+
+        if (!keyStr.isEmpty()) {
+            parts << keyStr;
+            QString result = parts.join("+");
+            setText(result);
+            if (m_onRecord) m_onRecord(result);
+            clearFocus();
+        }
+    }
+    void focusOutEvent(QFocusEvent *e) override {
+        QPushButton::focusOutEvent(e);
+        if (text() == "Press keys...") setText(m_original);
+    }
+private:
+    std::function<void(const QString&)> m_onRecord;
+    QString m_original;
+};
 
 class SettingsWindow : public QWidget {
 public:
@@ -9082,6 +9138,30 @@ private:
         return page;
     }
 
+    void updateSwayBinding(const QString &searchCmd, const QString &newKey) {
+        QString path = QDir::homePath() + "/.config/sway/config";
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+        QStringList lines = QString::fromUtf8(f.readAll()).split('\n');
+        f.close();
+
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) return;
+        QTextStream out(&f);
+        for (const QString &line : lines) {
+            if (line.startsWith("bindsym") && line.contains(searchCmd)) {
+                QStringList parts = line.split(' ');
+                if (parts.size() >= 3) {
+                    parts[1] = newKey;
+                    out << parts.join(' ') << "\n";
+                    continue;
+                }
+            }
+            out << line << "\n";
+        }
+        f.close();
+        QProcess::startDetached("swaymsg", {"reload"});
+    }
+
     QWidget *makeKeyboardPage() {
         QWidget *page = new QWidget;
         page->setAutoFillBackground(false);
@@ -9247,6 +9327,58 @@ private:
                     QString::number(x) });
             });
 
+            v->addWidget(c);
+        }
+
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 18, 20, 18);
+            cv->setSpacing(14);
+            cv->addWidget(Sigil::groupLabel("SHORTCUTS"));
+
+            struct ShortcutDef {
+                const char *name;
+                const char *searchCmd;
+                const char *defaultKey;
+            };
+            const ShortcutDef shortcuts[] = {
+                { "Open Terminal", "apokolips-shell --node", "$mod+Return" },
+                { "Open Finder", "apokolips-shell --files", "$mod+e" },
+                { "Screenshot (Glyph)", "apokolips-screenshot", "$mod+Shift+s" },
+                { "Clipboard", "apokolips-shell --toggle-clipboard", "$mod+v" },
+                { "Lock Screen", "apokolips-shell --lock", "$mod+Escape" },
+                { "Minimize Window", "apokolips-genie-trigger", "$mod+m" },
+                { "Snap Layouts", "apokolips-shell --snap", "$mod+z" }
+            };
+
+            for (const auto &sc : shortcuts) {
+                QWidget *row = new QWidget;
+                QHBoxLayout *h = new QHBoxLayout(row);
+                h->setContentsMargins(0, 4, 0, 4);
+                QLabel *t = new QLabel(sc.name);
+                t->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+                h->addWidget(t, 1);
+
+                QString currentKey = sc.defaultKey;
+                QFile f(QDir::homePath() + "/.config/sway/config");
+                if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                    QString content = QString::fromUtf8(f.readAll());
+                    for (const QString &line : content.split('\n')) {
+                        if (line.startsWith("bindsym") && line.contains(sc.searchCmd)) {
+                            currentKey = line.section(' ', 1, 1);
+                            break;
+                        }
+                    }
+                    f.close();
+                }
+
+                ShortcutRecorder *btn = new ShortcutRecorder(currentKey, [this, search = QString(sc.searchCmd)](const QString &newKey) {
+                    updateSwayBinding(search, newKey);
+                });
+                h->addWidget(btn);
+                cv->addWidget(row);
+            }
             v->addWidget(c);
         }
 
