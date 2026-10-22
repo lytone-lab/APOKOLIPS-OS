@@ -1949,3 +1949,14 @@ END OF PROJECT STATE
   - Limits documented: chromeStyle does not apply to Settings; external
     apps are best-effort only.
 
+
+--- SESSION UPDATE — 2026-10-22 (Dynamic Dock) ---
+
+[SHIPPED] Dynamic Dock + Hover Fix
+  What: Dock now automatically injects icons for running apps not in the
+        static registry, and removes them when closed. Hover clipping fixed
+        by reverting to 96px height and reducing inner margins to 4px.
+        Poll timer reduced to 200ms for near-instant updates. Filtered
+        internal processes (e.g., apokolips-animator) from appearing.
+  State: done.
+  Commit: chrome.h (see git log)
