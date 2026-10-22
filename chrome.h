@@ -1646,6 +1646,7 @@ public:
 
     QString m_swayId;
     bool m_isDynamic = false;
+    bool m_active = false;
 
     void setTarget(qreal t)  { m_target = t; }
     void setCurrent(qreal c) {
@@ -1685,6 +1686,7 @@ public:
     QString appName() const { return m_name; }
     QString swayId() const { return m_swayId; }
     bool isDynamic() const { return m_isDynamic; }
+    void setActive(bool a) { if (m_active != a) { m_active = a; update(); } }
     qint64  pid() const { return m_pid; }
     void setPid(qint64 p) { m_pid = p; }
 
@@ -1747,10 +1749,15 @@ protected:
         Icons::drawFor(m_name, p, iconRect, m_theme.textPrimary);
 
         // Running indicator dot under the icon
-        if (m_running) {
+        if (m_running || m_active) {
             p.setPen(Qt::NoPen);
-            p.setBrush(m_theme.accent);
-            p.drawEllipse(QPoint(width() / 2, height() - 6), 3, 3);
+            if (m_active) {
+                p.setBrush(Qt::white);
+                p.drawEllipse(QPoint(width() / 2, height() - 6), 4, 4);
+            } else {
+                p.setBrush(m_theme.accent);
+                p.drawEllipse(QPoint(width() / 2, height() - 6), 3, 3);
+            }
         }
 
         // Notification badge (top-right)
@@ -2312,6 +2319,13 @@ public:
         auto it = re.globalMatch(tree);
         while (it.hasNext()) liveAppIds.insert(it.next().captured(1));
 
+        QString focusedAppId;
+        QString focusedName;
+        QJsonDocument doc = QJsonDocument::fromJson(raw);
+        if (doc.isObject()) {
+            findFocusedAppInfo(doc.object(), focusedAppId, focusedName);
+        }
+
         static int dbg = 0;
         if (dbg++ % 10 == 0) {
             qInfo() << "[dots] tree bytes=" << raw.size()
@@ -2342,6 +2356,22 @@ public:
                 }
             }
             di->setRunning(alive);
+
+            bool active = false;
+            if (!focusedAppId.isEmpty()) {
+                if (focusedAppId != "apokolips-shell") {
+                    QStringList candidateIds = Icons::allAppIdsForDockName(di->appName());
+                    if (di->swayId() == focusedAppId || appIdForDockName(di->appName()) == focusedAppId || candidateIds.contains(focusedAppId)) {
+                        active = true;
+                    }
+                } else {
+                    QString expectedTitle = titleForDockName(di->appName());
+                    if (!expectedTitle.isEmpty() && focusedName.contains(expectedTitle)) {
+                        active = true;
+                    }
+                }
+            }
+            di->setActive(active);
         }
 
         // --- Dynamic Dock Injection & Removal ---
@@ -2408,6 +2438,22 @@ public:
             m_layout->activate();
             updateGeometry();
             update();
+        }
+    }
+
+    static void findFocusedAppInfo(const QJsonObject &node, QString &appId, QString &name) {
+        if (node.value("focused").toBool() && (node.value("type").toString() == "con" || node.value("type").toString() == "floating_con")) {
+            appId = node.value("app_id").toString();
+            name = node.value("name").toString();
+            return;
+        }
+        for (const QJsonValue &v : node.value("nodes").toArray()) {
+            findFocusedAppInfo(v.toObject(), appId, name);
+            if (!appId.isEmpty() || !name.isEmpty()) return;
+        }
+        for (const QJsonValue &v : node.value("floating_nodes").toArray()) {
+            findFocusedAppInfo(v.toObject(), appId, name);
+            if (!appId.isEmpty() || !name.isEmpty()) return;
         }
     }
 
