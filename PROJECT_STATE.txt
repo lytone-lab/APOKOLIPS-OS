@@ -2019,3 +2019,14 @@ END OF PROJECT STATE
         PDFs natively, so a separate PDF viewer is redundant.
   State: done.
 
+
+--- SESSION UPDATE — 2026-10-23 (Boot Hang Fix) ---
+
+[FIXED] Boot Hang / Black Screen
+  What: The VM was experiencing hard resets, which corrupted the ext4 
+        filesystem (kernel BUG at fs/ext4/inode.c:754). This caused Sway 
+        to crash and apokolips-shell to fail with "wl_display connection 
+        refused" on boot. Fixed by forcing a filesystem check (fsck) on 
+        reboot. Config also restored to its exact original state.
+  State: done. OS boots cleanly.
+
