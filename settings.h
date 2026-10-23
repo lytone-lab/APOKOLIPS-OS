@@ -10,6 +10,9 @@
 #include "helpers.h"
 
 #include <QFileDialog>
+#include <QGraphicsColorizeEffect>
+#include <QComboBox>
+#include <QCheckBox>
 #include <QKeyEvent>
 #include <functional>
 
@@ -7724,6 +7727,32 @@ private:
     }
 
     QWidget *makeDisplayPage() {
+        auto getEnvStr = []() -> QString {
+            QString res;
+            QString xdg = QString::fromLocal8Bit(qgetenv("XDG_RUNTIME_DIR"));
+            if (xdg.isEmpty()) xdg = "/run/user/1000";
+            res += "XDG_RUNTIME_DIR=" + xdg + " ";
+
+            QString wd = QString::fromLocal8Bit(qgetenv("WAYLAND_DISPLAY"));
+            if (wd.isEmpty()) {
+                QDir rd(xdg);
+                for (const QString &f : rd.entryList({"wayland-*"}, QDir::Files | QDir::System)) {
+                    if (!f.endsWith(".lock")) { wd = f; break; }
+                }
+            }
+            if (!wd.isEmpty()) res += "WAYLAND_DISPLAY=" + wd + " ";
+
+            QString ss = QString::fromLocal8Bit(qgetenv("SWAYSOCK"));
+            if (ss.isEmpty()) {
+                QDir rd(xdg);
+                for (const QString &f : rd.entryList({"sway-ipc.*"}, QDir::Files | QDir::System)) {
+                    if (!f.endsWith(".lock")) { ss = rd.absoluteFilePath(f); break; }
+                }
+            }
+            if (!ss.isEmpty()) res += "SWAYSOCK=" + ss + " ";
+            return res;
+        };
+
         QWidget *page = new QWidget;
         page->setAutoFillBackground(false);
         QVBoxLayout *v = new QVBoxLayout(page);
@@ -7798,6 +7827,117 @@ private:
             m_resList = new QListWidget;
             m_resList->setFrameShape(QFrame::NoFrame);
             cv->addWidget(m_resList, 1);
+            v->addWidget(c);
+        }
+
+        // ---- Scaling Card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("SCALING"));
+
+            QHBoxLayout *row = new QHBoxLayout;
+            QLabel *lbl = new QLabel("Scale");
+            lbl->setStyleSheet(QString("color: %1; font-size: 13px; background: transparent;").arg(Sigil::textPrimary().name()));
+            row->addWidget(lbl, 1);
+
+            m_scaleCombo = new QComboBox;
+            m_scaleCombo->addItems({"1.0", "1.25", "1.5", "1.75", "2.0"});
+            m_scaleCombo->setStyleSheet(
+                "QComboBox { background: rgba(255,255,255,20); color: white; "
+                "border: none; border-radius: 6px; padding: 4px 8px; } "
+                "QComboBox::drop-down { border: none; }");
+            
+            QObject::connect(m_scaleCombo, QOverload<int>::of(&QComboBox::activated), [this, getEnvStr](int) {
+                QString scale = m_scaleCombo->currentText();
+                QString env = getEnvStr();
+                
+                QProcess p;
+                p.start("bash", {"-c", env + "swaymsg -t get_outputs -r"});
+                p.waitForFinished(1000);
+                
+                QJsonDocument doc = QJsonDocument::fromJson(p.readAllStandardOutput());
+                QString outName = "VGA-1";
+                if (doc.isArray()) {
+                    for (const QJsonValue &v : doc.array()) {
+                        if (v.toObject().value("active").toBool()) {
+                            outName = v.toObject().value("name").toString();
+                            break;
+                        }
+                    }
+                }
+                
+                QString cmd = env + "swaymsg output " + outName + " scale " + scale;
+                QProcess::startDetached("bash", {"-c", cmd});
+            });
+            
+            row->addWidget(m_scaleCombo);
+            cv->addLayout(row);
+            v->addWidget(c);
+        }
+
+        // ---- Night Shift Card ----
+        {
+            Sigil::Card *c = new Sigil::Card;
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(12);
+            cv->addWidget(Sigil::groupLabel("NIGHT SHIFT"));
+
+            QHBoxLayout *row = new QHBoxLayout;
+            m_nightShiftToggle = new QCheckBox("Enable Night Shift");
+            m_nightShiftToggle->setStyleSheet("QCheckBox { color: white; font-size: 13px; }");
+            
+            QObject::connect(m_nightShiftToggle, &QCheckBox::toggled, [this, getEnvStr](bool on) {
+                if (on) {
+                    if (!m_nightOverlay) {
+                        m_nightOverlay = new QWidget(nullptr, Qt::Window | Qt::FramelessWindowHint | Qt::WindowTransparentForInput | Qt::WindowStaysOnTopHint | Qt::Tool);
+                        m_nightOverlay->setAttribute(Qt::WA_TranslucentBackground);
+                        m_nightOverlay->setAttribute(Qt::WA_TransparentForMouseEvents);
+                        QScreen *screen = QGuiApplication::primaryScreen();
+                        if (screen) m_nightOverlay->setGeometry(screen->geometry());
+                    }
+                    int temp = m_tempSlider->value();
+                    // Map 2000K (very orange) to 6500K (clear)
+                    int alpha = qBound(0, (6500 - temp) / 20, 150); 
+                    m_nightOverlay->setStyleSheet(QString("background-color: rgba(255, 120, 0, %1);").arg(alpha));
+                    m_nightOverlay->show();
+                    m_nightOverlay->raise();
+                } else {
+                    if (m_nightOverlay) m_nightOverlay->hide();
+                }
+            });
+            
+            row->addWidget(m_nightShiftToggle, 1);
+            cv->addLayout(row);
+
+            QHBoxLayout *srow = new QHBoxLayout;
+            m_tempSlider = new QSlider(Qt::Horizontal);
+            m_tempSlider->setRange(2000, 6500);
+            m_tempSlider->setValue(4500);
+            m_tempSlider->setStyleSheet(
+                "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,25); border-radius: 2px; }"
+                "QSlider::handle:horizontal { background: #ffffff; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }"
+                "QSlider::sub-page:horizontal { background: rgb(168,50,50); border-radius: 2px; }");
+            
+            QObject::connect(m_tempSlider, &QSlider::valueChanged, [this, getEnvStr](int v) {
+                m_tempLabel->setText(QString::number(v) + " K");
+                if (m_nightShiftToggle->isChecked() && m_nightOverlay) {
+                    int alpha = qBound(0, (6500 - v) / 20, 150); 
+                    m_nightOverlay->setStyleSheet(QString("background-color: rgba(255, 120, 0, %1);").arg(alpha));
+                }
+            });
+            
+            m_tempLabel = new QLabel("4500 K");
+            m_tempLabel->setStyleSheet("color: rgba(255,255,255,150); font-size: 12px;");
+            m_tempLabel->setMinimumWidth(50);
+            m_tempLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            srow->addWidget(m_tempSlider, 1);
+            srow->addWidget(m_tempLabel);
+            cv->addLayout(srow);
+
             v->addWidget(c);
         }
 
@@ -8805,6 +8945,31 @@ private:
     void refreshDisplayPage() {
         if (!m_displayInfo || !m_resList) return;
 
+        auto getEnvStr = []() -> QString {
+            QString res;
+            QString xdg = QString::fromLocal8Bit(qgetenv("XDG_RUNTIME_DIR"));
+            if (xdg.isEmpty()) xdg = "/run/user/1000";
+            res += "XDG_RUNTIME_DIR=" + xdg + " ";
+            QString wd = QString::fromLocal8Bit(qgetenv("WAYLAND_DISPLAY"));
+            if (wd.isEmpty()) {
+                QDir rd(xdg);
+                for (const QString &f : rd.entryList({"wayland-*"}, QDir::Files | QDir::System)) {
+                    if (!f.endsWith(".lock")) { wd = f; break; }
+                }
+            }
+            if (!wd.isEmpty()) res += "WAYLAND_DISPLAY=" + wd + " ";
+            QString ss = QString::fromLocal8Bit(qgetenv("SWAYSOCK"));
+            if (ss.isEmpty()) {
+                QDir rd(xdg);
+                for (const QString &f : rd.entryList({"sway-ipc.*"}, QDir::Files | QDir::System)) {
+                    if (!f.endsWith(".lock")) { ss = rd.absoluteFilePath(f); break; }
+                }
+            }
+            if (!ss.isEmpty()) res += "SWAYSOCK=" + ss + " ";
+            return res;
+        };
+        QString envStr = getEnvStr();
+
         auto *p = new QProcess(this);
         QObject::connect(p,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
@@ -8828,6 +8993,15 @@ private:
                         o.value("current_mode").toObject();
                     int curW = cur.value("width").toInt();
                     int curH = cur.value("height").toInt();
+                    
+                    if (m_scaleCombo) {
+                        double scale = o.value("scale").toDouble();
+                        if (scale <= 0) scale = 1.0;
+                        QString s = QString::number(scale, 'f', 2);
+                        int idx = m_scaleCombo->findText(s);
+                        if (idx < 0) idx = m_scaleCombo->findText(QString::number(scale, 'f', 1));
+                        if (idx >= 0) m_scaleCombo->setCurrentIndex(idx);
+                    }
                     m_displayInfo->setText(
                         QString("%1 — %2×%3")
                             .arg(name).arg(curW).arg(curH));
@@ -8851,7 +9025,7 @@ private:
                     }
                 }
             });
-        p->start("swaymsg", { "-t", "get_outputs", "-r" });
+        p->start("bash", {"-c", envStr + "/usr/bin/swaymsg -t get_outputs -r"});
     }
 
     void refreshNetworkPage() {
@@ -11032,6 +11206,15 @@ private:
     QLabel         *m_trashInfo    = nullptr;
     QLabel         *m_userInfo     = nullptr;
     QListWidget    *m_resList      = nullptr;
+    QComboBox *m_scaleCombo = nullptr;
+    QSlider *m_tempSlider = nullptr;
+    QLabel *m_tempLabel = nullptr;
+    QCheckBox *m_nightShiftToggle = nullptr;
+    QTimer *m_scaleTimer = nullptr;
+    double m_currentScale = 1.0;
+    double m_targetScale = 1.0;
+    QString m_outputName = "VGA-1";
+    QWidget *m_nightOverlay = nullptr;
     QListWidget    *m_wifiList     = nullptr;
     QLabel         *m_displayInfo  = nullptr;
     QLabel         *m_networkInfo  = nullptr;

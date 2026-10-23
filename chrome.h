@@ -5383,9 +5383,13 @@ protected:
                     QObject::connect(wa, &QAction::triggered,
                                      [this, id]() {
                         Wallpaper *nw = WallpaperConfig::makeById(id);
-                        setWallpaper(nw);
-                        ThemeManager::instance().setTheme(nw->theme());
-                        WallpaperConfig::saveId(id);
+                        if (nw) {
+                            setWallpaper(nw);
+                            ThemeManager::instance().setTheme(nw->theme());
+                            WallpaperConfig::saveId(id);
+                        } else {
+                            qWarning() << "[wallpaper] failed to load" << id;
+                        }
                     });
                 }
             }
