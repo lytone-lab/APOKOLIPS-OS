@@ -1970,3 +1970,24 @@ END OF PROJECT STATE
         regex replacement and reloads Sway instantly.
   State: done.
 
+
+--- SESSION UPDATE — 2026-10-23 (Display, Wallpaper Crash) ---
+
+[SHIPPED] Wallpaper Crash Fix
+  What: Right-click menu wallpaper change crashed the shell if the 
+        Wallpaper::makeById(id) returned null (e.g., rapid clicking or 
+        missing asset). Added a null check before calling nw->theme().
+  State: done.
+
+[SHIPPED] Display Settings (Scaling & Resolution)
+  What: Added Scale dropdown and populated Resolution list. Fixed 
+        environment variables so swaymsg actually executes from the 
+        systemd service.
+  State: done.
+
+[DEFERRED] Night Shift
+  What: Replaced hardware gammastep with a QWidget overlay 
+        (transparent warm colour).
+  State: Code is in, but to be verified on bare metal / ISO build.
+        (VirtualBox gamma control fails).
+
