@@ -2002,3 +2002,20 @@ END OF PROJECT STATE
         not the code.
   State: CLOSED. Docs updated.
 
+
+--- SESSION UPDATE — 2026-10-23 (Sway Config Repair & Zathura Removal) ---
+
+[FIXED] Sway Config & Shell Stability
+  What: A previous patch to fix Zathura's floating behavior corrupted the 
+        Sway config, accidentally deleting the core rules that hide the 
+        shell border and enable the lock screen. Restored the exact rules:
+        for_window [app_id="apokolips-shell"] floating disable
+        for_window [app_id="apokolips-shell"] border none
+        for_window [app_id="apokolips-lock"] fullscreen enable, border none
+  State: done. OS is stable.
+
+[REMOVED] Zathura PDF Viewer
+  What: Removed Zathura entirely. WPS Office (when installed) will handle 
+        PDFs natively, so a separate PDF viewer is redundant.
+  State: done.
+
