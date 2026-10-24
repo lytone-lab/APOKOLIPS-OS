@@ -2082,3 +2082,13 @@ END OF PROJECT STATE
         and uses the exact Sigil styling (oxblood Rename button, squircle icon).
   State: done.
 
+
+--- SESSION UPDATE — 2026-10-24 (Mission Control Complete) ---
+
+[SHIPPED] Mission Control (Variant A)
+  What: Fullscreen overlay grid showing real window thumbnails. Uses `grim`
+        to capture the screen, `swaymsg -t get_tree` to find absolute window
+        rects, crops the image, and scales it into a uniform grid.
+        Click to focus. Esc to dismiss. Triggered by Super+A (SIGWINCH).
+  State: done.
+
