@@ -2,6 +2,9 @@
 #define APOKOLIPS_CHROME_H
 
 #include "shell.h"
+#include <QFileIconProvider>
+#include <QIcon>
+#include <QFileSystemWatcher>
 #include "theme.h"
 #include "visualconfig.h"
 #include "style.h"
@@ -4321,6 +4324,7 @@ public:
             while (QDir(path).exists())
                 path = base + QString("/New Folder %1").arg(++n);
             QDir().mkpath(path);
+            rebuildIcons();
         }
         else if (chosen == aNewFile) {
             QString base = QDir::homePath() + "/Desktop";
@@ -4330,7 +4334,10 @@ public:
             while (QFile::exists(path))
                 path = base + QString("/New Text File %1.txt").arg(++n);
             QFile f(path);
-            if (f.open(QIODevice::WriteOnly)) f.close();
+            if (f.open(QIODevice::WriteOnly)) {
+                f.close();
+                rebuildIcons();
+            }
         }
         else if (chosen == aOpenTerminal) {
             QProcess::startDetached(
@@ -4452,6 +4459,95 @@ public:
             }
             slot++;
         }
+
+        // --- Desktop files and folders (obey The Pool rules) ---
+        QDir desktopDir(QDir::homePath() + "/Desktop");
+        if (desktopDir.exists()) {
+            QIcon::setThemeSearchPaths({
+                "/usr/share/icons",
+                "/usr/local/share/icons",
+                QDir::homePath() + "/.icons",
+                QDir::homePath() + "/.local/share/icons"
+            });
+            QIcon::setThemeName("Adwaita");
+
+            QFileIconProvider iconProvider;
+            QFileInfoList entries = desktopDir.entryInfoList(
+                QDir::AllEntries | QDir::NoDotAndDotDot, QDir::Name);
+            for (const QFileInfo &fi : entries) {
+                QString fpath = fi.absoluteFilePath();
+                QString key = "file:" + fpath;
+
+                int col = slot / rowsMax;
+                int row = slot % rowsMax;
+                int defX = startX - col * iconW;
+                int defY = startY + row * iconH;
+                QPoint pos;
+                if (cfg.poolIconPos.contains(key)) {
+                    QVariantMap mp = cfg.poolIconPos[key].toMap();
+                    pos = QPoint(mp.value("x", defX).toInt(),
+                                 mp.value("y", defY).toInt());
+                } else {
+                    pos = QPoint(defX, defY);
+                }
+
+                QString label = fi.fileName();
+                QIcon sysIcon = iconProvider.icon(fi);
+                std::function<void(QPainter&, QRectF)> fpaint =
+                    [label, sysIcon](QPainter &p, QRectF r) {
+                        QRectF tile = r.adjusted(14, 6, -14, -34);
+                        QPainterPath squircle;
+                        squircle.addRoundedRect(tile, 14, 14);
+                        
+                        const Theme &t = ThemeManager::instance().current();
+                        QColor bg = t.cardBg;
+                        bg.setAlpha(220);
+                        p.fillPath(squircle, bg);
+                        
+                        p.setPen(QPen(QColor(255, 255, 255, 30), 1));
+                        p.drawPath(squircle);
+                        
+                        QRectF iconRect = tile.adjusted(10, 10, -10, -10);
+                        QPixmap pix = sysIcon.pixmap(iconRect.size().toSize());
+                        if (!pix.isNull()) {
+                            p.drawPixmap(iconRect.toRect(), pix);
+                        }
+                        
+                        QFont f = p.font();
+                        f.setPixelSize(10);
+                        p.setFont(f);
+                        p.setPen(QColor(240, 237, 232));
+                        QFontMetrics fm(f);
+                        QString elided = fm.elidedText(label, Qt::ElideMiddle,
+                                                       int(r.width()) - 6);
+                        p.drawText(QRectF(r.x(), r.bottom() - 28,
+                                          r.width(), 24),
+                                   Qt::AlignHCenter | Qt::AlignTop, elided);
+                    };
+
+                int before = m_icons.size();
+                addIcon(key, label, fpaint, [fpath]() {
+                    QProcess::startDetached("xdg-open", {fpath});
+                }, pos);
+                if (m_icons.size() > before) {
+                    m_icons.last()->m_onTidyUp = [this]() { tidyUp(); };
+                }
+                slot++;
+            }
+        }
+
+        // --- Watch ~/Desktop for live changes ---
+        if (findChildren<QFileSystemWatcher*>().isEmpty()) {
+            auto *watcher = new QFileSystemWatcher(this);
+            if (desktopDir.exists())
+                watcher->addPath(desktopDir.absolutePath());
+            QObject::connect(watcher,
+                &QFileSystemWatcher::directoryChanged,
+                this, [this](const QString &) {
+                    QTimer::singleShot(150, this, [this]() { rebuildIcons(); });
+                });
+        }
+
         update();
     }
 
