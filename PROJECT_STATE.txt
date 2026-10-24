@@ -2060,3 +2060,15 @@ END OF PROJECT STATE
     - New MICROPHONE card: input level slider + "Mute microphone" toggle.
   State: done.
 
+
+--- SESSION UPDATE — 2026-10-24 (SigilDialog Complete) ---
+
+[SHIPPED] SigilDialog Redesign (Free-Space Morph)
+  What: Replaced the old QMessageBox and the failed banner/UAC attempts 
+        with a full-screen overlay. The screen blurs, and a large clock-style
+        text with floating rounded buttons morphs into the center.
+  Fixes: Cancel no longer restarts the VM (returns exact button index).
+         Clicking outside cleanly dismisses the dialog. Omega menu wired 
+         to use this for Restart, Shut Down, and Log Out.
+  State: done.
+
