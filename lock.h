@@ -83,6 +83,15 @@ public:
         });
 
         hide();
+        if (parentWidget()) parentWidget()->installEventFilter(this);
+    }
+
+    // Follow the parent: it can change size after the lock is shown
+    // (fullscreen toggles, VM resize); a one-time copy goes stale.
+    bool eventFilter(QObject *o, QEvent *e) override {
+        if (o == parentWidget() && e->type() == QEvent::Resize && isVisible())
+            setGeometry(parentWidget()->rect());
+        return QWidget::eventFilter(o, e);
     }
 
     void showLock() {
