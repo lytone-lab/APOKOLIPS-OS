@@ -25,28 +25,42 @@ for_window [app_id="apokolips-shell"] floating disable
 for_window [app_id="apokolips-shell"] border none
 for_window [app_id="apokolips-shell"] fullscreen disable
 
+# Settings (2026-10-17 Session 3b): own app_id, floats over the
+# tiled bar. Multi-window: two Settings windows can be open and
+# moved independently. Old behaviour was inheriting
+# "apokolips-shell" and tiling as a sibling of the bar.
+for_window [app_id="apokolips-settings"] floating enable
+for_window [app_id="apokolips-settings"] border none
+
 # ---- Explicit sizes for common apps ----
 for_window [app_id="org.gnome.Terminal"] floating enable, resize set 1000 650, move position center
 for_window [app_id="foot"]                floating enable, resize set 1000 650, move position center
 for_window [app_id="org.gnome.Nautilus"]  floating enable, resize set 1000 700, move position center
-for_window [title="Settings"]             floating enable, resize set 780 540, move position center
-for_window [title="Apokolips Settings"]   floating enable, resize set 780 540, move position center
+for_window [title="Settings"]             floating enable, resize set 1100 650, move position center
+for_window [title="Apokolips Settings"]   floating enable, resize set 1100 650, move position center
 for_window [title="Files"]                floating enable, resize set 1000 700, move position center
 for_window [app_id="firefox"]             floating enable, resize set 1200 800, move position center
 
 # ---- Keybindings ----
-bindsym $mod+Return exec foot
+bindsym $mod+Return exec /home/lytone/apokolips-shell/build/apokolips-shell --node
+bindsym $mod+Shift+Return exec foot   # recovery terminal
 bindsym $mod+e exec /home/lytone/apokolips-shell/build/apokolips-shell --files
 bindsym $mod+Shift+q kill
 bindsym $mod+Tab focus next
 bindsym $mod+Shift+Tab focus prev
 bindsym $mod+Shift+space floating toggle
 bindsym $mod+f fullscreen toggle
-bindsym $mod+Shift+r reload
+bindsym $mod+Shift+r exec bash -c "grim /tmp/apokolips-backdrop.png 2>/dev/null; systemctl --user restart apokolips-shell.service"
 bindsym $mod+Shift+e exit
 bindsym $mod+1 workspace 1
 bindsym $mod+2 workspace 2
 bindsym $mod+3 workspace 3
+
+# ---- Meta+Click: move/resize any window ----
+# Super+LeftClick = grab any window (auto-floats if tiled) and drag to move
+# Super+RightClick = grab any window (auto-floats if tiled) and drag to resize
+bindsym --whole-window $mod+button1 floating enable, move mouse
+bindsym --whole-window $mod+button3 floating enable, resize mouse
 
 # NO bar {} block — the shell has its own top bar.
 
@@ -71,6 +85,91 @@ for_window [app_id="apokolips-calculator"] move position center
 
 # Notes
 bindsym $mod+n exec pkill -CONT apokolips-shell
+# disabled by Patch C — use yellow light instead
+bindsym $mod+m exec /home/lytone/.local/bin/apokolips-genie-trigger
 
 # Mission Control
-bindsym $mod+m exec pkill -WINCH apokolips-shell
+bindsym $mod+a exec pkill -WINCH apokolips-shell
+
+# Genie overlay — full-screen, no borders, top of stack
+for_window [app_id="apokolips-genie"] floating enable
+for_window [app_id="apokolips-genie"] border none
+for_window [app_id="apokolips-genie"] move position 0 0
+for_window [app_id="apokolips-genie"] resize set 1920 891
+bindsym $mod+v exec /home/lytone/apokolips-shell/build/apokolips-shell --toggle-clipboard
+bindsym $mod+Shift+s exec /home/lytone/.local/bin/apokolips-screenshot
+
+# Apokolips overlay windows — always float, no borders
+for_window [app_id="apokolips-glyph"] floating enable, border none
+for_window [app_id="apokolips-lock"] fullscreen enable, border none, floating enable
+for_window [app_id="apokolips-clipboard"] floating enable, border none
+for_window [title="Clipboard"] floating enable, border none
+for_window [app_id="apokolips-snap"] floating enable, border none, sticky enable
+bindsym $mod+z exec /home/lytone/apokolips-shell/build/apokolips-shell --snap
+bindsym $mod+Escape exec /home/lytone/apokolips-shell/build/apokolips-shell --lock
+
+# Settings dialogs — float and center
+for_window [title="Erase all data?"] floating enable, border none
+for_window [title="Delete user"] floating enable, border none
+for_window [title="Time zone"] floating enable, border none
+for_window [title="Add user"] floating enable, border none
+for_window [title="Lock screen wallpaper"] floating enable, border none
+for_window [title="Confirm erase"] floating enable, border none
+
+# Settings dialogs — float, no border
+for_window [title="Check for Updates"] floating enable, border none
+for_window [title="Install updates"] floating enable, border none
+for_window [title="Reset associations"] floating enable, border none
+for_window [title="Empty Trash"] floating enable, border none
+for_window [title="Erase all data?"] floating enable, border none
+for_window [title="Backup destination"] floating enable, border none
+
+# Screensaver — fullscreen floating, above everything
+for_window [app_id="apokolips-screensaver"] floating enable, fullscreen enable, border none
+for_window [app_id="apokolips-glyph"] floating enable, border none
+for_window [app_id="apokolips-glyph-toolbar"] floating enable, border none
+
+# --- APOKOLIPS: app-specific decorations ---
+# foot has no client-side decoration — give it a title bar so it
+# doesn't look like a lone rectangle next to our frameless apps.
+for_window [app_id="foot"] border normal 4
+for_window [app_id="Alacritty"] border normal 4
+
+# =========================================================
+# Sigil-styled window decorations
+# Every window that uses sway-drawn chrome (foot, Alacritty,
+# etc.) now matches the Apokolips palette.
+# Colors: #RRGGBB  (border bg text indicator child_border)
+# =========================================================
+
+# Focused — oxblood indicator, dark title bar, bone text
+client.focused          #2a2a2c #1c1c1e #f0ede8 #a83232 #2a2a2c
+
+# Focused-inactive — quieter, no oxblood
+client.focused_inactive #1c1c1e #1c1c1e #b0ada8 #1c1c1e #1c1c1e
+
+# Unfocused — nearly invisible chrome
+client.unfocused        #141416 #141416 #7a7873 #141416 #141416
+
+# Urgent — oxblood floods the title bar
+client.urgent           #a83232 #a83232 #f0ede8 #a83232 #a83232
+
+# Placeholder — same as focused (rarely seen)
+client.placeholder      #1c1c1e #1c1c1e #f0ede8 #1c1c1e #1c1c1e
+
+# Tighter border thickness — matches Sigil's thin window edges
+for_window [app_id="foot"]      border normal 2
+for_window [app_id="Alacritty"] border normal 2
+
+for_window [title="Pick Wallpaper Image"] floating enable, resize set 760 520, move position center
+
+
+# ---- Locked mode (no binds — blocks Super+Return, Super+1, etc.) ----
+mode "locked" {
+    # Placeholder binding — sway skips empty modes, so we bind a 
+    # harmless key (Mod4+0) to nop. This ensures the mode loads
+    # without throwing a config error.
+    bindsym Mod4+0 nop
+}
+exec /usr/libexec/xdg-desktop-portal-wlr
+exec /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
