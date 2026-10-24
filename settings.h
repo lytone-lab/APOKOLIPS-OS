@@ -7655,7 +7655,7 @@ private:
         // Volume card
         {
             Sigil::Card *c = new Sigil::Card;
-            c->setFixedHeight(96);
+            c->setFixedHeight(150);
             QVBoxLayout *cv = new QVBoxLayout(c);
             cv->setContentsMargins(20, 16, 20, 16);
             cv->setSpacing(10);
@@ -7687,6 +7687,34 @@ private:
                              [](int val) { SysControl::audioSet(val); });
             row->addWidget(vol);
             cv->addLayout(row);
+
+            QHBoxLayout *row2 = new QHBoxLayout;
+            QCheckBox *muteToggle = new QCheckBox("Mute output");
+            muteToggle->setChecked(SysControl::muteGet());
+            muteToggle->setStyleSheet(
+                "QCheckBox { color: rgb(240,237,232); font-size: 12px; }");
+            QObject::connect(muteToggle, &QCheckBox::toggled,
+                             [](bool on) { SysControl::muteSet(on); });
+            row2->addWidget(muteToggle);
+            row2->addStretch();
+
+            QPushButton *testBtn = new QPushButton("Test Sound");
+            testBtn->setCursor(Qt::PointingHandCursor);
+            testBtn->setFixedHeight(26);
+            testBtn->setStyleSheet(QString(
+                "QPushButton { background: rgba(255,255,255,20);"
+                "  color: %1; border: none; border-radius: 6px;"
+                "  font-size: 11px; padding: 2px 12px; }"
+                "QPushButton:hover { background: rgba(255,255,255,45); }")
+                .arg(Sigil::textPrimary().name()));
+            QObject::connect(testBtn, &QPushButton::clicked, []() {
+                QProcess::startDetached("paplay", {
+                    QCoreApplication::applicationDirPath()
+                    + "/../assets/sounds/startup_deep.wav" });
+            });
+            row2->addWidget(testBtn);
+            cv->addLayout(row2);
+
             v->addWidget(c);
         }
 
@@ -7719,6 +7747,56 @@ private:
             m_soundList->setFrameShape(QFrame::NoFrame);
             cv->addWidget(m_soundList, 1);
             refreshSoundDevices();
+            v->addWidget(c);
+        }
+
+        // Microphone card
+        {
+            Sigil::Card *c = new Sigil::Card;
+            c->setFixedHeight(150);
+            QVBoxLayout *cv = new QVBoxLayout(c);
+            cv->setContentsMargins(20, 16, 20, 16);
+            cv->setSpacing(10);
+            cv->addWidget(Sigil::groupLabel("MICROPHONE"));
+
+            QHBoxLayout *row = new QHBoxLayout;
+            QLabel *t = new QLabel("Input level");
+            t->setStyleSheet(QString(
+                "color: %1; font-size: 13px; background: transparent;")
+                .arg(Sigil::textPrimary().name()));
+            row->addWidget(t);
+            row->addStretch();
+
+            QSlider *mic = new QSlider(Qt::Horizontal);
+            mic->setRange(0, 150);
+            mic->setValue(SysControl::micGet());
+            mic->setMinimumWidth(280);
+            mic->setStyleSheet(QString(
+                "QSlider::groove:horizontal { height: 4px;"
+                "  background: rgba(255,255,255,25);"
+                "  border-radius: 2px; }"
+                "QSlider::handle:horizontal {"
+                "  background: #ffffff; width: 14px; height: 14px;"
+                "  margin: -5px 0; border-radius: 7px; }"
+                "QSlider::sub-page:horizontal {"
+                "  background: rgb(160, 90, 106);"
+                "  border-radius: 2px; }"));
+            QObject::connect(mic, &QSlider::valueChanged,
+                             [](int val) { SysControl::micSet(val); });
+            row->addWidget(mic);
+            cv->addLayout(row);
+
+            QHBoxLayout *row2 = new QHBoxLayout;
+            QCheckBox *micMute = new QCheckBox("Mute microphone");
+            micMute->setChecked(SysControl::micMuteGet());
+            micMute->setStyleSheet(
+                "QCheckBox { color: rgb(240,237,232); font-size: 12px; }");
+            QObject::connect(micMute, &QCheckBox::toggled,
+                             [](bool on) { SysControl::micMuteSet(on); });
+            row2->addWidget(micMute);
+            row2->addStretch();
+            cv->addLayout(row2);
+
             v->addWidget(c);
         }
 

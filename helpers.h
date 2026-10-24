@@ -1113,6 +1113,53 @@ inline void audioSet(int pct) {
           QString::number(pct) + "%" });
 }
 
+inline bool muteGet() {
+    QProcess p;
+    p.start("wpctl", { "get-volume", "@DEFAULT_AUDIO_SINK@" });
+    p.waitForFinished(500);
+    QString out = QString::fromUtf8(p.readAllStandardOutput());
+    return out.contains("[MUTED]");
+}
+
+inline void muteSet(bool muted) {
+    QProcess::startDetached("wpctl",
+        { "set-mute", "@DEFAULT_AUDIO_SINK@", muted ? "1" : "0" });
+}
+
+inline int micGet() {
+    QProcess p;
+    p.start("wpctl", { "get-volume", "@DEFAULT_AUDIO_SOURCE@" });
+    p.waitForFinished(500);
+    QString out = QString::fromUtf8(p.readAllStandardOutput());
+    int idx = out.indexOf("Volume:");
+    if (idx == -1) return 50;
+    QString num = out.mid(idx + 7).trimmed().split(' ').first();
+    bool ok = false;
+    double v = num.toDouble(&ok);
+    if (!ok) return 50;
+    return int(v * 100.0 + 0.5);
+}
+
+inline void micSet(int pct) {
+    pct = qBound(0, pct, 150);
+    QProcess::startDetached("wpctl",
+        { "set-volume", "@DEFAULT_AUDIO_SOURCE@",
+          QString::number(pct) + "%" });
+}
+
+inline bool micMuteGet() {
+    QProcess p;
+    p.start("wpctl", { "get-volume", "@DEFAULT_AUDIO_SOURCE@" });
+    p.waitForFinished(500);
+    QString out = QString::fromUtf8(p.readAllStandardOutput());
+    return out.contains("[MUTED]");
+}
+
+inline void micMuteSet(bool muted) {
+    QProcess::startDetached("wpctl",
+        { "set-mute", "@DEFAULT_AUDIO_SOURCE@", muted ? "1" : "0" });
+}
+
 inline int brightnessGet() {
     QDir d("/sys/class/backlight");
     if (!d.exists()) return 50;
