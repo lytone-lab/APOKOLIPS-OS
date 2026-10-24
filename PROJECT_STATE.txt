@@ -2092,3 +2092,18 @@ END OF PROJECT STATE
         Click to focus. Esc to dismiss. Triggered by Super+A (SIGWINCH).
   State: done.
 
+
+--- SESSION UPDATE — 2026-10-24 (External App Theming) ---
+
+[SHIPPED] External app theme injection (Variant B)
+  What: Wrote ~/.config/apokolips/qt.qss (Sigil QSS for Qt apps).
+        Synced GTK4 CSS from GTK3. Patched launchExternalDesktop() to
+        inject QT_QPA_PLATFORMTHEME=gtk3, QT_STYLE_OVERRIDE=Fusion,
+        QT_STYLESHEET, and --force-dark-mode for Chromium family.
+  VLC:  Dark mode enabled via qt-dark-palette=1 in ~/.config/vlc/vlcrc.
+        VLC does not read GTK/Qt stylesheets — it only reads its own
+        config, so this is the only fix that works for VLC.
+  State: done (for VLC and GTK apps). Qt apps launched from Dock still
+        use old env (DockIcon::launchApp patch aborted) — minor; VLC
+        works via vlcrc. Future Qt apps from Launchpad get full theme.
+
