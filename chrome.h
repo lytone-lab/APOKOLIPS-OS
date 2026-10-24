@@ -4493,41 +4493,112 @@ public:
 
                 QString label = fi.fileName();
                 QIcon sysIcon = iconProvider.icon(fi);
+                const bool isFolder = fi.isDir();
+                const QString ext = fi.suffix().left(4).toUpper();
                 std::function<void(QPainter&, QRectF)> fpaint =
-                    [label, sysIcon](QPainter &p, QRectF r) {
-                        QRectF tile = r.adjusted(14, 6, -14, -34);
-                        QPainterPath squircle;
-                        squircle.addRoundedRect(tile, 14, 14);
-                        
-                        const Theme &t = ThemeManager::instance().current();
-                        QColor bg = t.cardBg;
-                        bg.setAlpha(220);
-                        p.fillPath(squircle, bg);
-                        
-                        p.setPen(QPen(QColor(255, 255, 255, 30), 1));
-                        p.drawPath(squircle);
-                        
-                        QRectF iconRect = tile.adjusted(10, 10, -10, -10);
-                        QPixmap pix = sysIcon.pixmap(iconRect.size().toSize());
-                        if (!pix.isNull()) {
-                            p.drawPixmap(iconRect.toRect(), pix);
+                    [isFolder, ext](QPainter &p, QRectF r) {
+                        p.setRenderHint(QPainter::Antialiasing, true);
+                        const qreal w = r.width(), h = r.height();
+
+                        // The whole tile IS the icon (same squircle as the
+                        // app tiles), not an icon sitting inside a tile.
+                        QPainterPath tile;
+                        tile.addRoundedRect(r, w * 0.22, w * 0.22);
+
+                        QLinearGradient g(r.topLeft(), r.bottomLeft());
+                        if (isFolder) {
+                            g.setColorAt(0.0, QColor(118, 174, 248));
+                            g.setColorAt(1.0, QColor(54, 108, 212));
+                        } else {
+                            g.setColorAt(0.0, QColor(178, 186, 202));
+                            g.setColorAt(1.0, QColor(118, 128, 150));
                         }
-                        
-                        QFont f = p.font();
-                        f.setPixelSize(10);
-                        p.setFont(f);
-                        p.setPen(QColor(240, 237, 232));
-                        QFontMetrics fm(f);
-                        QString elided = fm.elidedText(label, Qt::ElideMiddle,
-                                                       int(r.width()) - 6);
-                        p.drawText(QRectF(r.x(), r.bottom() - 28,
-                                          r.width(), 24),
-                                   Qt::AlignHCenter | Qt::AlignTop, elided);
+                        p.fillPath(tile, g);
+                        p.setPen(QPen(QColor(255, 255, 255, 50), 1));
+                        p.setBrush(Qt::NoBrush);
+                        p.drawPath(tile);
+
+                        p.setPen(Qt::NoPen);
+                        if (isFolder) {
+                            p.setBrush(QColor(250, 252, 255));
+                            p.drawRoundedRect(QRectF(r.left() + w * 0.20, r.top() + h * 0.25, w * 0.28, h * 0.16), 3, 3);
+                            p.drawRoundedRect(QRectF(r.left() + w * 0.20, r.top() + h * 0.34, w * 0.60, h * 0.40), 4, 4);
+                        } else {
+                            QRectF pg(r.left() + w * 0.27, r.top() + h * 0.17, w * 0.46, h * 0.58);
+                            const qreal fold = w * 0.13;
+                            QPainterPath page;
+                            page.moveTo(pg.left(), pg.top());
+                            page.lineTo(pg.right() - fold, pg.top());
+                            page.lineTo(pg.right(), pg.top() + fold);
+                            page.lineTo(pg.right(), pg.bottom());
+                            page.lineTo(pg.left(), pg.bottom());
+                            page.closeSubpath();
+                            p.setBrush(QColor(252, 252, 252));
+                            p.drawPath(page);
+
+                            QPainterPath tri;
+                            tri.moveTo(pg.right() - fold, pg.top());
+                            tri.lineTo(pg.right() - fold, pg.top() + fold);
+                            tri.lineTo(pg.right(), pg.top() + fold);
+                            tri.closeSubpath();
+                            p.setBrush(QColor(205, 208, 216));
+                            p.drawPath(tri);
+
+                            p.setPen(QPen(QColor(150, 156, 170), 1.4, Qt::SolidLine, Qt::RoundCap));
+                            for (int i = 0; i < 3; ++i) {
+                                const qreal y = pg.top() + h * 0.28 + i * h * 0.09;
+                                p.drawLine(QPointF(pg.left() + w * 0.07, y),
+                                           QPointF(pg.right() - w * 0.07, y));
+                            }
+
+                            if (!ext.isEmpty()) {
+                                QFont f = p.font();
+                                f.setPixelSize(qMax(7, int(h * 0.14)));
+                                f.setBold(true);
+                                p.setFont(f);
+                                p.setPen(QColor(255, 255, 255, 235));
+                                p.drawText(QRectF(r.left(), r.top() + h * 0.77, w, h * 0.19),
+                                           Qt::AlignCenter, ext);
+                            }
+                        }
                     };
 
                 int before = m_icons.size();
-                addIcon(key, label, fpaint, [fpath]() {
-                    QProcess::startDetached("xdg-open", {fpath});
+                bool isDir = fi.isDir();
+                addIcon(key, label, fpaint, [fpath, isDir]() {
+                    if (isDir) {
+                        // Folders: open in our own Finder
+                        QProcess::startDetached(
+                            QCoreApplication::applicationFilePath(),
+                            {"--files", fpath});
+                    } else {
+                        // Files: launch via xdg-open with Wayland env
+                        QProcessEnvironment env =
+                            QProcessEnvironment::systemEnvironment();
+                        if (env.value("WAYLAND_DISPLAY").isEmpty()) {
+                            QDir rd(env.value("XDG_RUNTIME_DIR",
+                                              "/run/user/1000"));
+                            for (const QString &f :
+                                 rd.entryList({"wayland-*"},
+                                              QDir::Files | QDir::System)) {
+                                if (!f.endsWith(".lock")) {
+                                    env.insert("WAYLAND_DISPLAY", f);
+                                    break;
+                                }
+                            }
+                        }
+                        if (env.value("XDG_RUNTIME_DIR").isEmpty())
+                            env.insert("XDG_RUNTIME_DIR", "/run/user/1000");
+                        if (env.value("XDG_SESSION_TYPE").isEmpty())
+                            env.insert("XDG_SESSION_TYPE", "wayland");
+                        if (env.value("GDK_BACKEND").isEmpty())
+                            env.insert("GDK_BACKEND", "wayland");
+
+                        QProcess *proc = new QProcess;
+                        proc->setProcessEnvironment(env);
+                        proc->startDetached("xdg-open", {fpath});
+                        delete proc;
+                    }
                 }, pos);
                 if (m_icons.size() > before) {
                     m_icons.last()->m_onTidyUp = [this]() { tidyUp(); };
