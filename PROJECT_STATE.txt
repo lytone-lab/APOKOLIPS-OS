@@ -2072,3 +2072,13 @@ END OF PROJECT STATE
          to use this for Restart, Shut Down, and Log Out.
   State: done.
 
+
+--- SESSION UPDATE — 2026-10-24 (Desktop Rename Sheet) ---
+
+[SHIPPED] macOS-style Rename Sheet
+  What: Replaced the stock QInputDialog with a standalone, frameless QDialog.
+        It floats perfectly without tiling, pre-selects the name portion,
+        shows a live red validation hint if the name exists or is invalid,
+        and uses the exact Sigil styling (oxblood Rename button, squircle icon).
+  State: done.
+
