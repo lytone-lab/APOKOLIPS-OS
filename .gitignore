@@ -10,3 +10,4 @@ CMakeLists.txt.pre-*
 # Dev-only video wallpapers (not for users)
 /assets/wallpapers/videos/mob-*.mp4
 /assets/wallpapers/videos/vander-*.mp4
+*.pre-*
