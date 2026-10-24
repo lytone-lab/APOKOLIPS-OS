@@ -2048,3 +2048,15 @@ END OF PROJECT STATE
         `system/sway-config` in the repo.
   State: done.
 
+
+--- SESSION UPDATE — 2026-10-24 (Audio Settings Complete) ---
+
+[SHIPPED] Audio Settings — Input & Mute
+  What: Extended makeSoundPage(). Added:
+    - helpers.h: SysControl::muteGet/muteSet, micGet/micSet,
+      micMuteGet/micMuteSet (all backed by wpctl on
+      @DEFAULT_AUDIO_SINK@ / @DEFAULT_AUDIO_SOURCE@).
+    - Master Volume card: "Mute output" checkbox + "Test Sound" button.
+    - New MICROPHONE card: input level slider + "Mute microphone" toggle.
+  State: done.
+
