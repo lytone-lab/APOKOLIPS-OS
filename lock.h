@@ -1,3 +1,7 @@
+#include <QMouseEvent>
+#include <QWheelEvent>
+#include <QContextMenuEvent>
+#include <QApplication>
 #pragma once
 // LockScreen — Sigil-styled fullscreen lock overlay.
 // Session 1: visual only, Esc dismisses. No PAM auth yet.
@@ -82,6 +86,8 @@ public:
             update();
         });
 
+        setAttribute(Qt::WA_NoMousePropagation, true);
+        setContextMenuPolicy(Qt::PreventContextMenu);
         hide();
         if (parentWidget()) parentWidget()->installEventFilter(this);
     }
@@ -95,6 +101,7 @@ public:
     }
 
     void showLock() {
+        if (QWidget *pw = QApplication::activePopupWidget()) pw->close();
         if (parentWidget())
             setGeometry(parentWidget()->rect());
         loadWallpaper();
@@ -106,6 +113,12 @@ public:
     }
 
 protected:
+    void mousePressEvent(QMouseEvent *e) override { e->accept(); }
+    void mouseReleaseEvent(QMouseEvent *e) override { e->accept(); }
+    void mouseDoubleClickEvent(QMouseEvent *e) override { e->accept(); }
+    void mouseMoveEvent(QMouseEvent *e) override { e->accept(); }
+    void wheelEvent(QWheelEvent *e) override { e->accept(); }
+    void contextMenuEvent(QContextMenuEvent *e) override { e->accept(); }
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
@@ -225,7 +238,7 @@ protected:
         p.setPen(Sigil::textDim());
         p.drawText(QRect(0, height() - 40, width(), 20),
                    Qt::AlignCenter,
-                   "Press Enter to unlock • Esc clears password");
+                   "");
     }
 
     void tryAuthenticate() {
