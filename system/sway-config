@@ -173,3 +173,5 @@ mode "locked" {
 }
 exec /usr/libexec/xdg-desktop-portal-wlr
 exec /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
+
+for_window [app_id="apokolips-dialog"] fullscreen global, border none
