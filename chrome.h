@@ -6088,117 +6088,153 @@ public:
     void toggle() { isVisible() ? hide() : show2(); }
 
     void show2() {
+        // 1. Capture the screen BEFORE hiding windows
         refreshWindows();
+        
+        // 2. Force shell to fullscreen global to hide other windows
+        runSway({"[app_id=\"apokolips-shell\"]", "fullscreen", "enable", "global"});
+        
+        // 3. Compute grid
+        computeRects();
         if (parentWidget()) setGeometry(parentWidget()->rect());
         raise(); show(); setFocus();
         update();
     }
 
+    void hideEvent(QHideEvent *e) override {
+        runSway({"[app_id=\"apokolips-shell\"]", "fullscreen", "disable", "global"});
+        QWidget::hideEvent(e);
+    }
+
     void refreshWindows() {
         m_wins.clear();
-        QProcess p;
+        m_full = QImage();
+
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         env.insert("SWAYSOCK", g_swaySock);
+        QDir rd(env.value("XDG_RUNTIME_DIR", "/run/user/1000"));
+        for (const QString &f : rd.entryList({"wayland-*"}, QDir::Files | QDir::System)) {
+            if (!f.endsWith(".lock")) { env.insert("WAYLAND_DISPLAY", f); break; }
+        }
+
+        QProcess grim;
+        grim.setProcessEnvironment(env);
+        grim.start("grim", {"-t", "ppm", "-"});
+        if (grim.waitForFinished(1000)) {
+            m_full = QImage::fromData(grim.readAllStandardOutput(), "PPM");
+        }
+
+        QProcess p;
         p.setProcessEnvironment(env);
         p.start("swaymsg", { "-t", "get_tree", "-r" });
         p.waitForFinished(500);
-        QByteArray out = p.readAllStandardOutput();
-        QJsonDocument doc = QJsonDocument::fromJson(out);
-        if (!doc.isObject()) return;
-        QJsonObject root = doc.object();
-        walk(root, 0, 0);
+        QJsonDocument doc = QJsonDocument::fromJson(p.readAllStandardOutput());
+        if (doc.isObject()) {
+            walk(doc.object());
+        }
     }
 
-    void walk(const QJsonObject &node, int ox, int oy) {
+    void walk(const QJsonObject &node) {
         QString app = node.value("app_id").toString();
         QJsonObject r = node.value("rect").toObject();
-        int x = r.value("x").toInt() + ox;
-        int y = r.value("y").toInt() + oy;
+        int x = r.value("x").toInt();
+        int y = r.value("y").toInt();
         int w = r.value("width").toInt();
         int h = r.value("height").toInt();
         QString name = node.value("name").toString();
 
-        // Only include windows that look like apps (exclude the shell, __i3)
-        if (!app.isEmpty() && app != "apokolips-shell" && w > 100 && h > 100) {
+        if (!app.isEmpty() && app != "apokolips-shell" && w > 100 && h > 100 && name != "Mission Control") {
             Win w1;
             w1.rect = QRect(x, y, w, h);
             w1.name = name;
             w1.appId = app;
             w1.conId = node.value("id").toInt();
+            if (!m_full.isNull() && x >= 0 && y >= 0 &&
+                x + w <= m_full.width() && y + h <= m_full.height()) {
+                w1.thumb = QPixmap::fromImage(m_full.copy(x, y, w, h));
+            }
             m_wins.append(w1);
         }
 
         for (const QJsonValue &v : node.value("nodes").toArray())
-            walk(v.toObject(), x, y);
+            walk(v.toObject());
         for (const QJsonValue &v : node.value("floating_nodes").toArray())
-            walk(v.toObject(), x, y);
+            walk(v.toObject());
+    }
+
+    void computeRects() {
+        m_rects.clear();
+        int n = m_wins.size();
+        if (n == 0) return;
+
+        int cols = int(std::ceil(std::sqrt(n)));
+        int rows = (n + cols - 1) / cols;
+
+        int marginX = 80;
+        int marginY = 100;
+        int usableW = width() - marginX * 2;
+        int usableH = height() - marginY * 2 - 60;
+        int cellW = usableW / cols;
+        int cellH = usableH / rows;
+        int pad = 20;
+
+        for (int i = 0; i < n; ++i) {
+            int r = i / cols;
+            int c = i % cols;
+            QRect cell(marginX + c * cellW, marginY + r * cellH, cellW, cellH);
+            m_rects.append(cell.adjusted(pad, pad, -pad, -pad));
+        }
     }
 
 protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
+        p.setRenderHint(QPainter::SmoothPixmapTransform);
 
-        // Dim backdrop
         p.fillRect(rect(), QColor(0, 0, 0, 180));
 
-        // Title
         QFont tf = font();
         tf.setPixelSize(24);
         tf.setWeight(QFont::Light);
         p.setFont(tf);
         p.setPen(m_theme.textPrimary);
-        p.drawText(QRect(0, 24, width(), 40), Qt::AlignCenter,
-                   "Mission Control");
+        p.drawText(QRect(0, 24, width(), 40), Qt::AlignCenter, "Mission Control");
 
-        // Empty hint
         if (m_wins.isEmpty()) {
             QFont f = font(); f.setPixelSize(15);
             p.setFont(f);
             p.setPen(m_theme.textDim);
-            p.drawText(rect(), Qt::AlignCenter,
-                       "No windows open");
+            p.drawText(rect(), Qt::AlignCenter, "No windows open");
             return;
         }
 
-        // Draw each window as a card
-        for (int i = 0; i < m_wins.size(); ++i) {
+        for (int i = 0; i < m_wins.size() && i < m_rects.size(); ++i) {
             const Win &w = m_wins[i];
-            QRect r = w.rect;
-            // Scale down a bit so they fit nicer
-            r = QRect(r.x() + 40, r.y() + 80,
-                      qMin(r.width(),  width()  - 120),
-                      qMin(r.height(), height() - 160));
-
+            const QRect &cell = m_rects[i];
             bool hovered = (i == m_hovered);
-            QColor card = m_theme.panelBg;
-            card.setAlpha(hovered ? 235 : 200);
-            QColor border = hovered ? m_theme.textPrimary
-                                    : m_theme.chromeBorder;
 
             QPainterPath path;
-            path.addRoundedRect(r, 12, 12);
-            p.fillPath(path, card);
-            p.setPen(QPen(border, hovered ? 2 : 1));
+            path.addRoundedRect(cell, 12, 12);
+            p.fillPath(path, m_theme.panelBg);
+            p.setPen(QPen(hovered ? m_theme.accent : m_theme.chromeBorder, hovered ? 2 : 1));
             p.drawPath(path);
 
-            // Title text inside the card
+            if (!w.thumb.isNull()) {
+                QRect thumbRect = cell.adjusted(4, 4, -4, -28);
+                QPixmap scaled = w.thumb.scaled(thumbRect.size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                int dx = thumbRect.x() + (thumbRect.width() - scaled.width()) / 2;
+                int dy = thumbRect.y() + (thumbRect.height() - scaled.height()) / 2;
+                p.drawPixmap(dx, dy, scaled);
+            }
+
             QFont f = font();
-            f.setPixelSize(14);
+            f.setPixelSize(12);
             f.setWeight(QFont::DemiBold);
             p.setFont(f);
             p.setPen(m_theme.textPrimary);
-            QRect titleRect = r.adjusted(12, 8, -12, -r.height() + 32);
-            p.drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
-                       w.name.left(40));
-
-            QFont sf = font();
-            sf.setPixelSize(10);
-            p.setFont(sf);
-            p.setPen(m_theme.textDim);
-            QRect subRect = r.adjusted(12, 30, -12, -r.height() + 52);
-            p.drawText(subRect, Qt::AlignLeft | Qt::AlignVCenter,
-                       w.appId);
+            QRect titleRect = cell.adjusted(10, cell.height() - 26, -10, -4);
+            p.drawText(titleRect, Qt::AlignCenter, w.name.left(30));
         }
     }
 
@@ -6215,10 +6251,12 @@ protected:
     void mousePressEvent(QMouseEvent *e) override {
         if (e->button() == Qt::LeftButton) {
             int h = hitTest(e->position().toPoint());
-            if (h >= 0) {
+            if (h >= 0 && h < m_wins.size()) {
                 QString id = QString::number(m_wins[h].conId);
-                QProcess::startDetached("swaymsg",
-                    { QString("[con_id=%1]").arg(id), "focus" });
+                // Focus the clicked window AFTER leaving fullscreen
+                QProcess::startDetached("bash", {"-c",
+                    "swaymsg '[app_id=\"apokolips-shell\"] fullscreen disable global'; "
+                    "sleep 0.1; swaymsg '[con_id=" + id + "] focus'"});
                 hide();
             } else {
                 hide();
@@ -6232,22 +6270,30 @@ private:
         QString name;
         QString appId;
         int     conId = 0;
+        QPixmap thumb;
     };
 
+    void runSway(const QStringList &args) {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert("SWAYSOCK", g_swaySock);
+        QProcess p;
+        p.setProcessEnvironment(env);
+        p.start("swaymsg", args);
+        p.waitForFinished(200);
+    }
+
     int hitTest(const QPoint &pos) const {
-        for (int i = m_wins.size() - 1; i >= 0; --i) {
-            QRect r = m_wins[i].rect;
-            r = QRect(r.x() + 40, r.y() + 80,
-                      qMin(r.width(),  width()  - 120),
-                      qMin(r.height(), height() - 160));
-            if (r.contains(pos)) return i;
+        for (int i = m_rects.size() - 1; i >= 0; --i) {
+            if (m_rects[i].contains(pos)) return i;
         }
         return -1;
     }
 
-    QList<Win> m_wins;
-    int        m_hovered = -1;
-    Theme      m_theme;
+    QList<Win>   m_wins;
+    QList<QRect> m_rects;
+    QImage       m_full;
+    int          m_hovered = -1;
+    Theme        m_theme;
 };
 
 
