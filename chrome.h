@@ -3,6 +3,15 @@
 
 #include "shell.h"
 #include <QFileIconProvider>
+#include <QDialog>
+#include <QPushButton>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QMouseEvent>
+#include <QShowEvent>
+#include <QWindow>
+#include <QTimer>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QClipboard>
@@ -3927,6 +3936,198 @@ private:
     bool          m_positioned = false;
 };
 
+// ---- RenameDialog: macOS-style rename sheet for desktop files/folders ----
+class RenameDialog : public QDialog {
+public:
+    // Returns the new name, or an empty string if cancelled.
+    static QString ask(const QString &dir, const QString &current,
+                       bool isFolder)
+    {
+        RenameDialog d(dir, current, isFolder);
+        return d.exec() == QDialog::Accepted
+                   ? d.m_edit->text().trimmed() : QString();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QPainterPath path;
+        path.addRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 16, 16);
+        p.fillPath(path, QColor(30, 28, 36, 246));
+        p.setPen(QPen(QColor(255, 255, 255, 36), 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(path);
+    }
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton) {
+            if (QWindow *wh = windowHandle())
+                if (wh->startSystemMove()) { e->accept(); return; }
+        }
+        QDialog::mousePressEvent(e);
+    }
+    void showEvent(QShowEvent *e) override {
+        QDialog::showEvent(e);
+        QTimer::singleShot(0, this, [this]() {
+            m_edit->setFocus();
+            m_edit->setSelection(0, m_selLen);
+        });
+    }
+    void accept() override {
+        if (m_ok->isEnabled()) QDialog::accept();
+    }
+
+private:
+    RenameDialog(const QString &dir, const QString &current, bool isFolder)
+        : QDialog(nullptr, Qt::Dialog | Qt::FramelessWindowHint),
+          m_dir(dir), m_current(current)
+    {
+        setWindowTitle("Rename");   // the sway float rule matches this title
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setModal(true);
+        setFixedSize(380, 272);
+
+        const int dot = current.lastIndexOf('.');
+        m_selLen = (!isFolder && dot > 0) ? dot : int(current.size());
+
+        auto *root = new QVBoxLayout(this);
+        root->setContentsMargins(26, 24, 26, 22);
+        root->setSpacing(0);
+
+        auto *ico = new QLabel;
+        ico->setPixmap(glyph(isFolder));
+        ico->setAlignment(Qt::AlignHCenter);
+        ico->setStyleSheet("background: transparent;");
+        root->addWidget(ico);
+        root->addSpacing(10);
+
+        const QString shown = QFontMetrics(font()).elidedText(
+            current, Qt::ElideMiddle, 280);
+        auto *title = new QLabel(QString("Rename \u201C%1\u201D").arg(shown));
+        title->setAlignment(Qt::AlignHCenter);
+        title->setStyleSheet("color: rgb(240,237,232); font-size: 14px;"
+                             " font-weight: 600; background: transparent;");
+        root->addWidget(title);
+        root->addSpacing(4);
+
+        auto *sub = new QLabel(isFolder ? "Enter a new name for this folder."
+                                        : "Enter a new name for this file.");
+        sub->setAlignment(Qt::AlignHCenter);
+        sub->setStyleSheet("color: rgba(240,237,232,150); font-size: 12px;"
+                           " background: transparent;");
+        root->addWidget(sub);
+        root->addSpacing(14);
+
+        m_edit = new QLineEdit(current);
+        m_edit->setFixedHeight(34);
+        m_edit->setStyleSheet(
+            "QLineEdit { background: rgba(0,0,0,70);"
+            " border: 1px solid rgba(255,255,255,36); border-radius: 8px;"
+            " padding: 0 10px; color: rgb(240,237,232); font-size: 13px;"
+            " selection-background-color: rgba(168,50,50,190);"
+            " selection-color: white; }"
+            "QLineEdit:focus { border: 1px solid rgba(200,70,70,220); }");
+        root->addWidget(m_edit);
+        root->addSpacing(6);
+
+        m_hint = new QLabel;
+        m_hint->setFixedHeight(16);
+        m_hint->setStyleSheet("color: rgb(235,110,110); font-size: 11px;"
+                              " background: transparent;");
+        root->addWidget(m_hint);
+        root->addStretch();
+
+        auto *row = new QHBoxLayout;
+        row->setSpacing(10);
+        row->addStretch();
+        m_cancel = new QPushButton("Cancel");
+        m_ok     = new QPushButton("Rename");
+        for (QPushButton *b : {m_cancel, m_ok}) {
+            b->setFixedHeight(32);
+            b->setMinimumWidth(90);
+            b->setCursor(Qt::PointingHandCursor);
+        }
+        m_cancel->setAutoDefault(false);
+        m_ok->setAutoDefault(true);
+        m_ok->setDefault(true);
+        m_cancel->setStyleSheet(
+            "QPushButton { background: rgba(255,255,255,22);"
+            " color: rgb(240,237,232);"
+            " border: 1px solid rgba(255,255,255,30); border-radius: 8px;"
+            " padding: 0 16px; font-size: 13px; }"
+            "QPushButton:hover { background: rgba(255,255,255,36); }");
+        m_ok->setStyleSheet(
+            "QPushButton { background: rgb(168,50,50); color: white;"
+            " border: 1px solid rgba(255,255,255,40); border-radius: 8px;"
+            " padding: 0 16px; font-size: 13px; font-weight: 600; }"
+            "QPushButton:hover { background: rgb(190,62,62); }"
+            "QPushButton:disabled { background: rgba(168,50,50,70);"
+            " color: rgba(255,255,255,110); }");
+        row->addWidget(m_cancel);
+        row->addWidget(m_ok);
+        root->addLayout(row);
+
+        QObject::connect(m_cancel, &QPushButton::clicked, this, &QDialog::reject);
+        QObject::connect(m_ok, &QPushButton::clicked, this, &QDialog::accept);
+        QObject::connect(m_edit, &QLineEdit::returnPressed, this,
+                         [this]() { accept(); });
+        QObject::connect(m_edit, &QLineEdit::textChanged, this,
+                         [this]() { validate(); });
+        validate();
+    }
+
+    void validate() {
+        const QString n = m_edit->text().trimmed();
+        QString msg;
+        if (n.isEmpty())
+            msg = "Name can\u2019t be empty.";
+        else if (n.contains('/'))
+            msg = "Names can\u2019t contain \u201C/\u201D.";
+        else if (n == "." || n == "..")
+            msg = "That name isn\u2019t allowed.";
+        else if (n != m_current && QFileInfo::exists(QDir(m_dir).filePath(n)))
+            msg = "\u201C" + n + "\u201D already exists here.";
+        m_hint->setText(msg);
+        m_ok->setEnabled(msg.isEmpty() && n != m_current);
+    }
+
+    static QPixmap glyph(bool folder) {
+        const int S = 56;
+        QPixmap pm(S, S);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing);
+        QPainterPath t;
+        t.addRoundedRect(QRectF(0, 0, S, S), S * 0.22, S * 0.22);
+        QLinearGradient g(0, 0, 0, S);
+        if (folder) {
+            g.setColorAt(0.0, QColor(118, 174, 248));
+            g.setColorAt(1.0, QColor(54, 108, 212));
+        } else {
+            g.setColorAt(0.0, QColor(178, 186, 202));
+            g.setColorAt(1.0, QColor(118, 128, 150));
+        }
+        p.fillPath(t, g);
+        p.setPen(Qt::NoPen);
+        if (folder) {
+            p.setBrush(QColor(250, 252, 255));
+            p.drawRoundedRect(QRectF(S * 0.20, S * 0.25, S * 0.28, S * 0.16), 3, 3);
+            p.drawRoundedRect(QRectF(S * 0.20, S * 0.34, S * 0.60, S * 0.40), 4, 4);
+        } else {
+            p.setBrush(QColor(252, 252, 252));
+            p.drawRoundedRect(QRectF(S * 0.27, S * 0.17, S * 0.46, S * 0.58), 3, 3);
+        }
+        return pm;
+    }
+
+    QString      m_dir, m_current;
+    int          m_selLen = 0;
+    QLineEdit   *m_edit   = nullptr;
+    QLabel      *m_hint   = nullptr;
+    QPushButton *m_ok     = nullptr;
+    QPushButton *m_cancel = nullptr;
+};
+
 class PoolIcon : public QWidget {
 public:
     PoolIcon(const QString &id, const QString &label,
@@ -3981,17 +4182,11 @@ public:
                 if (choice == 1) { if (openIt) openIt(); }
                 else if (choice == 2) {
                     const QFileInfo info(path);
-                    bool ok = false;
-                    QString name = QInputDialog::getText(
-                        nullptr, "Rename", "New name:", QLineEdit::Normal,
-                        info.fileName(), &ok).trimmed();
-                    if (ok && !name.isEmpty() && name != info.fileName()
-                        && !name.contains('/')) {
+                    const QString name = RenameDialog::ask(
+                        info.absolutePath(), info.fileName(), info.isDir());
+                    if (!name.isEmpty() && name != info.fileName()) {
                         const QString dest = info.absoluteDir().filePath(name);
-                        if (QFileInfo::exists(dest))
-                            QMessageBox::warning(nullptr, "Rename",
-                                "\"" + name + "\" already exists.");
-                        else if (!QDir().rename(path, dest))
+                        if (!QDir().rename(path, dest))
                             QMessageBox::warning(nullptr, "Rename",
                                 "Couldn't rename \"" + info.fileName() + "\".");
                     }
