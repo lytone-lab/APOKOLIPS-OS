@@ -3,6 +3,11 @@
 
 #include "shell.h"
 #include <QFileIconProvider>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QMessageBox>
 #include <QIcon>
 #include <QFileSystemWatcher>
 #include "theme.h"
@@ -3939,6 +3944,68 @@ public:
         setContextMenuPolicy(Qt::CustomContextMenu);
         QObject::connect(this, &QWidget::customContextMenuRequested,
                          this, [this](const QPoint &pos) {
+            // ---- desktop file/folder menu ----
+            if (m_id.startsWith("file:")) {
+                const QString path = m_id.mid(5);
+                const auto openIt = m_onActivate;
+                const auto tidy   = m_onTidyUp;
+                int choice = 0;
+                {
+                    // Menu lives only inside this scope, so it is gone
+                    // before any dialog opens (the desktop can rebuild
+                    // and delete this icon while a dialog is up).
+                    ApoMenu fm(this);
+                    fm.setStyleSheet(
+                        "QMenu { background: rgb(24, 22, 30);"
+                        " border: 1px solid rgba(255,255,255,30);"
+                        " border-radius: 10px; padding: 6px;"
+                        " color: rgb(240, 237, 232); font-size: 13px; }"
+                        "QMenu::item { padding: 7px 24px 7px 16px;"
+                        " border-radius: 6px; }"
+                        "QMenu::item:selected { background: rgba(168, 50, 50, 90); }");
+                    QAction *aOpen   = fm.addAction("Open");
+                    fm.addSeparator();
+                    QAction *aRename = fm.addAction("Rename\u2026");
+                    QAction *aTrash  = fm.addAction("Move to Trash");
+                    fm.addSeparator();
+                    QAction *aCopy   = fm.addAction("Copy Path");
+                    fm.addSeparator();
+                    QAction *aTidy   = fm.addAction("Tidy Up");
+                    QAction *ch = fm.exec(mapToGlobal(pos));
+                    if (ch == aOpen) choice = 1;
+                    else if (ch == aRename) choice = 2;
+                    else if (ch == aTrash) choice = 3;
+                    else if (ch == aCopy) choice = 4;
+                    else if (ch == aTidy) choice = 5;
+                }
+                if (choice == 1) { if (openIt) openIt(); }
+                else if (choice == 2) {
+                    const QFileInfo info(path);
+                    bool ok = false;
+                    QString name = QInputDialog::getText(
+                        nullptr, "Rename", "New name:", QLineEdit::Normal,
+                        info.fileName(), &ok).trimmed();
+                    if (ok && !name.isEmpty() && name != info.fileName()
+                        && !name.contains('/')) {
+                        const QString dest = info.absoluteDir().filePath(name);
+                        if (QFileInfo::exists(dest))
+                            QMessageBox::warning(nullptr, "Rename",
+                                "\"" + name + "\" already exists.");
+                        else if (!QDir().rename(path, dest))
+                            QMessageBox::warning(nullptr, "Rename",
+                                "Couldn't rename \"" + info.fileName() + "\".");
+                    }
+                }
+                else if (choice == 3) {
+                    if (!QFile::moveToTrash(path))
+                        QMessageBox::warning(nullptr, "Move to Trash",
+                            "Couldn't move it to the Trash.");
+                }
+                else if (choice == 4) QGuiApplication::clipboard()->setText(path);
+                else if (choice == 5) { if (tidy) tidy(); }
+                return;
+            }
+
             ApoMenu m(this);
             m.setStyleSheet(
                 "QMenu {"

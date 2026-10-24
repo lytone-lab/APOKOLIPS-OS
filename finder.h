@@ -165,7 +165,19 @@ public:
 
         show();
         update();
-        const QString startPath = QDir::homePath();
+        QString startPath = QDir::homePath();
+        {
+            // "--files <path>" opens Finder inside that folder (a file
+            // opens its containing folder). Anything else, such as
+            // "--from-dock", is ignored and Finder opens at Home.
+            const QStringList a = QCoreApplication::arguments();
+            const int i = a.indexOf(QStringLiteral("--files"));
+            if (i >= 0 && i + 1 < a.size()) {
+                const QFileInfo fi(a.at(i + 1));
+                if (fi.isDir())       startPath = fi.absoluteFilePath();
+                else if (fi.exists()) startPath = fi.absolutePath();
+            }
+        }
         QTimer::singleShot(600, this, [this, startPath]() {
             navigateTo(startPath);
         });
