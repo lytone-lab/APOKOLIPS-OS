@@ -7,6 +7,9 @@
 #include "theme.h"
 #include "visualconfig.h"
 #include "style.h"
+#include <QParallelAnimationGroup>
+#include <QGraphicsOpacityEffect>
+#include <QPropertyAnimation>
 #include <QGraphicsScene>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsBlurEffect>
@@ -217,26 +220,13 @@ public:
                    const QString &checkboxText = QString(),
                    bool *checkboxOut = nullptr)
     {
+        bool oldQuit = qApp->quitOnLastWindowClosed();
+        qApp->setQuitOnLastWindowClosed(false);
+
         QString oldId = QGuiApplication::desktopFileName();
         QGuiApplication::setDesktopFileName("apokolips-dialog");
 
-        class Backdrop : public QWidget {
-        public:
-            QPixmap bg;
-            Backdrop() {
-                setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
-                setAttribute(Qt::WA_TranslucentBackground);
-                setAttribute(Qt::WA_TransparentForMouseEvents);
-                if (auto *s = QGuiApplication::primaryScreen())
-                    setGeometry(s->geometry());
-            }
-            void paintEvent(QPaintEvent *) override {
-                QPainter p(this);
-                if (!bg.isNull()) p.drawPixmap(rect(), bg);
-                p.fillRect(rect(), QColor(0, 0, 0, 100));
-            }
-        } backdrop;
-
+        QPixmap backdrop;
         QProcess grim;
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         if (env.value("WAYLAND_DISPLAY").isEmpty()) {
@@ -252,50 +242,32 @@ public:
             if (!img.isNull()) {
                 QImage small = img.scaled(img.width()/4, img.height()/4, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
                 QImage blurred = applyGaussianBlur(small, 12);
-                backdrop.bg = QPixmap::fromImage(blurred.scaled(img.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+                backdrop = QPixmap::fromImage(blurred.scaled(img.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
             }
         }
-        backdrop.show();
 
-        SigilDialog dlg(parent, title, message, buttons, checkboxText);
-        int res = dlg.exec();
-        backdrop.hide();
+        SigilDialog dlg(parent, title, message, buttons, checkboxText, backdrop);
+        dlg.exec();
 
+        qApp->setQuitOnLastWindowClosed(oldQuit);
         QGuiApplication::setDesktopFileName(oldId);
-        if (checkboxOut) *checkboxOut = dlg.checkboxChecked();
-        return res;
+        if (checkboxOut) *checkboxOut = false;
+        return dlg.m_clicked;
     }
 
     SigilDialog(QWidget *parent, const QString &title,
                 const QString &message,
                 const QStringList &buttons,
-                const QString &checkboxText = QString())
-        : QDialog(parent, Qt::Dialog | Qt::FramelessWindowHint),
-          m_clicked(-1)
+                const QString &checkboxText = QString(),
+                const QPixmap &bg = QPixmap())
+        : QDialog(parent, Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint),
+          m_clicked(-1), m_backdrop(bg)
     {
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
 
-
-        int msgLines = qMax(1, message.count('\n') + 1);
-        if (message.length() > 60) msgLines += message.length() / 60;
-        int h = 90 + msgLines * 22 + (checkboxText.isEmpty() ? 0 : 30);
-        h = qBound(140, h, 380);
-        int w = 440;
-        resize(w, h);
-
-        if (parent) {
-            QPoint c = parent->mapToGlobal(
-                QPoint(parent->width() / 2, parent->height() / 2));
-            move(c.x() - w / 2, c.y() - h / 2);
-        } else if (QScreen *s = QApplication::primaryScreen()) {
-            QRect g = s->availableGeometry();
-            move(g.center().x() - w / 2, g.center().y() - h / 2);
-        }
-
-        // Backdrop blur handled by full-screen overlay in ask().
-        m_blurredBg = QPixmap(); // clear fake blur
-    
+        if (QScreen *s = QGuiApplication::primaryScreen())
+            setGeometry(s->geometry());
 
         m_theme = ThemeManager::instance().current();
         buildUi(title, message, buttons, checkboxText);
@@ -307,17 +279,12 @@ public:
         });
     }
 
-    bool checkboxChecked() const {
-        return m_checkbox && m_checkbox->isChecked();
-    }
+    bool checkboxChecked() const { return false; }
 
 protected:
     void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton) {
-            if (QWindow *wh = window()->windowHandle())
-                if (wh->startSystemMove()) { e->accept(); return; }
-        }
-        QWidget::mousePressEvent(e);
+        m_clicked = -1;
+        reject();
     }
     void keyPressEvent(QKeyEvent *e) override {
         if (e->key() == Qt::Key_Escape) {
@@ -330,121 +297,49 @@ protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
-        QRect frameRect = rect().adjusted(0, 0, -1, -1);
-        QPainterPath path;
-        path.addRoundedRect(frameRect, 14, 14);
 
-        p.setPen(Qt::NoPen);
-        for (int i = 5; i >= 1; --i) {
-            QColor sh = m_theme.textPrimary;
-            sh.setAlphaF(0.02 * (i / 5.0));
-            p.setBrush(sh);
-            p.drawRoundedRect(frameRect.adjusted(-i, -i + 2, i, i + 2),
-                              14 + i, 14 + i);
-        }
-        if (!m_blurredBg.isNull()) {
-            p.save();
-            p.setClipPath(path);
-            p.setOpacity(0.85);
-            p.drawPixmap(rect(), m_blurredBg);
-            p.restore();
-        }
-        StyleRenderer::drawPanel(p, QRectF(frameRect), 14, m_theme, 160);
-
-        QPainterPath hdr;
-        hdr.addRoundedRect(QRect(0, 0, width(), 36), 14, 14);
-        QPainterPath sq;
-        sq.addRect(QRect(0, 14, width(), 22));
-        QPainterPath hdrFinal = hdr.united(sq);
-        QColor hdrCol = m_theme.chromeBg;
-        hdrCol.setAlpha(150);
-        p.fillPath(hdrFinal, hdrCol);
-
-        p.setPen(QPen(m_theme.chromeBorder, 1));
-        p.drawLine(0, 36, width(), 36);
+        if (!m_backdrop.isNull()) p.drawPixmap(rect(), m_backdrop);
+        p.fillRect(rect(), QColor(0, 0, 0, 150));
     }
 
 private:
-    QLabel *m_iconLabel = nullptr;
+    QWidget *m_content = nullptr;
+    QPixmap m_backdrop;
 
     void buildUi(const QString &title, const QString &message,
                  const QStringList &buttons, const QString &checkboxText)
     {
-        QVBoxLayout *root = new QVBoxLayout(this);
-        root->setContentsMargins(0, 0, 0, 0);
-        root->setSpacing(0);
+        Q_UNUSED(title);
+        Q_UNUSED(checkboxText);
 
-        QWidget *header = new QWidget;
-        header->setFixedHeight(36);
-        header->setAttribute(Qt::WA_NoSystemBackground, true);
-        QHBoxLayout *hl = new QHBoxLayout(header);
-        hl->setContentsMargins(12, 0, 12, 0);
-        hl->setSpacing(8);
+        m_content = new QWidget(this);
+        m_content->setAttribute(Qt::WA_TranslucentBackground, true);
+        m_content->setAttribute(Qt::WA_NoSystemBackground, true);
+        m_content->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        m_content->setGeometry(0, 0, width(), height());
 
-        auto makeLight = [](const QString &idle, const QString &hover,
-                             const QString &glyph) {
-            QPushButton *b = new QPushButton(glyph);
-            b->setFixedSize(12, 12);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setStyleSheet(QString(
-                "QPushButton { background: %1;"
-                "  border: 1px solid rgba(0,0,0,60); border-radius: 6px;"
-                "  color: transparent; font-size: 9px; font-weight: bold;"
-                "  padding: 0; }"
-                "QPushButton:hover { background: %2;"
-                "  color: rgba(0,0,0,180); }").arg(idle, hover));
-            return b;
-        };
-        QPushButton *closeBtn = makeLight("#7a2b25", "#ff5f57",
-                                          QString::fromUtf8("\xC3\x97"));
-        QPushButton *minBtn   = makeLight("#7a5b18", "#febc2e",
-                                          QString::fromUtf8("\xE2\x88\x92"));
-        QPushButton *maxBtn   = makeLight("#155c1e", "#28c840", "+");
-        hl->addWidget(closeBtn);
-        hl->addWidget(minBtn);
-        hl->addWidget(maxBtn);
-        hl->addSpacing(10);
-
-        m_title = new QLabel(title);
-        m_title->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        hl->addWidget(m_title);
-        hl->addStretch();
-
-        QObject::connect(closeBtn, &QPushButton::clicked, [this]() {
-            m_clicked = -1; reject();
-        });
-        QObject::connect(minBtn, &QPushButton::clicked,
-                         [this]() { showMinimized(); });
-        QObject::connect(maxBtn, &QPushButton::clicked,
-                         [this]() { showNormal(); });
-
-        root->addWidget(header);
-
-        QWidget *body = new QWidget;
-        body->setAttribute(Qt::WA_NoSystemBackground, true);
-        QVBoxLayout *bl = new QVBoxLayout(body);
-        bl->setContentsMargins(22, 16, 22, 18);
-        bl->setSpacing(14);
+        QVBoxLayout *layout = new QVBoxLayout(m_content);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(40);
+        layout->setAlignment(Qt::AlignCenter);
 
         m_message = new QLabel(message);
-        m_message->setWordWrap(true);
-        m_message->setMinimumWidth(360);
-        bl->addWidget(m_message);
-
-        if (!checkboxText.isEmpty()) {
-            m_checkbox = new QCheckBox(checkboxText);
-            m_checkbox->setCursor(Qt::PointingHandCursor);
-            bl->addWidget(m_checkbox);
-        }
+        m_message->setAlignment(Qt::AlignCenter);
+        QFont f = font();
+        f.setPixelSize(64);
+        f.setWeight(QFont::Light);
+        m_message->setFont(f);
+        layout->addWidget(m_message);
 
         QHBoxLayout *btnRow = new QHBoxLayout;
-        btnRow->addStretch();
+        btnRow->setSpacing(20);
+        btnRow->setAlignment(Qt::AlignCenter);
+        
         for (int i = 0; i < buttons.size(); ++i) {
             QPushButton *b = new QPushButton(buttons[i]);
             b->setCursor(Qt::PointingHandCursor);
-            b->setFixedHeight(28);
-            b->setMinimumWidth(80);
-            if (i == 0) b->setDefault(true);
+            b->setFixedSize(140, 44);
+            if (i == 1) b->setDefault(true);
             QObject::connect(b, &QPushButton::clicked, [this, i]() {
                 m_clicked = i;
                 accept();
@@ -452,56 +347,63 @@ private:
             btnRow->addWidget(b);
             m_buttonWidgets.append(b);
         }
-        bl->addLayout(btnRow);
-        root->addWidget(body);
+        layout->addLayout(btnRow);
+
+        QGraphicsOpacityEffect *effect = new QGraphicsOpacityEffect(m_content);
+        m_content->setGraphicsEffect(effect);
+
+        QPropertyAnimation *fade = new QPropertyAnimation(effect, "opacity", this);
+        fade->setDuration(300);
+        fade->setStartValue(0.0);
+        fade->setEndValue(1.0);
+        fade->setEasingCurve(QEasingCurve::OutCubic);
+
+        QPropertyAnimation *slide = new QPropertyAnimation(m_content, "pos", this);
+        slide->setDuration(400);
+        slide->setStartValue(QPoint(0, 50));
+        slide->setEndValue(QPoint(0, 0));
+        slide->setEasingCurve(QEasingCurve::OutBack);
+
+        QParallelAnimationGroup *group = new QParallelAnimationGroup(this);
+        group->addAnimation(fade);
+        group->addAnimation(slide);
+        group->start(QAbstractAnimation::DeleteWhenStopped);
     }
 
     void restyle() {
         const Theme &t = m_theme;
-        m_title->setStyleSheet(QString(
-            "color: %1; font-size: 13px; font-weight: 600;"
-            " background: transparent;").arg(t.textPrimary.name()));
-        m_message->setStyleSheet(QString(
-            "color: %1; font-size: 13px; background: transparent;")
-            .arg(t.textPrimary.name()));
-        if (m_checkbox) {
-            m_checkbox->setStyleSheet(QString(
-                "QCheckBox { color: %1; font-size: 12px; spacing: 8px; }"
-                "QCheckBox::indicator { width: 14px; height: 14px;"
-                "  border-radius: 3px; border: 1px solid %2;"
-                "  background: %3; }"
-                "QCheckBox::indicator:checked {"
-                "  background: %4; border: 1px solid %4; }")
-                .arg(t.textSecondary.name(),
-                     rgba(t.chromeBorder),
-                     rgba(t.chromeBg.lighter(130)),
-                     t.accent.name()));
+        if (m_message) {
+            m_message->setStyleSheet(QString(
+                "color: %1; background: transparent;")
+                .arg(t.textPrimary.name()));
         }
-        for (int i = 0; i < m_buttonWidgets.size(); ++i) {
-            QPushButton *b = m_buttonWidgets[i];
-            bool primary = (i == 0);
-            QString base = primary ? rgba(t.accentSoft)
-                                   : rgba(t.chromeBg.lighter(120));
-            QString hover = primary ? rgba(t.accentStrong)
-                                    : rgba(t.accentSoft);
-            b->setStyleSheet(QString(
-                "QPushButton { background: %1; color: %2;"
-                "  border: 1px solid %3; border-radius: 8px;"
-                "  padding: 4px 18px; font-size: 12px; }"
-                "QPushButton:hover { background: %4; }")
-                .arg(base, t.textPrimary.name(),
-                     rgba(t.chromeBorder), hover));
+
+        QString css = QString(
+            "QPushButton { background: rgba(255,255,255,20);"
+            "  color: %1; border: 1px solid rgba(255,255,255,40);"
+            "  border-radius: 8px; font-size: 15px; padding: 0 16px; }"
+            "QPushButton:hover { background: rgba(255,255,255,40); }"
+            "QPushButton:default { background: #a83232; border: 1px solid #a83232; color: white; font-weight: bold; }"
+            "QPushButton:default:hover { background: #c0392b; }")
+            .arg(t.textPrimary.name());
+        for (QPushButton *b : m_buttonWidgets) {
+            b->setStyleSheet(css);
         }
     }
 
-    int                    m_clicked;
-    QLabel                *m_title = nullptr;
-    QLabel                *m_message = nullptr;
-    QCheckBox             *m_checkbox = nullptr;
-    QList<QPushButton *>   m_buttonWidgets;
-    Theme                  m_theme;
-    QPixmap                m_blurredBg;
+    Theme m_theme;
+    QLabel *m_message = nullptr;
+    QList<QPushButton*> m_buttonWidgets;
+    int m_clicked;
 };
+
+
+
+
+
+
+
+
 
 // ----------------------------------------------------------------
 // SigilFileDialog — QFileDialog with the shell's dark look.
