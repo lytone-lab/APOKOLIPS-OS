@@ -2770,24 +2770,16 @@ static int runShell(int argc, char *argv[])
     {
         QAction *a = apoMenu->addAction("Restart\xE2\x80\xA6");
         QObject::connect(a, &QAction::triggered, []() {
-            QMessageBox::StandardButton r = QMessageBox::question(
-                nullptr, "Restart",
-                "Restart this machine?",
-                QMessageBox::Yes | QMessageBox::Cancel,
-                QMessageBox::Cancel);
-            if (r == QMessageBox::Yes)
+            int r = SigilDialog::ask(nullptr, "Restart", "Restart this machine?", {"Cancel", "Restart"});
+            if (r == 1)
                 QProcess::startDetached("systemctl", { "reboot" });
         });
     }
     {
         QAction *a = apoMenu->addAction("Shut Down\xE2\x80\xA6");
         QObject::connect(a, &QAction::triggered, []() {
-            QMessageBox::StandardButton r = QMessageBox::question(
-                nullptr, "Shut Down",
-                "Shut down this machine?",
-                QMessageBox::Yes | QMessageBox::Cancel,
-                QMessageBox::Cancel);
-            if (r == QMessageBox::Yes)
+            int r = SigilDialog::ask(nullptr, "Shut Down", "Shut down this machine?", {"Cancel", "Shut Down"});
+            if (r == 1)
                 QProcess::startDetached("systemctl", { "poweroff" });
         });
     }
@@ -2801,12 +2793,8 @@ static int runShell(int argc, char *argv[])
                 user.isEmpty() ? "user" : user));
         a->setShortcut(QKeySequence("Ctrl+Shift+Q"));
         QObject::connect(a, &QAction::triggered, []() {
-            QMessageBox::StandardButton r = QMessageBox::question(
-                nullptr, "Log Out",
-                "End this session?",
-                QMessageBox::Yes | QMessageBox::Cancel,
-                QMessageBox::Cancel);
-            if (r == QMessageBox::Yes)
+            int r = SigilDialog::ask(nullptr, "Log Out", "End this session?", {"Cancel", "Log Out"});
+            if (r == 1)
                 QProcess::startDetached("swaymsg", { "exit" });
         });
     }
