@@ -547,6 +547,27 @@ static void launchExternalDesktop(const QString &desktopBase) {
     
     // Force GTK apps to use the dark theme and honor our CSS
     env.insert("GTK_THEME", "Adwaita-dark");
+    
+    // Force Qt apps to inherit Sigil theme
+    if (env.value("QT_QPA_PLATFORMTHEME").isEmpty())
+        env.insert("QT_QPA_PLATFORMTHEME", "gtk3");
+    env.insert("QT_STYLE_OVERRIDE", "Fusion");
+    env.insert("QT_AUTO_SCREEN_SCALE_FACTOR", "0");
+    env.insert("QT_STYLESHEET",
+               QDir::homePath() + "/.config/apokolips/qt.qss");
+    
+    // Chromium / Electron family — force dark mode
+    QString progLower = program.toLower();
+    if (progLower.contains("chromium") || progLower.contains("chrome") ||
+        progLower.contains("helium") || progLower.contains("electron") ||
+        progLower.contains("brave") || progLower.contains("vivaldi") ||
+        progLower.contains("thorium")) {
+        if (!parts.contains("--force-dark-mode"))
+            parts << "--force-dark-mode";
+        if (!parts.contains("--enable-features=WebUIDarkMode"))
+            parts << "--enable-features=WebUIDarkMode";
+    }
+    
     if (env.value("DISPLAY").isEmpty()) {
         if (QFile::exists("/tmp/.X11-unix/X0"))
             env.insert("DISPLAY", ":0");
