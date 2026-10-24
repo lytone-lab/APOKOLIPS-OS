@@ -2030,3 +2030,21 @@ END OF PROJECT STATE
         reboot. Config also restored to its exact original state.
   State: done. OS boots cleanly.
 
+
+--- SESSION UPDATE — 2026-10-24 (Lock Screen Z-Order Fixed) ---
+
+[SHIPPED] Lock Screen overlay fixes
+  What: The lock screen was an internal QWidget and didn't cover the Dock
+        because the parent window size changed on fullscreen toggle. Fixed by
+        installing an eventFilter on the parent widget to sync geometry on
+        QEvent::Resize. Also swallowed mouse/wheel events to prevent clicks
+        bleeding through, and removed the hint text.
+  State: done.
+
+[FIXED] Sway config corruption
+  What: Multiple careless sed commands destroyed the $mod definition and
+        core bindings. Restored the config by merging a known-good backup,
+        validating with `sway -C`, and syncing the clean version back into
+        `system/sway-config` in the repo.
+  State: done.
+
