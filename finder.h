@@ -167,12 +167,18 @@ public:
         setShellWindowGeometry(this, QSize(900, 560));
 
         // ---- File drag-out (Apokolips shared protocol) ----
-        if (m_treeView)
+        // Each filter reads from its own view so drags start
+        // from wherever the user actually picked a file (tree or grid).
+        if (m_treeView) {
+            QAbstractItemView *tv = m_treeView;
             new FileDragFilter(m_treeView,
-                [this]() { return selectedPath(); });
-        if (m_view)
+                [this, tv]() { return selectedPath(tv); });
+        }
+        if (m_view) {
+            QAbstractItemView *lv = m_view;
             new FileDragFilter(m_view,
-                [this]() { return selectedPath(); });
+                [this, lv]() { return selectedPath(lv); });
+        }
 
         show();
         update();
@@ -839,8 +845,9 @@ private:
         m_fwdBtn->setEnabled(m_historyIndex < m_history.size() - 1);
     }
 
-    QString selectedPath() const {
-        QModelIndex idx = m_view->currentIndex();
+    QString selectedPath(QAbstractItemView *view = nullptr) const {
+        if (!view) view = m_view;
+        QModelIndex idx = view->currentIndex();
         if (!idx.isValid()) return {};
         return m_fs->filePath(m_proxy->mapToSource(idx));
     }
