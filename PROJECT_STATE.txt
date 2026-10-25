@@ -2107,3 +2107,14 @@ END OF PROJECT STATE
         use old env (DockIcon::launchApp patch aborted) — minor; VLC
         works via vlcrc. Future Qt apps from Launchpad get full theme.
 
+
+--- SESSION UPDATE — 2026-10-25 (External Theming Complete) ---
+
+[SHIPPED] Qt Theming via Kvantum
+  What: Installed qt5-style-kvantum and qt6-style-kvantum. Created a custom 
+        "Sigil" Kvantum theme by cloning KvDark and recoloring the SVG/config 
+        to #141416 (bg) and #a83232 (accent). Updated theme_bridge.h and 
+        chrome.h to inject QT_STYLE_OVERRIDE=kvantum instead of Fusion.
+  Verification: QTerminal launched perfectly dark with oxblood accents.
+  State: done. External app theming (GTK3, GTK4, Qt5, Qt6) is complete.
+
