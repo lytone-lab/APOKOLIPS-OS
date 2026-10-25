@@ -16,6 +16,7 @@
 #include <QKeyEvent>
 #include <functional>
 #include "theme_bridge.h"
+#include "audio_safe.h"
 
 
 class ShortcutRecorder : public QPushButton {
@@ -7584,9 +7585,8 @@ private:
             QObject::connect(grp, &QButtonGroup::idClicked, [opts](int id) {
                 VisualConfigManager::instance().setAndSave(
                     [id](VisualConfig &c) { c.startupSoundVariant = id; });
-                QProcess::startDetached("paplay", {
-                    QCoreApplication::applicationDirPath()
-                    + "/../assets/sounds/" + QString::fromUtf8(opts[id].file) });
+                playSoundSafe(QCoreApplication::applicationDirPath()
+                    + "/../assets/sounds/" + QString::fromUtf8(opts[id].file));
             });
 
             cv->addLayout(srow);
@@ -7707,9 +7707,8 @@ private:
                 "QPushButton:hover { background: rgba(255,255,255,45); }")
                 .arg(Sigil::textPrimary().name()));
             QObject::connect(testBtn, &QPushButton::clicked, []() {
-                QProcess::startDetached("paplay", {
-                    QCoreApplication::applicationDirPath()
-                    + "/../assets/sounds/startup_deep.wav" });
+                playSoundSafe(QCoreApplication::applicationDirPath()
+                    + "/../assets/sounds/startup_deep.wav");
             });
             row2->addWidget(testBtn);
             cv->addLayout(row2);

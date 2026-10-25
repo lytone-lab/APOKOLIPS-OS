@@ -4,13 +4,21 @@
 #include <QCoreApplication>
 #include <QHash>
 #include <QDateTime>
+#include <QDebug>
 #include "visualconfig.h"
+#include "audio_safe.h"
 
+// All sounds go through audio_safe.h: one external player at a time and a
+// hard 2-second limit, so rapid triggers can never pile up or glitch.
 namespace SoundManager {
+    inline QString soundPath(const QString &file) {
+        return QCoreApplication::applicationDirPath() + "/../assets/sounds/" + file;
+    }
+
     inline void play(const QString& file, const QString& type) {
         VisualConfigManager::instance().load();
         const auto& cfg = VisualConfigManager::instance().cfg();
-        
+
         qDebug() << "[sound] play requested:" << type
                  << "enabled=" << cfg.soundEnabled
                  << "typeEnabled=" << (type == "minimize" ? cfg.soundMinimize : true);
@@ -18,16 +26,7 @@ namespace SoundManager {
         if (type == "notify" && !cfg.soundNotify) return;
         if (type == "startup" && !cfg.soundStartup) return;
 
-        static QHash<QString, QSoundEffect*> cache;
-        if (!cache.contains(file)) {
-            QSoundEffect* effect = new QSoundEffect;
-            QString path = QCoreApplication::applicationDirPath() + "/../assets/sounds/" + file;
-            effect->setSource(QUrl::fromLocalFile(path));
-            cache[file] = effect;
-        }
-        QSoundEffect* effect = cache[file];
-        effect->setVolume(cfg.soundVolume / 100.0);
-        effect->play();
+        playSoundSafe(soundPath(file), cfg.soundVolume / 100.0);
     }
 
     inline void playNotification() { play("notification.wav", "notify"); }
@@ -42,34 +41,12 @@ namespace SoundManager {
             case 2:  file = "startup_ascending.wav"; break;
             default: file = "startup_deep.wav"; break;
         }
-
-        static QHash<QString, QSoundEffect*> s_cache;
-        if (!s_cache.contains(file)) {
-            QSoundEffect *e = new QSoundEffect;
-            QString path = QCoreApplication::applicationDirPath() + "/../assets/sounds/" + file;
-            e->setSource(QUrl::fromLocalFile(path));
-            s_cache[file] = e;
-        }
-        QSoundEffect *e = s_cache[file];
-        e->setVolume(cfg.soundVolume / 100.0);
-        e->play();
+        playSoundSafe(soundPath(file), cfg.soundVolume / 100.0);
     }
 
     inline void playPool() {
         const auto &cfg = VisualConfigManager::instance().cfg();
         if (!cfg.soundEnabled || !cfg.poolSounds) return;
-        static qint64 s_lastMs = 0;
-        qint64 now = QDateTime::currentMSecsSinceEpoch();
-        if (now - s_lastMs < 80) return;   // rate limit ~12/sec
-        s_lastMs = now;
-
-        static QSoundEffect *s_effect = nullptr;
-        if (!s_effect) {
-            s_effect = new QSoundEffect;
-            QString path = QCoreApplication::applicationDirPath() + "/../assets/sounds/pool.wav";
-            s_effect->setSource(QUrl::fromLocalFile(path));
-        }
-        s_effect->setVolume(cfg.soundVolume / 100.0);
-        s_effect->play();
+        playSoundSafe(soundPath("pool.wav"), cfg.soundVolume / 100.0, 150);
     }
 }

@@ -2,6 +2,12 @@
 #define APOKOLIPS_FINDER_H
 
 #include "shell.h"
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QUrl>
+#include <QFileInfo>
+#include <QDir>
+#include <QFile>
 #include "theme.h"
 #include "visualconfig.h"
 #include "style.h"
@@ -9,6 +15,7 @@
 #include "shellapp.h"
 #include "helpers.h"
 #include "theme_bridge.h"
+#include "dbg_trace.h"
 
 class FileDragFilter final : public QObject {
 public:
@@ -31,8 +38,11 @@ protected:
                 >= QApplication::startDragDistance()) {
                 m_armed = false;
                 QString path = m_pathFn ? m_pathFn() : QString();
+                apoTrace(QString("drag threshold passed, path='%1' exists=%2").arg(path, QString::fromLatin1(QFileInfo::exists(path) ? "yes" : "no")));
                 if (!path.isEmpty() && QFileInfo::exists(path)) {
+                    apoTrace("startFileDrag " + path);
                     ApoDrag::startFileDrag(m_view, path);
+                    apoTrace("startFileDrag returned");
                     return true;
                 }
             }
@@ -206,6 +216,46 @@ protected:
         delete wp;
     }
 
+    void dragEnterEvent(QDragEnterEvent *e) override {
+        if (e->mimeData()->hasUrls() || e->mimeData()->hasText())
+            e->acceptProposedAction();
+    }
+    void dropEvent(QDropEvent *e) override {
+        QString nameOverride;
+        if (e->mimeData()->hasUrls()) {
+            for (const QUrl &u : e->mimeData()->urls()) {
+                if (!u.isLocalFile()) continue;
+                QString src = u.toLocalFile();
+                QString base = QFileInfo(src).fileName();
+                // If it's a temp clipboard text, name it "Dropped Text.txt"
+                if (base.startsWith("apokolips-clip-") && base.endsWith(".txt"))
+                    base = "Dropped Text.txt";
+                QString dest = QDir(m_currentPath).filePath(base);
+                if (src == dest) continue;
+                int n = 1;
+                QString stem = QFileInfo(base).completeBaseName();
+                QString ext  = QFileInfo(base).suffix();
+                while (QFile::exists(dest)) {
+                    QString alt = stem + QString(" (%1)").arg(++n);
+                    dest = QDir(m_currentPath).filePath(
+                        ext.isEmpty() ? alt : alt + "." + ext);
+                }
+                QFile::copy(src, dest);
+            }
+        } else if (e->mimeData()->hasText()) {
+            QString dest = QDir(m_currentPath).filePath("Dropped Text.txt");
+            int n = 1;
+            while (QFile::exists(dest))
+                dest = QDir(m_currentPath).filePath(
+                    QString("Dropped Text (%1).txt").arg(++n));
+            QFile f(dest);
+            if (f.open(QIODevice::WriteOnly)) {
+                f.write(e->mimeData()->text().toUtf8());
+                f.close();
+            }
+        }
+        e->acceptProposedAction();
+    }
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);

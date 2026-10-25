@@ -33,6 +33,7 @@
 #include "registry.h"
 #include "weather.h"
 #include "globals.h"
+#include "dbg_trace.h"
 #include "theme_bridge.h"
 
 class NotificationCenter : public QWidget {
@@ -1814,6 +1815,7 @@ protected:
     }
     void dropEvent(QDropEvent *e) override {
         QString path = ApoDrag::acceptedPath(e->mimeData());
+        apoTrace(QString("dock drop on %1 path='%2'").arg(m_name, path));
         if (!path.isEmpty()) launchApp(path);
         e->acceptProposedAction();
     }
@@ -1941,7 +1943,10 @@ protected:
         else if (m_name == "Mail")      matchId = "apokolips-mail";
         else if (m_name == "Files")     matchId = "org.gnome.Nautilus";
 
-        if (!matchId.isEmpty()) {
+        if (!matchId.isEmpty() && openPath.isEmpty()) {
+            // (Only focus-existing when no file was dropped.
+            //  If a file path was supplied, fall through and spawn
+            //  a fresh window with that file loaded.)
             // SWAYSOCK is NOT inherited by the systemd-launched shell
             // (verified 2026-10-17: /proc/<pid>/environ has no SWAYSOCK).
             // pollRunning() works because it injects SWAYSOCK explicitly;
@@ -1982,6 +1987,7 @@ protected:
             // Our own FileExplorer
             program = QCoreApplication::applicationFilePath();
             args = { "--files" };
+            if (!openPath.isEmpty()) args << openPath;
         } else if (m_name == "Launchpad") {
             // In-process: trigger the shell's own launcher overlay
             if (ShellRegistry::launcherToggle()) {
@@ -1993,13 +1999,17 @@ protected:
             args = { "--settings" };
         } else if (m_name == "Aperture") {
             program = QCoreApplication::applicationFilePath();
-            QString sample = QDir::homePath()
-                + "/Pictures/test-gradient.png";
-            if (QFile::exists(sample))
-                args = { "--image", sample };
-            else
-                args = { "--image",
-                         QDir::homePath() + "/Pictures" };
+            if (!openPath.isEmpty()) {
+                args = { "--image", openPath };
+            } else {
+                QString sample = QDir::homePath()
+                    + "/Pictures/test-gradient.png";
+                if (QFile::exists(sample))
+                    args = { "--image", sample };
+                else
+                    args = { "--image",
+                             QDir::homePath() + "/Pictures" };
+            }
         } else if (m_name == "myMach") {
             program = QCoreApplication::applicationFilePath();
             args = { "--mymach" };
@@ -2009,6 +2019,7 @@ protected:
         } else if (m_name == "BoomTube") {
             program = QCoreApplication::applicationFilePath();
             args = { "--boomtube" };
+            if (!openPath.isEmpty()) args << openPath;
         } else if (m_name == "Node") {
             program = QCoreApplication::applicationFilePath();
             args = { "--node" };
@@ -4203,6 +4214,7 @@ public:
     }
     void dropEvent(QDropEvent *e) override {
         QString path = ApoDrag::acceptedPath(e->mimeData());
+        apoTrace(QString("desktop-icon drop on %1 path='%2'").arg(m_id, path));
         if (path.isEmpty()) return;
         QString prog = QCoreApplication::applicationFilePath();
         if (m_id == "files") {
