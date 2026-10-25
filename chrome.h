@@ -2,6 +2,12 @@
 #define APOKOLIPS_CHROME_H
 
 #include "shell.h"
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QUrl>
+#include <QFileInfo>
+#include <QDir>
+#include <QFile>
 #include <QFileIconProvider>
 #include <QDialog>
 #include <QPushButton>
@@ -1654,6 +1660,7 @@ public:
         : QWidget(parent), m_icon(icon), m_name(name), m_index(index),
           m_swayId(swayId), m_isDynamic(isDynamic)
     {
+        setAcceptDrops(true);
         setFixedSize(68, 68);
         setMouseTracking(true);
         setCursor(Qt::PointingHandCursor);
@@ -1802,7 +1809,15 @@ protected:
         }
     }
 
-    void launchApp() {
+    void dragEnterEvent(QDragEnterEvent *e) override {
+        if (e->mimeData()->hasUrls()) e->acceptProposedAction();
+    }
+    void dropEvent(QDropEvent *e) override {
+        QString path = ApoDrag::acceptedPath(e->mimeData());
+        if (!path.isEmpty()) launchApp(path);
+        e->acceptProposedAction();
+    }
+    void launchApp(const QString &openPath = QString()) {
         // External apps (launched via .desktop file) — delegate to gio
         // so we don't maintain 15 launch paths for apps we didn't write.
         // The .desktop file handles Wayland integration, StartupWMClass,
@@ -1891,6 +1906,7 @@ protected:
                     << "SAL_USE_VCLPLUGIN=" << env.value("SAL_USE_VCLPLUGIN");
 
             QProcess *proc = new QProcess;
+            if (!openPath.isEmpty()) parts << openPath;
             proc->setProgram(program);
             proc->setArguments(parts);
             proc->setProcessEnvironment(env);
@@ -3347,8 +3363,9 @@ public:
         m_list = new ClipList;
         m_list->setFrameShape(QFrame::NoFrame);
         m_list->setSelectionMode(QAbstractItemView::SingleSelection);
-        m_list->setDragEnabled(true);
+        m_list->setDragEnabled(false);
         m_list->setDragDropMode(QAbstractItemView::DragOnly);
+        m_list->viewport()->installEventFilter(this);
         m_list->setStyleSheet(
             "QListWidget {"
             "  background: rgba(255,255,255,12);"
@@ -3467,6 +3484,46 @@ protected:
     }
 
     bool eventFilter(QObject *o, QEvent *ev) override {
+        if (o == m_list->viewport()) {
+            if (ev->type() == QEvent::MouseButtonPress) {
+                auto *me = static_cast<QMouseEvent*>(ev);
+                if (me->button() == Qt::LeftButton) {
+                    m_dragStartPos = me->pos();
+                    m_dragStartItem = m_list->itemAt(me->pos());
+                }
+            } else if (ev->type() == QEvent::MouseMove) {
+                auto *me = static_cast<QMouseEvent*>(ev);
+                if ((me->buttons() & Qt::LeftButton)
+                    && m_dragStartItem && m_dragStartPos.x() >= 0
+                    && (me->pos() - m_dragStartPos).manhattanLength()
+                       >= QApplication::startDragDistance()) {
+                    Entry entry = entryAt(m_dragStartItem);
+                    m_dragStartPos = QPoint(-1, -1);
+                    m_dragStartItem = nullptr;
+
+                    if (!entry.path.isEmpty() && QFile::exists(entry.path)) {
+                        ApoDrag::startFileDrag(this, entry.path);
+                        return true;
+                    } else if (!entry.text.isEmpty()) {
+                        QString tmp = QDir::tempPath() + "/apokolips-clip-"
+                            + QString::number(QDateTime::currentMSecsSinceEpoch())
+                            + ".txt";
+                        QFile f(tmp);
+                        if (f.open(QIODevice::WriteOnly)) {
+                            f.write(entry.text.toUtf8());
+                            f.close();
+                            ApoDrag::startFileDrag(this, tmp);
+                            QFile::remove(tmp);
+                        }
+                        return true;
+                    }
+                }
+            } else if (ev->type() == QEvent::MouseButtonRelease) {
+                m_dragStartPos = QPoint(-1, -1);
+                m_dragStartItem = nullptr;
+            }
+            return QWidget::eventFilter(o, ev);
+        }
         if (o == m_search && ev->type() == QEvent::KeyPress) {
             QKeyEvent *k = static_cast<QKeyEvent *>(ev);
             if (k->key() == Qt::Key_Return
@@ -3509,6 +3566,8 @@ private:
     QLineEdit    *m_search = nullptr;
     QTimer       *m_poll = nullptr;
     QString       m_lastSig;
+    QPoint        m_dragStartPos = QPoint(-1, -1);
+    QListWidgetItem *m_dragStartItem = nullptr;
 
     QPushButton *makeDot(const QString &idle,
                          const QString &accent,
@@ -4139,6 +4198,24 @@ private:
 
 class PoolIcon : public QWidget {
 public:
+    void dragEnterEvent(QDragEnterEvent *e) override {
+        if (e->mimeData()->hasUrls()) e->acceptProposedAction();
+    }
+    void dropEvent(QDropEvent *e) override {
+        QString path = ApoDrag::acceptedPath(e->mimeData());
+        if (path.isEmpty()) return;
+        QString prog = QCoreApplication::applicationFilePath();
+        if (m_id == "files") {
+            QProcess::startDetached(prog, {"--files", path});
+        } else if (m_id == "aperture") {
+            QProcess::startDetached(prog, {"--image", path});
+        } else if (m_id == "boombube") {
+            QProcess::startDetached(prog, {"--boomtube", path});
+        } else {
+            QProcess::startDetached("xdg-open", {path});
+        }
+        e->acceptProposedAction();
+    }
     PoolIcon(const QString &id, const QString &label,
                 std::function<void(QPainter&, QRectF)> paint,
                 std::function<void()> onActivate,
@@ -4146,6 +4223,7 @@ public:
         : QWidget(parent), m_id(id), m_label(label),
           m_paint(paint), m_onActivate(onActivate)
     {
+        setAcceptDrops(true);
         setFixedSize(96, 108);
         setCursor(Qt::PointingHandCursor);
         setMouseTracking(true);
@@ -4455,7 +4533,48 @@ private:
 
 class PoolCanvas : public QWidget {
 public:
+    void dragEnterEvent(QDragEnterEvent *e) override {
+        if (e->mimeData()->hasUrls() || e->mimeData()->hasText())
+            e->acceptProposedAction();
+    }
+    void dropEvent(QDropEvent *e) override {
+        QString base = QDir::homePath() + "/Desktop";
+        QDir().mkpath(base);
+        if (e->mimeData()->hasUrls()) {
+            for (const QUrl &u : e->mimeData()->urls()) {
+                if (!u.isLocalFile()) continue;
+                QString src = u.toLocalFile();
+                QString fname = QFileInfo(src).fileName();
+                if (fname.startsWith("apokolips-clip-") && fname.endsWith(".txt"))
+                    fname = "Dropped Text.txt";
+                QString dest = base + "/" + fname;
+                if (src == dest) continue;
+                int n = 1;
+                QString stem = QFileInfo(fname).completeBaseName();
+                QString ext  = QFileInfo(fname).suffix();
+                while (QFile::exists(dest)) {
+                    QString alt = stem + QString(" (%1)").arg(++n);
+                    dest = base + "/" + (ext.isEmpty() ? alt : alt + "." + ext);
+                }
+                QFile::copy(src, dest);
+            }
+        } else if (e->mimeData()->hasText()) {
+            QString dest = base + "/Dropped Text.txt";
+            int n = 1;
+            while (QFile::exists(dest))
+                dest = base + QString("/Dropped Text (%1).txt").arg(++n);
+            QFile f(dest);
+            if (f.open(QIODevice::WriteOnly)) {
+                f.write(e->mimeData()->text().toUtf8());
+                f.close();
+            }
+        }
+        e->acceptProposedAction();
+        rebuildIcons();
+    }
+public:
     PoolCanvas(QWidget *parent = nullptr) : QWidget(parent) {
+        setAcceptDrops(true);
         setObjectName("thePool");
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAttribute(Qt::WA_TranslucentBackground, true);
