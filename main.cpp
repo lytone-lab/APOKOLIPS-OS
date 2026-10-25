@@ -2599,8 +2599,7 @@ static int runShell(int argc, char *argv[])
     {
         QAction *a = helpMenu->addAction("Apokolips Help");
         QObject::connect(a, &QAction::triggered, []() {
-            QProcess::startDetached("xdg-open",
-                { "https://github.com/lytone-lab/APOKOLIPS-OS" });
+            themedXdgOpen("https://github.com/lytone-lab/APOKOLIPS-OS");
         });
     }
     {
@@ -2679,7 +2678,7 @@ static int runShell(int argc, char *argv[])
                     QString path = e.path;
                     QObject::connect(a, &QAction::triggered,
                                      [path]() {
-                        QProcess::startDetached("xdg-open", { path });
+                        themedXdgOpen(path);
                     });
                 }
             }

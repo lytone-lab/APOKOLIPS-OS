@@ -15,6 +15,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QMimeDatabase>
 #include <QPalette>
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -238,6 +239,42 @@ inline void themeChromiumFlags(const QString &program, QStringList &args) {
         if (args[i].startsWith("--enable-features=")) idx = i;
     if (idx < 0) args << "--enable-features=WebUIDarkMode";
     else if (!args[idx].contains("WebUIDarkMode")) args[idx] += ",WebUIDarkMode";
+}
+
+// Open a file/folder/URL with the system default app, themed.
+// Replaces plain xdg-open calls so double-clicked files follow the Sigil theme.
+// The default app's name decides the theme (VLC is excluded in themeEnvFor).
+inline void themedXdgOpen(const QString &target) {
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    if (env.value("XDG_RUNTIME_DIR").isEmpty())
+        env.insert("XDG_RUNTIME_DIR", "/run/user/1000");
+    if (env.value("WAYLAND_DISPLAY").isEmpty()) {
+        QDir rd(env.value("XDG_RUNTIME_DIR"));
+        for (const QString &f : rd.entryList({"wayland-*"},
+                                             QDir::Files | QDir::System)) {
+            if (f.endsWith(".lock")) continue;
+            env.insert("WAYLAND_DISPLAY", f);
+            break;
+        }
+    }
+    if (env.value("XDG_SESSION_TYPE").isEmpty())
+        env.insert("XDG_SESSION_TYPE", "wayland");
+    if (env.value("GDK_BACKEND").isEmpty())
+        env.insert("GDK_BACKEND", "wayland");
+    QString handler;
+    {
+        QProcess q;
+        const QString mime = QMimeDatabase().mimeTypeForFile(target).name();
+        q.start("xdg-mime", { "query", "default", mime });
+        if (q.waitForFinished(400))
+            handler = QString::fromUtf8(q.readAllStandardOutput()).trimmed();
+    }
+    applyThemeEnv(env, handler);
+    QProcess p;
+    p.setProgram("xdg-open");
+    p.setArguments({ target });
+    p.setProcessEnvironment(env);
+    p.startDetached();
 }
 
 #endif // APOKOLIPS_THEME_BRIDGE_H

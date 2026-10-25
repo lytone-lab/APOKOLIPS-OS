@@ -173,6 +173,15 @@ sudo update-initramfs -u
 say "Building Apokolips shell..."
 cd "$REPO_DIR"
 sudo apt-get install -y qt5ct qt6ct libqt5svg5 libqt6svg6   # external-app theming (theme_bridge.h)
+# external-app theming for terminal launches + Flatpak (system/shell-theme.sh)
+APO_HERE="$(cd "$(dirname "$0")" && pwd)"
+mkdir -p "$HOME/.config/apokolips"
+cp "$APO_HERE/system/shell-theme.sh" "$HOME/.config/apokolips/shell-theme.sh"
+grep -q 'apokolips/shell-theme.sh' "$HOME/.bashrc" 2>/dev/null || \
+  echo '[ -f "$HOME/.config/apokolips/shell-theme.sh" ] && . "$HOME/.config/apokolips/shell-theme.sh"  # apokolips-managed' >> "$HOME/.bashrc"
+if command -v flatpak >/dev/null 2>&1; then
+  flatpak override --user --filesystem=xdg-config/gtk-3.0:ro --filesystem=xdg-config/gtk-4.0:ro --env=GTK_THEME=Adwaita:dark || true
+fi
 cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 cmake --build build
 

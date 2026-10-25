@@ -1087,7 +1087,7 @@ private:
                 const QString filePath = path;
                 QObject::connect(row, &QPushButton::clicked,
                                  [this, filePath]() {
-                    QProcess::startDetached("xdg-open", { filePath });
+                    themedXdgOpen(filePath);
                     if (parentWidget())
                         this->hideLauncher();
                 });
@@ -4865,10 +4865,7 @@ public:
                         if (env.value("GDK_BACKEND").isEmpty())
                             env.insert("GDK_BACKEND", "wayland");
 
-                        QProcess *proc = new QProcess;
-                        proc->setProcessEnvironment(env);
-                        proc->startDetached("xdg-open", {fpath});
-                        delete proc;
+                        themedXdgOpen(fpath);
                     }
                 }, pos);
                 if (m_icons.size() > before) {
@@ -5390,7 +5387,7 @@ private:
                 QProcess::startDetached(payload);
             }
         } else if (kind == "Path") {
-            QProcess::startDetached("xdg-open", { payload });
+            themedXdgOpen(payload);
         } else if (kind == "Calc") {
             QProcess wl;
             wl.start("wl-copy");

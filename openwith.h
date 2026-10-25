@@ -163,7 +163,7 @@ inline void show(QWidget *parent, const QString &path,
     QAction *aOpenDefault = m.addAction("Open with System Default");
     QObject::connect(aOpenDefault, &QAction::triggered,
         [path, recentsApp]() {
-            QProcess::startDetached("xdg-open", { path });
+            themedXdgOpen(path);
             if (!recentsApp.isEmpty())
                 Recents::add(path,
                     QMimeDatabase().mimeTypeForFile(path).name(),

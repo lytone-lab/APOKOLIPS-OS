@@ -15,6 +15,7 @@
 #include <QCheckBox>
 #include <QKeyEvent>
 #include <functional>
+#include "theme_bridge.h"
 
 
 class ShortcutRecorder : public QPushButton {
@@ -1797,7 +1798,7 @@ private:
             QObject::connect(openDir, &QPushButton::clicked, []() {
                 QString dir = QDir::homePath() + "/.config/autostart";
                 QDir().mkpath(dir);
-                QProcess::startDetached("xdg-open", { dir });
+                themedXdgOpen(dir);
             });
             hdr->addWidget(openDir);
 
@@ -1885,8 +1886,7 @@ private:
                     }
                     refreshStartupItems();
                 } else if (chosen == openDir) {
-                    QProcess::startDetached("xdg-open",
-                        { QDir::homePath() + "/.config/autostart" });
+                    themedXdgOpen(QDir::homePath() + "/.config/autostart");
                 }
             });
             cv->addWidget(m_startupList, 1);
@@ -5303,8 +5303,7 @@ private:
                 "QPushButton:hover { background: rgb(200, 74, 74); }");
             QObject::connect(add, &QPushButton::clicked, [this]() {
                 // CUPS web UI handles add — real, standard, safe.
-                QProcess::startDetached("xdg-open",
-                    { "http://localhost:631/admin" });
+                themedXdgOpen("http://localhost:631/admin");
             });
             hdr->addWidget(add);
 

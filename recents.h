@@ -25,6 +25,7 @@
 #include <QStandardPaths>
 #include <QMimeDatabase>
 #include <QProcess>
+#include "theme_bridge.h"
 
 namespace Recents {
 
@@ -146,7 +147,7 @@ inline void open(const QString &path, const QString &app) {
     if (!fi.exists()) return;
     QString mime = QMimeDatabase().mimeTypeForFile(path).name();
     add(path, mime, app);
-    QProcess::startDetached("xdg-open", { path });
+    themedXdgOpen(path);
 }
 
 }

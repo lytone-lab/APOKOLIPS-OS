@@ -8,6 +8,7 @@
 #include "shared_fwd.h"
 #include "shellapp.h"
 #include "helpers.h"
+#include "theme_bridge.h"
 
 class FileDragFilter final : public QObject {
 public:
@@ -799,7 +800,7 @@ private:
         if (p.isEmpty()) return;
         QFileInfo fi(p);
         if (fi.isDir()) navigateTo(p);
-        else QProcess::startDetached("xdg-open", { p });
+        else themedXdgOpen(p);
     }
 
     void renameSelected() {
