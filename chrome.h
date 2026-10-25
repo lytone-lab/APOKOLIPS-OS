@@ -1244,7 +1244,7 @@ private:
                     QString g = QString::fromUtf8(e.glyph);
                     if (g.startsWith("ext:")) {
                         launchExternalDesktop(g.mid(4));
-                        if (parentWidget()) parentWidget()->hide();
+                        hideLauncher();
                         return;
                     }
                     break;
