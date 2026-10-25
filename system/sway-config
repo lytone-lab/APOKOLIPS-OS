@@ -175,3 +175,8 @@ exec /usr/libexec/xdg-desktop-portal-wlr
 exec /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
 
 for_window [app_id="apokolips-dialog"] fullscreen global, border none
+
+for_window [title="Rename"] floating enable, border none, move position center
+bindsym $mod+q exec /home/lytone/.local/bin/apokolips-close
+for_window [app_id="vlc"] border normal, floating enable, resize set 1000 700, move position center
+for_window [class="vlc"] border normal, floating enable, resize set 1000 700, move position center

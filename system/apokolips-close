@@ -1,0 +1,5 @@
+#!/bin/sh
+# Super+q: close the focused window, but never the shell itself.
+id=$(swaymsg -t get_tree | jq -r '[.. | objects | select(.focused? == true)] | first | (.app_id // .window_properties.class // "")')
+[ "$id" = "apokolips-shell" ] && exit 0
+swaymsg kill
