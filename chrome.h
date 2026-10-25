@@ -1872,6 +1872,10 @@ protected:
             if (env.value("SAL_USE_VCLPLUGIN").isEmpty())
                 env.insert("SAL_USE_VCLPLUGIN", "qt6");
 
+            // Per-toolkit theming (see theme_bridge.h)
+            applyThemeEnv(env, extBase);
+            themeChromiumFlags(program, parts);
+
             // XWayland fallback: if DISPLAY isn't set, try :0 so any
             // remaining X11 app still works when XWayland is active.
             if (env.value("DISPLAY").isEmpty()) {

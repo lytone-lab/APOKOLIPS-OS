@@ -172,6 +172,7 @@ sudo update-initramfs -u
 # ---- 10. Build the shell ----
 say "Building Apokolips shell..."
 cd "$REPO_DIR"
+sudo apt-get install -y qt5ct qt6ct libqt5svg5 libqt6svg6   # external-app theming (theme_bridge.h)
 cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 cmake --build build
 

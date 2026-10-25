@@ -22,6 +22,7 @@
 #include <QWidget>
 #include <QCursor>
 #include "recents.h"
+#include "theme_bridge.h"
 
 namespace OpenWith {
 
@@ -94,8 +95,15 @@ inline void launchExec(const QString &exec, const QString &path) {
     QStringList parts = cmd.split(' ', Qt::SkipEmptyParts);
     if (parts.isEmpty()) return;
     QString prog = parts.takeFirst();
+    themeChromiumFlags(prog, parts);
     parts << path;
-    QProcess::startDetached(prog, parts);
+    QProcess proc;
+    proc.setProgram(prog);
+    proc.setArguments(parts);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    applyThemeEnv(env, QFileInfo(prog).fileName());
+    proc.setProcessEnvironment(env);
+    proc.startDetached();
 }
 
 inline QString currentDefault(const QString &mime) {

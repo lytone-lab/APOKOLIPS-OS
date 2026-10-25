@@ -1,3 +1,4 @@
+#include "theme_bridge.h"
 #include "shell.h"
 #include "theme.h"
 #include "visualconfig.h"
@@ -1246,6 +1247,7 @@ static int runShell(int argc, char *argv[])
     Wallpaper *initialWallpaper =
         WallpaperConfig::makeById(WallpaperConfig::loadId());
     ThemeManager::instance().setTheme(initialWallpaper->theme());
+    writeThemeConfigs();   // external-app theming (theme_bridge.h)
 
     // Reload splash: if the previous process saved a backdrop,
     // show it fullscreen on top while we build the new widget
