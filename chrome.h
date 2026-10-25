@@ -27,6 +27,7 @@
 #include "registry.h"
 #include "weather.h"
 #include "globals.h"
+#include "theme_bridge.h"
 
 class NotificationCenter : public QWidget {
 public:
@@ -545,28 +546,11 @@ static void launchExternalDesktop(const QString &desktopBase) {
     if (env.value("SAL_USE_VCLPLUGIN").isEmpty())
         env.insert("SAL_USE_VCLPLUGIN", "qt6");
     
-    // Force GTK apps to use the dark theme and honor our CSS
-    env.insert("GTK_THEME", "Adwaita-dark");
+    // Per-toolkit theming (GTK, Qt5/Qt6 via qt5ct/qt6ct): see theme_bridge.h
+    applyThemeEnv(env, desktopBase);
     
-    // Force Qt apps to inherit Sigil theme
-    if (env.value("QT_QPA_PLATFORMTHEME").isEmpty())
-        env.insert("QT_QPA_PLATFORMTHEME", "gtk3");
-    env.insert("QT_STYLE_OVERRIDE", "Fusion");
-    env.insert("QT_AUTO_SCREEN_SCALE_FACTOR", "0");
-    env.insert("QT_STYLESHEET",
-               QDir::homePath() + "/.config/apokolips/qt.qss");
-    
-    // Chromium / Electron family — force dark mode
-    QString progLower = program.toLower();
-    if (progLower.contains("chromium") || progLower.contains("chrome") ||
-        progLower.contains("helium") || progLower.contains("electron") ||
-        progLower.contains("brave") || progLower.contains("vivaldi") ||
-        progLower.contains("thorium")) {
-        if (!parts.contains("--force-dark-mode"))
-            parts << "--force-dark-mode";
-        if (!parts.contains("--enable-features=WebUIDarkMode"))
-            parts << "--enable-features=WebUIDarkMode";
-    }
+    // Chromium / Electron family: dark-mode flags (merged, never duplicated)
+    themeChromiumFlags(program, parts);
     
     if (env.value("DISPLAY").isEmpty()) {
         if (QFile::exists("/tmp/.X11-unix/X0"))
