@@ -283,6 +283,16 @@ public:
 
 protected:
     void mousePressEvent(QMouseEvent *e) override {
+        for (QPushButton *b : m_buttonWidgets) {
+            if (b && b->isVisible()) {
+                QPoint local = b->mapFrom(this, e->pos());
+                if (b->rect().contains(local)) {
+                    b->click();
+                    e->accept();
+                    return;
+                }
+            }
+        }
         m_clicked = -1;
         reject();
     }

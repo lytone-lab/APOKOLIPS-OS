@@ -2,12 +2,20 @@
 #define APOKOLIPS_BOOMTUBE_H
 
 #include "shell.h"
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QUrl>
+#include <QFileInfo>
+#include <QDir>
+#include <QFile>
 #include "theme.h"
 #include "visualconfig.h"
 #include "style.h"
 #include "shared_fwd.h"
 #include "shellapp.h"
 #include "helpers.h"
+#include <QDateTime>
+#include <QFileInfo>
 
 class BoomTubeWindow : public ShellApp {
 public:
@@ -305,6 +313,78 @@ public:
             goNext();
         });
 
+        QObject::connect(m_player, &QMediaPlayer::errorOccurred,
+                         this, [this](QMediaPlayer::Error err, const QString &errStr) {
+            fprintf(stderr, "[boomtube-trace] errorOccurred err=%d str=%s\n",
+                    (int)err, errStr.toUtf8().constData()); fflush(stderr);
+            if (err == QMediaPlayer::NoError) { fprintf(stderr, "[boomtube-trace] NoError return\n"); fflush(stderr); return; }
+            if (err != QMediaPlayer::FormatError &&
+                err != QMediaPlayer::ResourceError) { fprintf(stderr, "[boomtube-trace] wrong err type return\n"); fflush(stderr); return; }
+            QString path = m_player->source().toLocalFile();
+            fprintf(stderr, "[boomtube-trace] path=%s\n", path.toUtf8().constData()); fflush(stderr);
+            if (path.isEmpty()) { fprintf(stderr, "[boomtube-trace] empty path return\n"); fflush(stderr); return; }
+
+            int choice = SigilDialog::ask(this, "Playback Error",
+                QString("BoomTube can't play this file.\n\n%1").arg(errStr),
+                {"Cancel", "Open in VLC"});
+            fprintf(stderr, "[boomtube-trace] ask returned=%d\n", choice); fflush(stderr);
+            if (choice != 1) { fprintf(stderr, "[boomtube-trace] not 1, return\n"); fflush(stderr); return; }
+
+            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+
+            // VLC's Qt5 GUI plugin fails on native Wayland (no suitable interface
+            // module). Force it through XWayland by stripping WAYLAND_DISPLAY and
+            // the Qt Wayland platform selection, and ensuring DISPLAY is set.
+            env.remove("WAYLAND_DISPLAY");
+            env.remove("QT_QPA_PLATFORM");
+            env.remove("QT_QPA_PLATFORMTHEME");
+            env.remove("QT_STYLE_OVERRIDE");
+            env.remove("QT_STYLESHEET");
+            env.remove("QT_AUTO_SCREEN_SCALE_FACTOR");
+            env.remove("QT_SCALE_FACTOR");
+
+            if (env.value("XDG_RUNTIME_DIR").isEmpty())
+                env.insert("XDG_RUNTIME_DIR", "/run/user/1000");
+            env.insert("GTK_THEME", "Adwaita-dark");
+            if (env.value("DISPLAY").isEmpty()) {
+                if (QFile::exists("/tmp/.X11-unix/X0"))
+                    env.insert("DISPLAY", ":0");
+                else if (QFile::exists("/tmp/.X11-unix/X1"))
+                    env.insert("DISPLAY", ":1");
+            }
+
+            fprintf(stderr, "[boomtube-trace] vlc env: DISPLAY=%s WLD=%s QPA=%s\n",
+                    env.value("DISPLAY").toUtf8().constData(),
+                    env.value("WAYLAND_DISPLAY").toUtf8().constData(),
+                    env.value("QT_QPA_PLATFORM").toUtf8().constData());
+            fflush(stderr);
+
+            fprintf(stderr, "[boomtube-trace] REACHED spawn block\n"); fflush(stderr);
+            fprintf(stderr, "[boomtube-trace] path=%s\n", path.toUtf8().constData()); fflush(stderr);
+            fprintf(stderr, "[boomtube-trace] vlc exists=%d exec=%d\n",
+                    (int)QFile::exists("/usr/bin/vlc"),
+                    (int)QFileInfo("/usr/bin/vlc").isExecutable()); fflush(stderr);
+
+            QProcess proc;
+            proc.setProcessEnvironment(env);
+            proc.setProgram("/usr/bin/vlc");
+            proc.setArguments({"--play-and-exit", path});
+            proc.setWorkingDirectory(QDir::homePath());
+            qint64 pid = 0;
+            bool started = proc.startDetached(&pid);
+
+            fprintf(stderr, "[boomtube-trace] started=%d pid=%lld\n",
+                    (int)started, (long long)pid); fflush(stderr);
+
+            if (!started) {
+                SigilDialog::ask(this, "VLC Launch Failed",
+                    "Could not launch VLC.\n\nCheck /tmp/boomtube-vlc.log",
+                    {"OK"});
+                return;
+            }
+            qApp->quit();
+        });
+
         QObject::connect(m_shuffleBtn, &QPushButton::toggled,
                          [this](bool on) {
             VisualConfigManager::instance().setAndSave(
@@ -418,6 +498,16 @@ private:
         qint64 s = ms / 1000;
         return QString("%1:%2").arg(s / 60)
                                .arg(s % 60, 2, 10, QChar('0'));
+    }
+
+    void dragEnterEvent(QDragEnterEvent *e) override {
+        if (e->mimeData()->hasUrls()) e->acceptProposedAction();
+    }
+    void dropEvent(QDropEvent *e) override {
+        for (const QUrl &u : e->mimeData()->urls()) {
+            if (u.isLocalFile()) { open(u.toLocalFile()); break; }
+        }
+        e->acceptProposedAction();
     }
 
     void open(const QString &path) {

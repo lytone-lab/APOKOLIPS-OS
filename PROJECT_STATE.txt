@@ -2118,3 +2118,38 @@ END OF PROJECT STATE
   Verification: QTerminal launched perfectly dark with oxblood accents.
   State: done. External app theming (GTK3, GTK4, Qt5, Qt6) is complete.
 
+
+--- SESSION UPDATE — 2026-10-25 (Audio bounded + Drag-drop complete) ---
+
+[SHIPPED] Audio safety (audio_safe.h)
+  What: All sound playback goes through playSoundSafe() with one player 
+        at a time, 2s hard timeout, kill-previous-on-new. Fixed the 
+        continuous glitch caused by paplay/pw-play hanging on a stuck 
+        PipeWire stream. Settings->Sound 10 rapid clicks now leave zero
+        hung processes.
+  VM:   Also added system/pipewire/pipewire.conf.d/99-vm-quantum.conf 
+        (quantum=4096) to prevent VM audio underruns. Needs to be copied 
+        to /etc/pipewire/pipewire.conf.d/ in ISO bootstrap.
+
+[SHIPPED] Drag-and-drop — both directions
+  What: Receiving: Finder, BoomTube, all ShellApps (via shellapp.h), 
+        PoolCanvas (Desktop), PoolIcon (Desktop icon), DockIcon all 
+        accept drops.
+        Sending: FileDragFilter now reads from its own view (tree OR grid),
+        fixing empty-path bug where tree-side drags produced no drag.
+        ClipboardPanel sends Sigil glow thumbnail via ApoDrag.
+  Verified: trace log confirms drag-start -> path -> dock-drop -> 
+        launchApp all work end-to-end for Bastille track.
+
+[SHIPPED] SigilDialog button click routing
+  What: mousePressEvent now checks each QPushButton's rect and calls 
+        b->click() if hit. Fixes the bug where dialog buttons did nothing
+        because the parent event handler swallowed clicks before they
+        reached the buttons.
+
+[SHIPPED] BoomTube VLC fallback (committed via boomtube.h)
+  What: QMediaPlayer::errorOccurred fires SigilDialog offering 
+        Cancel / Open in VLC. VLC spawns with WAYLAND_DISPLAY stripped 
+        (XWayland path) so its Qt5 GUI plugin loads properly. 
+        --play-and-exit means VLC exits when playback ends.
+

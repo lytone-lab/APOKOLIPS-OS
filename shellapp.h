@@ -80,6 +80,7 @@ public:
                        const QSize   &preferred,
                        bool           embedded)
     {
+        setAcceptDrops(true);
         m_embedded      = embedded;
         m_preferredSize = preferred;
         m_appId         = appIdForTitle(title);
