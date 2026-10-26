@@ -29,3 +29,13 @@ The final `xorriso` command was patched to handle the volume ID and multi-line b
 - **Use nano for long text files.** Heredocs get cut off by the terminal.
 - **Never claim success without seeing build output.**
 - Read `TEAM_PROTOCOL.md` for the rules of engagement.
+
+## 9. CRITICAL ISO BOOT FIX (Must be done before next build)
+The manually built ISO drops to `grub>` because the embedded `grub.cfg` expects the old Ubuntu filesystem path, but we are using Ubuntu 26.04's layered `minimal.squashfs`. 
+
+To fix this, the `customize.sh` script must edit the boot configuration inside the ISO before repacking:
+1. Mount the extracted ISO `iso/` folder.
+2. Edit `boot/grub/grub.cfg` (and `EFI/boot/grub.cfg` if it exists).
+3. Find the line starting with `linux /casper/vmlinuz` and change it to:
+   `linux /casper/vmlinuz boot=casper live-media=/dev/disk/by-label/UBUNTU_26_0 quiet splash ---`
+4. Find the line starting with `initrd /casper/initrd` and leave it as is.
