@@ -13,23 +13,11 @@ Restart: `systemctl --user restart apokolips-shell.service`
 - **Core UX**: Mission Control (Super+A), Lockscreen, SigilDialog (free-space morph), Dynamic Dock.
 - **External Apps**: VLC fallback for BoomTube media errors.
 
-## 3. What We Are Doing Right Now
-We are building the **Level 1 Live ISO** (no installer, just bootable) using a custom CLI script because the Cubic GUI crashed due to VirtualBox keyboard/Wayland focus bugs.
-
-**The Build Script**: `/home/lytone/iso-build/build-iso-cli.sh`
-- It extracts the Ubuntu 26.04.1 ISO to `~/iso-build/work/mnt`
-- Unsquashes `casper/minimal.squashfs` (Ubuntu 26.04 uses overlay layers)
-- Chroots in, installs sway/qt6/vlc/etc via `customize.sh`
-- Repacks `minimal.squashfs` using `zstd`
-- Rebuilds the ISO using `xorriso`
-
-**Current Status**: 
-1. The extraction and repacking phases *succeeded* but filled up the VM's disk.
-2. The final `xorriso` command failed because we ran out of space.
-3. The VM disk needs to be expanded (VirtualBox Settings -> Storage -> increase disk size, then resize partition in Ubuntu using `gparted` or `cfdisk` and `resize2fs`).
-4. Once disk space is available, re-run `sudo ~/iso-build/build-iso-cli.sh`.
-
-## 4. What To Do Next (For the Next AI)
+## 3. Current Status
+**SUCCESS: The ISO has been built successfully.**
+Output: `/home/lytone/iso-build/APOKOLIPS-1.0.iso` (6.1GB).
+The script `~/iso-build/build-iso-cli.sh` extracts, chroots, installs, and repacks Ubuntu 26.04.1 (using `zstd`).
+The final `xorriso` command was patched to handle the volume ID and multi-line boot flags correctly.4. What To Do Next (For the Next AI)
 1. **Expand VM Disk**: Guide the user to increase the VirtualBox VDI size to at least 40GB, then use `growpart` and `resize2fs` to expand the filesystem.
 2. **Re-run the build**: `sudo ~/iso-build/build-iso-cli.sh`.
 3. **Test the ISO**: Boot the resulting `APOKOLIPS-1.0.iso` in a new VM (Graphics: VBoxSVGA, 128MB VRAM, 4GB RAM).
